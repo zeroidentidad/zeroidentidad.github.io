@@ -1,3 +1,25 @@
+html, body {
+	height: 100%;
+	padding-top: 40px;
+}
 .youtube {
     max-width: 100%;
+}
+.full-height {
+	height: 75%;
+	align-content: center;
+	padding-left: 3%;
+	padding-right: 3%;
+}
+.p-center {
+	text-align: center;
+} 
+.f20 {
+	font-size: 20px;
+}
+.f16 {
+	font-size: 16px;
+}
+p{
+	color: #e6e6e6
 }
