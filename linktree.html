@@ -13,6 +13,14 @@
 	::-webkit-scrollbar{
 		width: 0px; /* remove scrollbar space */
 		background: transparent; /* scrollbar invisible */
+		display: none;
+	}
+	.no-sc{
+		::-webkit-scrollbar{
+			width: 0px; /* remove scrollbar space */
+			background: transparent; /* scrollbar invisible */
+			display: none;
+		}
 	}
 	</style>	
 </head>
@@ -64,7 +72,7 @@
 		<span class="navbar-text text-truncate mt-1 text-right order-1 order-md-last">&nbsp; &nbsp;</span>
 	</nav>
 	<div class="full-height">
-		<iframe class="" style="border: none; visibility: visible; width: 100%; height: 600px;" src="./linktree/linktree.html"></iframe>
+		<iframe class="no-sc" style="border: none; visibility: visible; width: 100%; height: 600px;" src="./linktree/linktree.html"></iframe>
 	</div>
 </body>
 <script type="text/javascript">
