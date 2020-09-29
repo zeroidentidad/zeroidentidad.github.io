@@ -331,7 +331,7 @@ var templates = {
                  <div class="gha-user-info{{withoutName}}">{{{userNameLink}}}<p><b>{{{userLink}}}</b> last activity</p></div>\
                  <div class="gha-gravatar">{{{gravatarLink}}}</div>\
                </div><div class="gha-push"></div>',
-  Footer: '<div class="gha-footer"> <a href="https://profile-summary-for-github.com/user/zeroidentidad" target="_blank"><u>View GitHub Profile Summary</u></a>',
+  Footer: '<div class="gha-footer">Public activity <a href="https://profile-summary-for-github.com/user/zeroidentidad" target="_blank"><u>View GitHub Profile Summary</u></a>',
   NoActivity: '<div class="gha-info">This user does not have any public activity yet.</div>',
   UserNotFound: '<div class="gha-info">User {{username}} wasn\'t found.</div>',
   EventsNotFound: '<div class="gha-info">Events for user {{username}} not found.</div>',
