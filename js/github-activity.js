@@ -328,7 +328,7 @@ var templates = {
                        </div>',
   UserHeader: '<div class="gha-header">\
                  <div class="gha-github-icon"><span class="octicon octicon-mark-github"></span></div>\
-                 <div class="gha-user-info{{withoutName}}">{{{userNameLink}}}<p><b>{{{userLink}}}</b> last activity</p></div>\
+                 <div class="gha-user-info{{withoutName}}">{{{userNameLink}}}<p><b>{{{userLink}}}</b><img align="right" src="https://visitor-badge.laobi.icu/badge?page_id=zeroidentidad.visitor-badge"></p></div>\
                  <div class="gha-gravatar">{{{gravatarLink}}}</div>\
                </div><div class="gha-push"></div>',
   Footer: '<div class="gha-footer">Public activity <a href="https://profile-summary-for-github.com/user/zeroidentidad" target="_blank"><u>View GitHub Profile Summary</u></a>',
