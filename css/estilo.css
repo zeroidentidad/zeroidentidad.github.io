@@ -1,15 +1,18 @@
 html, body {
 	height: 100%;
-	padding-top: 31px;
+}
+.navbar {
+  padding: 0;
 }
 .youtube {
     max-width: 100%;
 }
 .full-height {
-	height: 75%;
+  margin-top: 42px;
+	height: auto;
 	align-content: center;
-	padding-left: 3%;
-	padding-right: 3%;
+  padding-left: 3%;
+  padding-right: 3%;
 }
 .p-center {
 	text-align: center;

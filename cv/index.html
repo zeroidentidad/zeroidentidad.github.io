@@ -15,10 +15,15 @@
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>zeroidentidad</title>
-<!-- HTML meta refresh URL redirection --><!-- <meta http-equiv="refresh" content="0; url="./cv/cv_jesus_antonio_ferrer_sanchez.pdf">-->
+<!-- HTML meta refresh URL redirection -->
+<!-- <meta http-equiv="refresh" content="0; url="./cv/cv_jesus_antonio_ferrer_sanchez.pdf">-->
 <style>.centrar { position: absolute; top:1%; }</style>
 <link rel="stylesheet" href="../css/bootstrap.css">
-<link rel="stylesheet" href="../css/estilo.css?v=2">
+<link rel="stylesheet" id="x12345678" href="./css/estilo.css">
+<script>
+    let linkElement=document.getElementById('x12345678');
+    linkElement.href=linkElement.href+"?v="+new Date().getTime();
+</script>
 </head>
 <body style="overflow:hidden;height:100%; width:100%;">
     <nav class="navbar navbar-expand-lg navbar-expand-xl navbar-expand-md navbar-expand-sm bg-dark navbar-dark fixed-top">
@@ -64,7 +69,7 @@
         <span class="navbar-text text-truncate mt-1 text-right order-1 order-md-last"><a href="../gitbooks.html">📚 <b>Gitbooks</b></a></span>
         <span class="navbar-text text-truncate mt-1 text-right order-1 order-md-last">&nbsp; js.go &nbsp;</span>     
     </nav>
-    <table align=left width=100% height="100%" border="0.5" cellpadding="0" cellspacing="0">
+    <table align=center width=100% height="100%" border="0.0" cellpadding="0" cellspacing="0" style="margin-top: 42;">
     <tr style="height: 100%">
         <td valign=top align=center width=100%>
         <embed src="./cv_zeroidentidad.pdf" style="border:0px #ffffff;" scrolling="no" marginheight="0px" marginwidth="0px" height="100%" width="100%" type="application/pdf" />
