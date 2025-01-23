@@ -2,7 +2,11 @@ html, body {
 	height: 100%;
 }
 .navbar {
-  padding: 0;
+  padding: 0 !important;
+  /*min-height: 40px;*/
+  @media (hover: hover) and (pointer: fine) {
+    height: 40px;
+  }
 }
 .youtube {
   max-width: 100%;
