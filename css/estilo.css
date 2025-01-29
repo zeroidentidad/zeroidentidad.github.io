@@ -3,16 +3,16 @@ html, body {
 }
 .navbar {
   padding: 0 !important;
-  /*min-height: 40px;*/
+  /*min-height: 38px;*/
   @media (hover: hover) and (pointer: fine) {
-    height: 40px;
+    height: 38px;
   }
 }
 .youtube {
   max-width: 100%;
 }
 .full-height {
-  margin-top: 42px;
+  margin-top: 41px;
 	height: auto;
 	align-content: center;
   padding-left: 3%;
