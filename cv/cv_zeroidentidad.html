@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="./pdf.min.js"></script>
+    <script src="./pdf.worker.min.js"></script>
+</head>
+<body>
+    <center>
+      <canvas id="pdf-viewer"></canvas>
+    </center>
+    <script>
+        const url = './cv_zeroidentidad.pdf';
+        const canvas = document.getElementById('pdf-viewer');
+
+        pdfjsLib.getDocument(url).promise.then(pdf => {
+            pdf.getPage(1).then(page => {
+                const viewport = page.getViewport({ scale: 1.5 });
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+                const renderContext = {
+                    canvasContext: canvas.getContext('2d'),
+                    viewport: viewport
+                };
+                page.render(renderContext);
+            });
+        });
+    </script>
+</body>
+</html>
