@@ -18,6 +18,20 @@ html, body {
   padding-left: 3%;
   padding-right: 3%;
 }
+.chat-full {
+  margin-top: 5px;
+  height: 40vmax;
+  align-content: center;
+  padding-left: 3%;
+  padding-right: 3%;
+}
+.chat-min {
+  margin-top: 5px;
+  height: 20vmax;
+  align-content: center;
+  padding-left: 3%;
+  padding-right: 3%;
+}
 .p-center {
 	text-align: center;
 } 

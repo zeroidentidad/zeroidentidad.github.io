@@ -14,8 +14,8 @@
     let linkElement=document.getElementById('x12345678');
     linkElement.href=linkElement.href+"?v="+new Date().getTime();
   </script>
-	<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/octicons/2.0.2/octicons.min.css">
-	<link rel="stylesheet" href="./css/github-activity.css">
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/octicons/2.0.2/octicons.min.css">
+  <link rel="stylesheet" href="https://unpkg.com/github-activity-feed@latest/dist/github-activity.min.css">
 </head>
 
 <body
@@ -69,12 +69,12 @@
 </body>
 <script type="text/javascript" src="./js/jquery.js"></script>
 <script type="text/javascript" src="./js/bootstrap.js"></script>
-<script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/mustache.js/0.7.2/mustache.min.js"></script>
-<script type="text/javascript" src="./js/github-activity.js"></script>
+<script type="text/javascript" src="https://unpkg.com/mustache@4.2.0/mustache.min.js"></script>
+<script type="text/javascript" src="https://unpkg.com/github-activity-feed@latest/dist/github-activity.min.js"></script>
 <script type="text/javascript">
 	GitHubActivity.feed({
 		username: "zeroidentidad",
-		//repository: "your-repo", // optional
+		//repository: "repo-name", // optional
 		selector: "#feed",
 		limit: 1 // optional
 	});
