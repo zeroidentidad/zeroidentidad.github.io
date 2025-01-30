@@ -1,12 +1,13 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="./pdf_viewer.min.css">
     <style>
         body {
-            margin-top: 20px;
+            margin-top: 26px;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -24,9 +25,17 @@
         }
     </style>
 </head>
+
 <body>
     <div class="pdf-container">
-      <canvas id="pdf-viewer"></canvas>
+        <div style="font-size: smaller;">
+            Viendo <a href="./cv_zeroidentidad.pdf"><button><b>👀
+                        cv_zeroidentidad.pdf</b></button></a></a>
+            con <a href="https://mozilla.github.io/pdf.js">pdf.js</a>
+            | Para poder seleccionar texto o enlaces use el <b>.pdf</b> con el botón de 👀ver (sólo PC)
+            o ⬇️descarga directa.
+        </div>
+        <canvas id="pdf-viewer"></canvas>
     </div>
     <script src="./pdf.min.mjs" type="module"></script>
     <script id="script" type="module">
@@ -72,4 +81,5 @@
         window.addEventListener('resize', renderPdf);
     </script>
 </body>
+
 </html>
