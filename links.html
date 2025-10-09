@@ -12,24 +12,10 @@
     let linkElement=document.getElementById('x12345678');
     linkElement.href=linkElement.href+"?v="+new Date().getTime();
   </script>
-	<style>
-	::-webkit-scrollbar{
-		width: 0px; /* remove scrollbar space */
-		background: transparent; /* scrollbar invisible */
-		display: none;
-	}
-	.no-sc{
-		::-webkit-scrollbar{
-			width: 0px; /* remove scrollbar space */
-			background: transparent; /* scrollbar invisible */
-			display: none;
-		}
-	}
-	</style>
 </head>
 
 <body
-  style="background-image:url('./assets/img/wallpaper.png'); background-repeat: no-repeat; background-attachment: fixed; background-size: cover; opacity: 0.95;">
+  style="background-image:url('./assets/img/wallpaper.jpeg'); background-repeat: no-repeat; background-attachment: fixed; background-size: cover; opacity: 0.95;">
 	<nav class="navbar navbar-expand-lg navbar-expand-xl navbar-expand-md navbar-expand-sm bg-dark navbar-dark fixed-top">
 		<button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#menu">
 			<span class="navbar-toggler-icon"></span>
@@ -65,7 +51,7 @@
 		<span class="navbar-text text-truncate mt-1 text-right order-1 order-md-last"><a class="nav-link" href="./chat.html">👾Discord</a></span>
 	</nav>
 	<div class="full-height">
-		<iframe class="no-sc" style="border: none; visibility: visible; width: 100%; height: 600px;" src="./links/links.html"></iframe>
+		<iframe class="no-sc" style="overflow: hidden !important; border: none; visibility: visible; width: 100%; height: 100vh;" src="./links/links.html"></iframe>
 	</div>
 </body>
 <script type="text/javascript" src="./assets/js/jquery.js"></script>

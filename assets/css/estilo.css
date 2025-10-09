@@ -3,21 +3,34 @@ html, body {
 }
 .navbar {
   padding: 0 !important;
-  /*min-height: 38px;*/
-  @media (hover: hover) and (pointer: fine) {
-    height: 38px;
-  }
-}
-.youtube {
-  max-width: 100%;
 }
 .full-height {
-  margin-top: 41px;
 	height: auto;
 	align-content: center;
   padding-left: 3%;
   padding-right: 3%;
+  overflow: hidden;
 }
+/* mobile/tablet */
+@media (hover: none) and (pointer: coarse) {
+  .full-height {
+    margin-top: 65px !important;
+  }
+}
+/* mouse (PC/laptop) */
+@media (hover: hover) and (pointer: fine) {
+  .navbar {
+    height: 38px;
+  }
+  .full-height {
+    margin-top: 41px !important;
+  }
+}
+
+.youtube {
+  max-width: 100%;
+}
+
 .chat-full {
   margin-top: 5px;
   height: 40vmax;
@@ -32,6 +45,7 @@ html, body {
   padding-left: 3%;
   padding-right: 3%;
 }
+
 .p-center {
 	text-align: center;
 } 
@@ -44,13 +58,26 @@ html, body {
 p{
 	color: #e6e6e6
 }
+
 .fb-comments{
 	background-color: #cccccc;
 }
 .fb-page{
-max-width: 100%;
+  max-width: 100%;
 }
+
 .alink{
 	color: rgb(1, 17, 87);
   background-color: white;
+}
+
+.no-sc {
+  scrollbar-width: none !important; /* Firefox */
+  -ms-overflow-style: none; /* IE y Edge */
+  background: transparent;
+}
+
+.no-sc::-webkit-scrollbar {
+  display: none !important; /* Chrome, Safari, Opera */
+  background: transparent;
 }
