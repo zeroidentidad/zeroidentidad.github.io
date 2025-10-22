@@ -1,0 +1,32 @@
+.index {
+    overflow: auto;
+    width: 95%;
+    font-size: 1.1rem;
+}
+.index table {
+    border: 1px solid darkgray;
+    height: 100%;
+    width: 95%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    border-spacing: 1px;
+    text-align: left;
+}
+.index th {
+    border: 1px solid darkgray;
+    background-color: #000000;
+    color: lightyellow;
+    padding: 5px;
+}
+.index td {
+    border: 1px solid darkgray;
+    background-color: #171718;
+    color: lightyellow;
+    padding: 5px;
+}
+a {
+    color: lightgreen;
+}
+p {
+    color: lightyellow;
+}
