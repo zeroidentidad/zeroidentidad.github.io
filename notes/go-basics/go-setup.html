@@ -1,0 +1,217 @@
+<meta charset="utf-8"/>
+
+<!-- Open Graph -->
+<meta property="og:title" content="Notas.go - Fundamentales" />
+<meta property="og:description" content="Configuración entorno de desarrollo y consideraciones" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://zeroidentidad.github.io/notes" />
+<meta property="og:image" content="https://zeroidentidad.github.io/notes/img/advisory.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="1300" />
+
+<!-- Twitter Card (opcional) -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Notas.go - Fundamentales" />
+<meta name="twitter:description" content="Configuración entorno de desarrollo y consideraciones" />
+<meta name="twitter:image" content="https://zeroidentidad.github.io/notes/img/advisory.png" />
+
+<link rel="stylesheet" href="../style.css">
+<a href="../">🔙 Regresar</a>
+<co-content>
+ <p variant="body1" style="background-color: #000000;">
+  <u>
+   <strong>
+    Configuración entorno de desarrollo
+   </strong>
+  </u>
+ </p>
+ <p variant="body1">
+  Configurar un entorno de desarrollo de Go implica varios pasos, como instalar el SDK de Go, configurar espacio de trabajo y verificar la instalación. Aquí una guía junto con una verificación de ejemplo:
+ </p>
+ <p variant="body1">
+  <strong>
+   Paso 1: Descargar e instalar Go
+  </strong>
+ </p>
+ <ol bullettype="numbers">
+  <li>
+   <p variant="body1">
+    Visitar el sitio web oficial de Go en
+    <em>
+     <a href="https://golang.org/dl">https://golang.org/dl</a>
+    </em>
+    para descargar la última versión de Go para el sistema operativo de trabajo (Windows, macOS o Linux).
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Usar el instalador descargado siguiendo las instrucciones de instalación específicas para cada sistema operativo.
+   </p>
+  </li>
+ </ol>
+ <p variant="body1">
+  <strong>
+   Paso 2: Configurar espacio de trabajo
+  </strong>
+ </p>
+ <ol bullettype="numbers">
+  <li>
+   <p variant="body1">
+    Crear un directorio que sirva como espacio de trabajo de Go. Por convención, este directorio suele denominarse
+    <strong>
+     go
+    </strong>
+    y se encuentra en el directorio personal de su usuario. En Windows, puede crear una carpeta
+    <strong>
+     go
+    </strong>
+    en el directorio de su perfil de usuario, normalmente
+    <em>
+     C:\Users\&lt;Username&gt;\.
+    </em>
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Establecer la variable de entorno GOPATH para que apunte al espacio de trabajo de Go.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Agregar el directorio GOPATH/bin a la variable de entorno PATH del sistema para poder ejecutar los binarios de Go instalados por paquetes. En Windows, se puede configurar la variable de entorno PATH de forma similar a la variable GOPATH.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Recargar su perfil de shell o reiniciar terminal para cargar los cambios aplicados.
+   </p>
+  </li>
+ </ol>
+ <p variant="body1">
+  <strong>
+   Paso 3: Verificar instalación
+  </strong>
+ </p>
+ <ol bullettype="numbers">
+  <li>
+   <p variant="body1">
+    Abrir una terminal o símbolo del sistema.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Para verificar que Go esta correctamente instalado y configurado, ingresar el comando:
+   </p>
+  </li>
+ </ol>
+ <table columns="1" rows="1">
+  <tr>
+   <td>
+    <p>
+     <em>
+      <strong>
+       go version
+      </strong>
+     </em>
+    </p>
+   </td>
+  </tr>
+ </table>
+ <p variant="body1">
+  Se debería ver la versión de Go instalada, lo que indica que la instalación fue exitosa.
+ </p>
+ <p variant="body1">
+  <strong>
+   Paso 4: Crear un programa en Go
+  </strong>
+ </p>
+ <p variant="body1">
+  Crear un archivo de código fuente de Go con nombre
+  <strong>
+   main.go
+  </strong>
+  utilizando el editor de código preferido.
+ </p>
+ <table columns="1" rows="1">
+  <tr>
+   <td>
+    <p variant="body1">
+     <em>
+      <strong>
+       package main
+      </strong>
+     </em>
+    </p>
+    <p variant="body1">
+     <em>
+      <strong>
+       import "fmt"
+      </strong>
+     </em>
+    </p>
+    <p variant="body1">
+     <em>
+      <strong>
+       func main() {
+      </strong>
+     </em>
+    </p>
+    <p variant="body1">
+     <em>
+      <strong>
+       fmt.Println("Hello, world!")
+      </strong>
+     </em>
+    </p>
+    <p variant="body1">
+     <em>
+      <strong>
+       }
+      </strong>
+     </em>
+    </p>
+   </td>
+  </tr>
+ </table>
+ <p variant="body1">
+  Guardar el archivo con los cambios y regresar a la terminal.
+ </p>
+ <p variant="body1">
+  <strong>
+   Construir y ejecutar el programa:
+  </strong>
+ </p>
+ <table columns="1" rows="1">
+  <tr>
+   <td>
+    <p>
+     <em>
+      <strong>
+       go run main.go
+      </strong>
+     </em>
+    </p>
+   </td>
+  </tr>
+ </table>
+ <p variant="body1">
+  La salida será
+  <strong>
+   Hello, world!
+  </strong>
+  impreso en la terminal, indicando que el entorno de Go está configurado correctamente.
+ </p>
+ <p>
+ </p>
+</co-content>
+<script async="" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript">
+</script>
+<script type="text/x-mathjax-config">
+ MathJax.Hub.Config({
+    tex2jax: {
+      inlineMath: [ ['$$','$$'], ['$','$'] ],
+      displayMath: [ ["\\[","\\]"] ],
+      processEscapes: true
+    }
+  });
+</script>
