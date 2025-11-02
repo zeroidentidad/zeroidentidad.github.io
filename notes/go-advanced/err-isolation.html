@@ -1,0 +1,100 @@
+<meta charset="utf-8"/>
+
+<!-- Open Graph -->
+<meta property="og:title" content="Notas.go - Avanzado" />
+<meta property="og:description" content="Aislamiento de errores" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://zeroidentidad.github.io/notes" />
+<meta property="og:image" content="https://zeroidentidad.github.io/notes/img/advisory.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="1300" />
+
+<!-- Twitter Card (opcional) -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Notas.go - Avanzado" />
+<meta name="twitter:description" content="Aislamiento de errores" />
+<meta name="twitter:image" content="https://zeroidentidad.github.io/notes/img/advisory.png" />
+
+<link rel="stylesheet" href="../style.css">
+<a href="../">🔙 Regresar</a>
+<co-content>
+ <p variant="body1" style="background-color: #000000;">
+  <u>
+   <strong>
+    Aislamiento de errores:
+   </strong>
+  </u>
+ </p>
+ <p variant="body1">
+  El aislamiento de errores en Go es un patrón de diseño y una práctica que consiste en separar el código de manejo de errores de la lógica principal o de negocio de un programa. El objetivo es mantener el código relacionado con los errores separado y organizado, lo que hace que la lógica principal del programa sea más legible y mantenible. El aislamiento de errores en Go suele implicar las siguientes prácticas:
+ </p>
+ <ul bullettype="bullets">
+  <li>
+   <p variant="body1">
+    <strong>
+     Separación de responsabilidades:
+    </strong>
+     El manejo de errores se trata como una cuestión separada de la funcionalidad principal del programa. Esta separación ayuda a mantener un código base claro y modular.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    <strong>
+     Interferencia mínima:
+    </strong>
+    El código de manejo de errores no debe interferir con la legibilidad de la lógica principal. Debe ser conciso y centrarse en manejar los errores de forma adecuada.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    <strong>
+     Valores de retorno:
+    </strong>
+     Las funciones están diseñadas para devolver tanto resultados como errores, siguiendo la convención de Go. Los valores de error se devuelven como último parámetro, lo que permite a quienes llaman a la función comprobar y gestionar los errores fácilmente.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    <strong>
+     Envoltura de errores (wrapping):
+    </strong>
+     Cuando se producen errores, se puede añadir contexto adicional al error utilizando bibliotecas como
+    <strong>
+     github.com/pkg/errors
+    </strong>
+    o
+    <strong>
+     golang.org/x/xerrors
+    </strong>
+    - Esto mantiene intacto el error original al tiempo que proporciona contexto para depuración.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    <strong>
+     Instrucciones diferidas (defer):
+    </strong>
+    Las instrucciones `defer` se utilizan a menudo para garantizar que se realicen tareas de limpieza o liberación de recursos, incluso en presencia de errores. Esto ayuda a mantener el código de limpieza aislado de la lógica principal.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    <strong>
+     Tipos de errores personalizados:
+    </strong>
+    Go permite la creación de tipos de error personalizados, que se pueden usar para definir condiciones de error específicas. Los tipos de error personalizados pueden mejorar la claridad de los mensajes de error.
+   </p>
+  </li>
+ </ul>
+</co-content>
+<script async="" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript">
+</script>
+<script type="text/x-mathjax-config">
+ MathJax.Hub.Config({
+    tex2jax: {
+      inlineMath: [ ['$$','$$'], ['$','$'] ],
+      displayMath: [ ["\\[","\\]"] ],
+      processEscapes: true
+    }
+  });
+</script>

@@ -1,0 +1,264 @@
+<meta charset="utf-8"/>
+
+<!-- Open Graph -->
+<meta property="og:title" content="Notas.go - Avanzado" />
+<meta property="og:description" content="Manejo de errores de base de datos" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://zeroidentidad.github.io/notes" />
+<meta property="og:image" content="https://zeroidentidad.github.io/notes/img/advisory.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="1300" />
+
+<!-- Twitter Card (opcional) -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Notas.go - Avanzado" />
+<meta name="twitter:description" content="Manejo de errores de base de datos" />
+<meta name="twitter:image" content="https://zeroidentidad.github.io/notes/img/advisory.png" />
+
+<link rel="stylesheet" href="../style.css">
+<a href="../">🔙 Regresar</a>
+<co-content>
+ <p variant="body1" style="background-color: #000000;">
+  <u>
+   <strong>
+    Manejo de errores de base de datos:
+   </strong>
+  </u>
+ </p>
+ <p variant="body1">
+  Gestionar los errores de la base de datos en Go es fundamental para crear aplicaciones robustas y fiables. El paquete <u>database/sql</u> proporciona mecanismos para el manejo de errores que puedan producirse durante las operaciones con la base de datos.
+ </p>
+ <p variant="body1">
+  <strong>
+   Comprobación de errores en ejecución de consultas
+  </strong>
+ </p>
+ <p variant="body1">
+  Al ejecutar consultas u operaciones que interactúen con la base de datos, comprobar siempre el error devuelto.
+ </p>
+ <p variant="body1">
+  Ejemplo:
+ </p>
+ <table columns="1" rows="1">
+  <tr>
+   <td>
+    <p variant="body1">
+     // Asumir que 'db' es una conexión *sql.DB
+    </p>
+    <p variant="body1">
+     rows, err := db.Query("SELECT * FROM users")
+    </p>
+    <p variant="body1">
+     if err != nil {
+    </p>
+    <p variant="body1">
+     // Manejar error
+    </p>
+    <p variant="body1">
+     log.Fatal(err)
+    </p>
+    <p variant="body1">
+     }
+    </p>
+    <p variant="body1">
+     defer rows.Close()
+    </p>
+    <p variant="body1">
+     // Procesar las filas devueltas
+    </p>
+   </td>
+  </tr>
+ </table>
+ <p variant="body1">
+  <strong>
+   Manejo de errores con sentencias preparadas
+  </strong>
+ </p>
+ <p variant="body1">
+  Al utilizar sentencias preparadas, gestionar el error devuelto por la preparación de la sentencia y su ejecución.
+ </p>
+ <p variant="body1">
+  Ejemplo:
+ </p>
+ <table columns="1" rows="1">
+  <tr>
+   <td>
+    <p variant="body1">
+     // Asumir que 'db' es una conexión *sql.DB
+    </p>
+    <p variant="body1">
+     stmt, err := db.Prepare("INSERT INTO users(name, age) VALUES(?, ?)")
+    </p>
+    <p variant="body1">
+     if err != nil {
+    </p>
+    <p variant="body1">
+     // Manejar error
+    </p>
+    <p variant="body1">
+     log.Fatal(err)
+    </p>
+    <p variant="body1">
+     }
+    </p>
+    <p variant="body1">
+     defer stmt.Close()
+    </p>
+    <p variant="body1">
+     // Ejecutar sentencia preparada con parámetros
+    </p>
+    <p variant="body1">
+     _, err = stmt.Exec("Alice", 25)
+    </p>
+    <p variant="body1">
+     if err != nil {
+    </p>
+    <p variant="body1">
+     // Manejar error de ejecución
+    </p>
+    <p variant="body1">
+     log.Fatal(err)
+    </p>
+    <p variant="body1">
+     }
+    </p>
+   </td>
+  </tr>
+ </table>
+ <p variant="body1">
+  <strong>
+   Manejo de errores de transacción
+  </strong>
+ </p>
+ <p variant="body1">
+  Durante las transacciones, asegurar gestionar los errores que puedan producirse en el proceso de confirmar o deshacer la transacción.
+ </p>
+ <p variant="body1">
+  Ejemplo:
+ </p>
+ <table columns="1" rows="1">
+  <tr>
+   <td>
+    <p variant="body1">
+     // Asumir que 'tx' es un objeto de transacción *sql.Tx
+    </p>
+    <p variant="body1">
+     err = tx.Commit()
+    </p>
+    <p variant="body1">
+     if err != nil {
+    </p>
+    <p variant="body1">
+     // Manejar error de confirmación ...
+    </p>
+    <p variant="body1">
+     // Revertir la transacción si falla la confirmación
+    </p>
+    <p variant="body1">
+     if rbErr := tx.Rollback(); rbErr != nil {
+    </p>
+    <p variant="body1">
+     // Gestionar error de rollback si es necesario
+    </p>
+    <p variant="body1">
+     }
+    </p>
+    <p variant="body1">
+     log.Fatal(err)
+    </p>
+    <p variant="body1">
+     }
+    </p>
+   </td>
+  </tr>
+ </table>
+ <p variant="body1">
+  <strong>
+   Registro e informe de errores
+  </strong>
+ </p>
+ <p variant="body1">
+  Utilizar mecanismos de logging adecuados para registrar los errores. Puede ser registrarlos en consola, en archivo o en un servicio de registro, según las necesidades de la aplicación.
+ </p>
+ <p variant="body1">
+  Ejemplo:
+ </p>
+ <table columns="1" rows="1">
+  <tr>
+   <td>
+    <p variant="body1">
+     if err != nil {
+    </p>
+    <p variant="body1">
+     // Log error
+    </p>
+    <p variant="body1">
+     log.Println("Error:", err)
+    </p>
+    <p variant="body1">
+     // Manejar error en consecuencia
+    </p>
+    <p variant="body1">
+     }
+    </p>
+   </td>
+  </tr>
+ </table>
+ <p variant="body1">
+  <strong>
+   Envoltura de errores y contexto
+  </strong>
+ </p>
+ <p variant="body1">
+  Considerar usar paquetes como <u>github.com/pkg/errors</u> o el paquete de errores estándar para añadir contexto a los errores. Esto ayuda a comprender mejor el contexto en el que se produjo el error.
+ </p>
+ <p variant="body1">
+  Ejemplo:
+ </p>
+ <table columns="1" rows="1">
+  <tr>
+   <td>
+    <p variant="body1">
+     import (
+    </p>
+    <p variant="body1">
+     "github.com/pkg/errors"
+    </p>
+    <p variant="body1">
+     )
+    </p>
+    <p variant="body1">
+     func fetchDataFromDB() error {
+    </p>
+    <p variant="body1">
+     // ...
+    </p>
+    <p variant="body1">
+     if err != nil {
+    </p>
+    <p variant="body1">
+     return errors.Wrap(err, "fetching data from database")
+    </p>
+    <p variant="body1">
+     }
+    </p>
+    <p variant="body1">
+     }
+    </p>
+   </td>
+  </tr>
+ </table>
+ <p>
+ </p>
+</co-content>
+<script async="" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript">
+</script>
+<script type="text/x-mathjax-config">
+ MathJax.Hub.Config({
+    tex2jax: {
+      inlineMath: [ ['$$','$$'], ['$','$'] ],
+      displayMath: [ ["\\[","\\]"] ],
+      processEscapes: true
+    }
+  });
+</script>
