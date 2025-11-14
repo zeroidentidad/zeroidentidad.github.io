@@ -1,0 +1,101 @@
+<meta charset="utf-8"/>
+
+<!-- Open Graph -->
+<meta property="og:title" content="Notas.go - Fundamentales" />
+<meta property="og:description" content="Tipos de datos compuestos" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://zeroidentidad.github.io/notes" />
+<meta property="og:image" content="https://zeroidentidad.github.io/notes/img/advisory.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="1300" />
+
+<!-- Twitter Card (opcional) -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Notas.go - Fundamentales" />
+<meta name="twitter:description" content="Tipos de datos compuestos" />
+<meta name="twitter:image" content="https://zeroidentidad.github.io/notes/img/advisory.png" />
+
+<link rel="stylesheet" href="../style.css">
+<a href="../">🔙 Regresar</a>
+<co-content>
+ <p variant="body1" style="background-color: #000000;">
+  <strong>
+   Tipos de datos compuestos
+  </strong>
+ </p>
+ <p variant="body1">
+  En Go, los tipos de datos compuestos se utilizan para agrupar múltiples valores en una sola estructura de datos. Estos tipos de datos son esenciales para organizar, gestionar y procesar datos complejos de manera eficiente. Los tipos compuestos predeterminados en Go son:
+ </p>
+ <ol bullettype="numbers">
+  <li>
+   <p variant="body1">
+    Arrays: Conjuntos de valores de tamaño fijo con el mismo tipo de datos. Su uso es poco frecuente debido a la preferencia por los slices.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Slices: Arrays dinámicos que pueden crecer o reducirse. Más flexibles que los arrays y de uso muy extendido.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Maps: Estructuras de datos clave-valor para búsquedas y recuperación de datos eficientes.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Structs: Para tipos compuestos definidos por el usuario utilizados para agrupar valores de diferentes tipos de datos.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Channels: Se utilizan para la comunicación y sincronización en la programación concurrente.
+   </p>
+  </li>
+ </ol>
+ <p variant="body1">
+  <strong>
+   ¿Cuándo utilizar tipos de datos compuestos?
+  </strong>
+ </p>
+ <ul bullettype="bullets">
+  <li>
+   <p variant="body1">
+    Arrays: Utilizar arrays cuando se sepa que el tamaño de colección de elementos es fijo y no cambiará durante la ejecución del programa. -Los arrays son útiles para representar colecciones con un número fijo de elementos, como los días de la semana, los meses del año, etc.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Slices: Los slices son más flexibles que los arrays y se deben usar cuando se necesita una colección que pueda crecer o reducirse. Los slices son adecuados para estructuras de datos dinámicas como listas, colas y arrays dinámicos.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Maps: Los mapas se utilizan cuando se desea asociar claves con valores para una búsqueda y recuperación eficientes. Son ideales para implementar diccionarios, cachés y estructuras de indexación de datos.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Structs: Las structs son esenciales para crear estructuras de datos definidas por el usuario que permitan agrupar datos relacionados. -Utilizar structs cuando se necesite representar una entidad compleja con múltiples atributos o campos.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Channels: Los channels son cruciales para la programación concurrente y deben utilizarse cuando se necesita establecer comunicación y sincronización entre diferentes partes del programa que se ejecutan simultáneamente.
+   </p>
+  </li>
+ </ul>
+ <p>
+ </p>
+</co-content>
+<script async="" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript">
+</script>
+<script type="text/x-mathjax-config">
+ MathJax.Hub.Config({
+    tex2jax: {
+      inlineMath: [ ['$$','$$'], ['$','$'] ],
+      displayMath: [ ["\\[","\\]"] ],
+      processEscapes: true
+    }
+  });
+</script>
