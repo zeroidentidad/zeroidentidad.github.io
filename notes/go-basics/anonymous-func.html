@@ -1,0 +1,86 @@
+<meta charset="utf-8"/>
+
+<!-- Open Graph -->
+<meta property="og:title" content="Notas.go - Fundamentales" />
+<meta property="og:description" content="Función anónima" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://zeroidentidad.github.io/notes" />
+<meta property="og:image" content="https://zeroidentidad.github.io/notes/img/advisory.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="1300" />
+
+<!-- Twitter Card (opcional) -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Notas.go - Fundamentales" />
+<meta name="twitter:description" content="Función anónima" />
+<meta name="twitter:image" content="https://zeroidentidad.github.io/notes/img/advisory.png" />
+
+<link rel="stylesheet" href="../style.css">
+<a href="../">🔙 Regresar</a>
+<co-content>
+ <p variant="body1" style="background-color: #000000;">
+  <strong>
+   Función anónima
+  </strong>
+ </p>
+ <p variant="body1">
+  En Go, se pueden declarar funciones anónimas (también conocidas como literales de función) sin asignarles un nombre. Las funciones anónimas se usan comúnmente cuando se desea definir una función sobre la marcha.
+ </p>
+ <table columns="1" rows="1">
+  <tr>
+   <td>
+    <p variant="body1">
+     <em>
+      func main() {
+     </em>
+    </p>
+    <p variant="body1">
+     <em>
+      add := func(a, b int) int {
+     </em>
+    </p>
+    <p variant="body1">
+     <em>
+      return a + b
+     </em>
+    </p>
+    <p variant="body1">
+     <em>
+      }
+     </em>
+    </p>
+    <p variant="body1">
+     <em>
+      result := add(2, 3)
+     </em>
+    </p>
+    <p variant="body1">
+     <em>
+      fmt.Println("Result:", result)
+     </em>
+    </p>
+    <p variant="body1">
+     <em>
+      }
+     </em>
+    </p>
+   </td>
+  </tr>
+ </table>
+ <p variant="body1">
+  Esto es parte de los conceptos básicos para definir y usar funciones en Go. Las funciones son cruciales para estructurar código, promover la reutilización y hacer que el código sea más modular y fácil de mantener.
+ </p>
+ <p>
+ </p>
+</co-content>
+<script async="" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript">
+</script>
+<script type="text/x-mathjax-config">
+ MathJax.Hub.Config({
+    tex2jax: {
+      inlineMath: [ ['$$','$$'], ['$','$'] ],
+      displayMath: [ ["\\[","\\]"] ],
+      processEscapes: true
+    }
+  });
+</script>
