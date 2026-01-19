@@ -69,15 +69,38 @@
       <h3>2. ¿Cómo maneja Go la conversión de tipo implícita entre int y float64?</h3>
 
       <div class="block">
-        <h4>Why:</h4>
+        <h4>Por qué:</h4>
         <p>
           Go aplica una tipificación estricta para evitar la pérdida accidental de datos.
         </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>No hay conversión implícita entre tipos numéricos.</li>
+          <li>Se requiere casting explícito.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          i := 42
+          f := float64(i) // conversión explícita
+          i = int(f) // volver a int (trunca el decimal)
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
         <p>
-        	<i>[🔄...]</i>
+          Conversión de lecturas de sensores (enteros) a valores de punto flotante para cálculos científicos.
         </p>
       </div>
     </section>
+
+    <hr />
 
   </main>
 
