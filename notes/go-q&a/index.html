@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Listado preguntas y respuestas</title>
+	<!-- Open Graph -->
+	<meta property="og:title" content="Notas.go - Preguntas de entrevistas" />
+	<meta property="og:description" content="Listado preguntas y respuestas para estudiar o anotar" />
+	<meta property="og:type" content="website" />
+	<meta property="og:url" content="https://zeroidentidad.github.io/notes" />
+	<meta property="og:image" content="https://zeroidentidad.github.io/notes/img/advisory.png" />
+	<meta property="og:image:width" content="1200" />
+	<meta property="og:image:height" content="1300" />
+
+	<!-- Twitter Card (opcional) -->
+	<meta name="twitter:card" content="summary_large_image" />
+	<meta name="twitter:title" content="Notas.go - Preguntas de entrevistas" />
+	<meta name="twitter:description" content="Listado preguntas y respuestas para estudiar o anotar" />
+	<meta name="twitter:image" content="https://zeroidentidad.github.io/notes/img/advisory.png" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+
+  <main class="doc">
+
+    <header class="doc-header">
+      <h1>1. Fundamentos de Go (120 preguntas)</h1>
+      <h2>Sintaxis y semántica (30 preguntas)</h2>
+    </header>
+
+    <section class="question">
+      <h3>1. ¿Cuál es el valor cero de un mapa en Go?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Comprender los valores cero evita problemas de ejecución causados por mapas no inicializados.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>El valor cero de un mapa es <code>nil</code>.</li>
+          <li>Un mapa nulo no puede contener pares clave-valor.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+        	var m map[string]int // m == nil
+        	m = make(map[string]int) // inicializar
+        	m["age"] = 30 // ahora funciona
+      	</code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Un mapa nulo podría representar un objeto de configuración sin inicializar. Una inicialización correcta evita fallos al agregar configuraciones.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+    <section class="question">
+      <h3>2. ¿Cómo maneja Go la conversión de tipo implícita entre int y float64?</h3>
+
+      <div class="block">
+        <h4>Why:</h4>
+        <p>
+          Go aplica una tipificación estricta para evitar la pérdida accidental de datos.
+        </p>
+        <p>
+        	<i>[🔄...]</i>
+        </p>
+      </div>
+    </section>
+
+  </main>
+
+</body>
+</html>

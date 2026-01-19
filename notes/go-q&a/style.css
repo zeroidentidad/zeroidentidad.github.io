@@ -1,0 +1,68 @@
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #ffffff;
+  color: #000;
+  margin: 0;
+  padding: 32px;
+}
+
+.doc {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.doc-header h1 {
+  font-size: 26px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.doc-header h2 {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 24px;
+}
+
+.question h3 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.block {
+  margin-bottom: 16px;
+}
+
+.block h4 {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.block p,
+.block li {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+ul {
+  margin: 4px 0 0 18px;
+}
+
+pre {
+  background: #f5f5f5;
+  padding: 12px;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-size: 13px;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid #bbb;
+  margin: 32px 0;
+}
