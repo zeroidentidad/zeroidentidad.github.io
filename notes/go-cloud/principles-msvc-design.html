@@ -1,0 +1,94 @@
+<meta charset="utf-8"/>
+
+<!-- Open Graph -->
+<meta property="og:title" content="Notas.go - Nube - redes" />
+<meta property="og:description" content="Principios para diseño de microservicios" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://zeroidentidad.github.io/notes" />
+<meta property="og:image" content="https://zeroidentidad.github.io/notes/img/advisory.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="1300" />
+
+<!-- Twitter Card (opcional) -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Notas.go - Nube - redes" />
+<meta name="twitter:description" content="Principios para diseño de microservicios" />
+<meta name="twitter:image" content="https://zeroidentidad.github.io/notes/img/advisory.png" />
+
+<link rel="stylesheet" href="../style.css">
+<a href="../">🔙 Regresar</a>
+<co-content>
+ <p variant="body1" style="background-color: #000000;">
+  <u>
+   <strong>
+    Principios para diseño de microservicios:
+   </strong>
+  </u>
+ </p>
+ <p variant="body1">
+  El diseño de microservicios en Golang implica adherirse a varios principios para garantizar que la arquitectura resultante sea escalable, resiliente y mantenible. A continuación, se presentan algunos principios clave para el diseño de microservicios:
+ </p>
+ <ul bullettype="bullets">
+  <li>
+   <p variant="body1">
+    Principio de Responsabilidad Única: Cada microservicio debe tener una única responsabilidad o preocupación, centrada en una capacidad o dominio de negocio específico. Este principio ayuda a mantener los microservicios enfocados, cohesionados y fáciles de comprender y mantener.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Descomposición: Descomponer el sistema en pequeños microservicios implementables de forma independiente, según las capacidades del negocio o contextos acotados. Cada microservicio debe ser autónomo y contar con su propio almacén de datos, minimizando las dependencias entre servicios y promoviendo la autonomía.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Autonomía del Servicio: Los microservicios deben ser autónomos, es decir, operar de forma independiente y ser responsables de gestionar sus propios datos y lógica de negocio. Esta autonomía permite una implementación, escalabilidad y evolución flexibles de servicios individuales sin afectar a los demás.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Diseño API-First: Definir API claras y bien documentadas para la comunicación entre microservicios. Utilizar estándares como API RESTful o gRPC para la comunicación y asegurar que las API tengan versiones y sean retrocompatibles para permitir la evolución con el tiempo.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Contenerización: Hacer contenedores de cada microservicio utilizando tecnologías como Docker para encapsular la aplicación, las dependencias y la configuración. La contenerización garantiza la consistencia en diferentes entornos y simplifica la implementación y el escalado.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Orquestación: Utilizar plataformas de orquestación de contenedores como Kubernetes para gestionar e implementar microservicios a escala. Kubernetes ofrece funciones como descubrimiento de servicios, balanceo de carga, escalado automático y actualizaciones continuas, lo que lo hace ideal para orquestar arquitecturas de microservicios.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Aislamiento de Fallos y Resiliencia: Diseñar microservicios con el aislamiento de fallos en mente para evitar que los fallos se propaguen a otros servicios. Implementar patrones de resiliencia como interruptores de circuito, reintentos y tiempos de espera para gestionar los fallos con precisión y garantizar la fiabilidad del sistema.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Observabilidad: Asegurar que los microservicios sean observables mediante la implementación de mecanismos de registro, monitorización y seguimiento. Utilizar herramientas como Prometheus, Grafana y Jaeger para recopilar y analizar métricas, registros y seguimientos, lo que proporciona información sobre el rendimiento y el comportamiento del sistema.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Integración e Implementación Continua (CI/CD): Implementar pipelines de CI/CD para automatizar los procesos de compilación, prueba e implementación de microservicios. La automatización de estos procesos garantiza la entrega rápida y fiable de los cambios a producción y promueve una cultura de mejora continua.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Diseño Evolutivo: Diseñar microservicios para el cambio y la evolución, priorizando la simplicidad, la modularidad y la flexibilidad. Adoptar prácticas como el diseño orientado al dominio (DDD) y la arquitectura evolutiva para que el sistema evolucione gradualmente según los requisitos y la retroalimentación.
+   </p>
+  </li>
+ </ul>
+</co-content>
+<script async="" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript">
+</script>
+<script type="text/x-mathjax-config">
+ MathJax.Hub.Config({
+    tex2jax: {
+      inlineMath: [ ['$$','$$'], ['$','$'] ],
+      displayMath: [ ["\\[","\\]"] ],
+      processEscapes: true
+    }
+  });
+</script>
