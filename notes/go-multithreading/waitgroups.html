@@ -1,0 +1,228 @@
+<meta charset="utf-8"/>
+
+<!-- Open Graph -->
+<meta property="og:title" content="Notas.go - Concurrencia" />
+<meta property="og:description" content="WaitGroups en Go" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://zeroidentidad.github.io/notes" />
+<meta property="og:image" content="https://zeroidentidad.github.io/notes/img/advisory.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="1300" />
+
+<!-- Twitter Card (opcional) -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Notas.go - Concurrencia" />
+<meta name="twitter:description" content="WaitGroups en Go" />
+<meta name="twitter:image" content="https://zeroidentidad.github.io/notes/img/advisory.png" />
+
+<link rel="stylesheet" href="../style.css">
+<a href="../">🔙 Regresar</a>
+<co-content>
+ <p variant="body1" style="background-color: #000000;">
+  <u>
+   <strong>
+    WaitGroups en Go:
+   </strong>
+  </u>
+ </p>
+ <p>
+  Aquí un fragmento de código para comprender WaitGroups en Go:
+ </p>
+ <table columns="1" rows="1">
+  <tr>
+   <td>
+    <p variant="body1">
+     package main
+    </p>
+    <p variant="body1">
+     import "fmt"
+    </p>
+    <p variant="body1">
+     func runner1() {
+    </p>
+    <p variant="body1">
+     fmt.Print("\nI am runner 1")
+    </p>
+    <p variant="body1">
+     }
+    </p>
+    <p variant="body1">
+     func runner2() {
+    </p>
+    <p variant="body1">
+     fmt.Print("\nI am runner 2")
+    </p>
+    <p variant="body1">
+     }
+    </p>
+    <p variant="body1">
+     func execute() {
+    </p>
+    <p variant="body1">
+     go runner1()
+    </p>
+    <p variant="body1">
+     go runner2()
+    </p>
+    <p variant="body1">
+     }
+    </p>
+    <p variant="body1">
+     func main() {
+    </p>
+    <p variant="body1">
+     // Lanzando ambos runners
+    </p>
+    <p variant="body1">
+     execute()
+    </p>
+    <p variant="body1">
+     }
+    </p>
+   </td>
+  </tr>
+ </table>
+ <p variant="body1">
+  Cuando ejecuta este código, el resultado es nada.
+ </p>
+ <p variant="body1">
+  Esto sucede porque, al iniciar ambas gorutinas, la función principal se termina. Y todos los programas en Golang se ejecutan hasta que la función principal no se termina.
+ </p>
+ <p variant="body1">
+  <strong>
+   Solución
+  </strong>
+ </p>
+ <p variant="body1">
+  La solución a este problema es la primitiva de la biblioteca estándar de Go
+  <strong>
+   sync.WaitGroup
+  </strong>
+  . WaitGroup es en realidad un tipo de contador que bloquea la ejecución de una función (o podría decirse una goroutine) hasta que su contador interno se vuelve 0. WaitGroup es seguro para concurrencia, por lo que es seguro pasarle un puntero como argumento para las goroutines.
+ </p>
+ <p variant="body1">
+  <strong>
+   Sintaxis del código
+  </strong>
+ </p>
+ <table columns="1" rows="1">
+  <tr>
+   <td>
+    <p variant="body1">
+     package main
+    </p>
+    <p variant="body1">
+     import (
+    </p>
+    <p variant="body1">
+     "fmt"
+    </p>
+    <p variant="body1">
+     "sync"
+    </p>
+    <p variant="body1">
+     )
+    </p>
+    <p variant="body1">
+     func runner1(wg *sync.WaitGroup) {
+    </p>
+    <p variant="body1">
+     defer wg.Done() // Esto disminuye el contador en 1
+    </p>
+    <p variant="body1">
+     fmt.Print("\nI am runner 1")
+    </p>
+    <p variant="body1">
+     }
+    </p>
+    <p variant="body1">
+     func runner2(wg *sync.WaitGroup) {
+    </p>
+    <p variant="body1">
+     defer wg.Done()
+    </p>
+    <p variant="body1">
+     fmt.Print("\nI am runner 2")
+    </p>
+    <p variant="body1">
+     }
+    </p>
+    <p variant="body1">
+     func execute() {
+    </p>
+    <p variant="body1">
+     wg := new(sync.WaitGroup)
+    </p>
+    <p variant="body1">
+     wg.Add(2)
+    </p>
+    <p variant="body1">
+     // Aumentando el contador en 2
+    </p>
+    <p variant="body1">
+     // porque tenemos 2 gorutinas
+    </p>
+    <p variant="body1">
+     go runner1(wg)
+    </p>
+    <p variant="body1">
+     go runner2(wg)
+    </p>
+    <p variant="body1">
+     // Esto bloquea la ejecución
+    </p>
+    <p variant="body1">
+     // hasta el contador llegue a 0
+    </p>
+    <p variant="body1">
+     wg.Wait()
+    </p>
+    <p variant="body1">
+     }
+    </p>
+    <p variant="body1">
+     func main() {
+    </p>
+    <p variant="body1">
+     // Lanzando ambos runners
+    </p>
+    <p variant="body1">
+     execute()
+    </p>
+    <p variant="body1">
+     }
+    </p>
+   </td>
+  </tr>
+ </table>
+ <p>
+  <strong>
+   Salida de código
+  </strong>
+ </p>
+ <table columns="1" rows="1">
+  <tr>
+   <td>
+    <p variant="body1">
+     I am runner 2
+    </p>
+    <p variant="body1">
+     I am runner 1
+    </p>
+   </td>
+  </tr>
+ </table>
+ <p>
+ </p>
+</co-content>
+<script async="" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript">
+</script>
+<script type="text/x-mathjax-config">
+ MathJax.Hub.Config({
+    tex2jax: {
+      inlineMath: [ ['$$','$$'], ['$','$'] ],
+      displayMath: [ ["\\[","\\]"] ],
+      processEscapes: true
+    }
+  });
+</script>
