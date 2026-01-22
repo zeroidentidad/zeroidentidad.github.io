@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Advanced JSON customization &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="03.00-sending-json-responses.html">Sending JSON responses</a> &rsaquo; Advanced JSON customization</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="03.04-formatting-and-enveloping-responses.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="03.06-sending-error-messages.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 3.5.</div>
+			<h2 id="advanced-json-customization">Advanced JSON customization</h2>
+
+<p>By using struct tags, adding whitespace and enveloping the data, we&rsquo;ve been able to add quite a lot of customization to our JSON responses already. But what happens when these things aren&rsquo;t enough, and you need the freedom to customize your JSON even more?</p>
+
+<p>To answer this question, we first need to talk some theory about how Go handles JSON encoding behind the scenes. The key thing to understand is this:</p>
+
+<p><em>When Go is encoding a particular type to JSON, it looks to see if the type has a <code>MarshalJSON()</code> method. If it has, then Go will call this method to determine how to encode it.</em></p>
+
+<p>That language is a bit fuzzy, so let&rsquo;s be more exact.</p>
+
+<p>Strictly speaking, when Go is encoding a particular type to JSON it looks to see if the type satisfies the <a href="https://golang.org/pkg/encoding/json/#Marshaler"><code>json.Marshaler</code></a> interface, which looks like this:</p>
+
+<figure class="code go">
+<pre><span class="kd">type</span> <span class="nx">Marshaler</span> <span class="kd">interface</span> <span class="p">{</span>
+    <span class="nf">MarshalJSON</span><span class="p">(</span><span class="p">)</span> <span class="p">(</span><span class="p">[</span><span class="p">]</span><span class="kt">byte</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>If the type does satisfy the interface, then Go will call its <code>MarshalJSON()</code> method and use the <code>[]byte</code> slice that it returns as the encoded JSON value.</p>
+
+<p>If the type doesn&rsquo;t have a <code>MarshalJSON()</code> method, then Go will fall back to trying to encode it to JSON based on its own internal set of rules.</p>
+
+<p>So, if we want to customize how something is encoded, all we need to do is implement a <code>MarshalJSON()</code> method on it which returns a <em>custom JSON representation of itself</em> in a <code>[]byte</code> slice.</p>
+
+<aside class="hint"><p>
+<strong>Hint:</strong> You can see this in action if you look at the source code for Go&rsquo;s <code>time.Time</code> type. Behind the scenes <code>time.Time</code> is <a href="https://github.com/golang/go/blob/73d213708e3186b48d5147b8eb939fdfd51f1f8d/src/time/time.go#L127">actually a struct</a>, but it has a <a href="https://golang.org/pkg/time/#Time.MarshalJSON"><code>MarshalJSON()</code></a> method which outputs a RFC 3339 format representation of itself. This is what gets called whenever a <code>time.Time</code> value is encoded to JSON.
+</p></aside>
+
+<h3 id="customizing-the-runtime-field">Customizing the Runtime field</h3>
+
+<p>To help illustrate this, let&rsquo;s look at a concrete example in our application.</p>
+
+<p>When our <code>Movie</code> struct is encoded to JSON, the <code>Runtime</code> field (which is an <code>int32</code> type) is currently formatted as a JSON number. Let&rsquo;s change this so that it&rsquo;s encoded as a string with the format <code>&quot;&lt;runtime&gt; mins&quot;</code> instead. Like so:</p>
+
+<figure class="code plain">
+<pre>{
+    &#34;id&#34;: 123,
+    &#34;title&#34;: &#34;Casablanca&#34;,
+    &#34;runtime&#34;: &#34;102 mins&#34;,      ← This is now a string
+    &#34;genres&#34;: [
+        &#34;drama&#34;,
+        &#34;romance&#34;,
+        &#34;war&#34;
+    ],
+    &#34;version&#34;:1
+}</pre>
+</figure>
+
+<p>There are a few ways we could achieve this, but a clean and simple approach is to create a custom type specifically for the <code>Runtime</code> field, and implement a <code>MarshalJSON()</code> method on this custom type.</p>
+
+<p>To prevent our <code>internal/data/movie.go</code> file from getting cluttered, let&rsquo;s create a new file to hold the logic for the <code>Runtime</code> type:</p>
+
+<figure class="code bash">
+<pre>$ touch internal/data/runtime.go</pre>
+</figure>
+
+<p>And then go ahead and add the following code:</p>
+
+<figure class="code go">
+<figcaption>File: internal/data/runtime.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">data</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;fmt&#34;</span>
+    <span class="s">&#34;strconv&#34;</span>
+<span class="p">)</span>
+
+<span class="c1">// Declare a custom Runtime type, which has the underlying type int32 (the same as our
+</span><span class="c1"></span><span class="c1">// Movie struct field).
+</span><span class="c1"></span><span class="kd">type</span> <span class="nx">Runtime</span> <span class="kt">int32</span>
+
+<span class="c1">// Implement a MarshalJSON() method on the Runtime type so that it satisfies the 
+</span><span class="c1"></span><span class="c1">// json.Marshaler interface. This should return the JSON-encoded value for the movie 
+</span><span class="c1"></span><span class="c1">// runtime (in our case, it will return a string in the format &#34;&lt;runtime&gt; mins&#34;).
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">r</span> <span class="nx">Runtime</span><span class="p">)</span> <span class="nf">MarshalJSON</span><span class="p">(</span><span class="p">)</span> <span class="p">(</span><span class="p">[</span><span class="p">]</span><span class="kt">byte</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Generate a string containing the movie runtime in the required format.
+</span><span class="c1"></span>    <span class="nx">jsonValue</span> <span class="o">:=</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;%d mins&#34;</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+
+    <span class="c1">// Use the strconv.Quote() function on the string to wrap it in double quotes. It 
+</span><span class="c1"></span>    <span class="c1">// needs to be surrounded by double quotes in order to be a valid *JSON string*.
+</span><span class="c1"></span>    <span class="nx">quotedJSONValue</span> <span class="o">:=</span> <span class="nx">strconv</span><span class="p">.</span><span class="nf">Quote</span><span class="p">(</span><span class="nx">jsonValue</span><span class="p">)</span>
+
+    <span class="c1">// Convert the quoted string value to a byte slice and return it.
+</span><span class="c1"></span>    <span class="k">return</span> <span class="p">[</span><span class="p">]</span><span class="nb">byte</span><span class="p">(</span><span class="nx">quotedJSONValue</span><span class="p">)</span><span class="p">,</span> <span class="kc">nil</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>There are two things I&rsquo;d like to emphasize here:</p>
+
+<ul>
+<li><p>If your <code>MarshalJSON()</code> method returns a JSON string value, like ours does, then you must wrap the string in double quotes before returning it. Otherwise it won&rsquo;t be interpreted as a <em>JSON string</em> and you&rsquo;ll receive a runtime error similar to this:</p>
+
+<figure class="code bash">
+<pre>json: error calling MarshalJSON for type data.Runtime: invalid character &#39;m&#39; after top-level value</pre>
+</figure>
+</li>
+
+<li><p>We&rsquo;re deliberately using a <em>value receiver</em> for our <code>MarshalJSON()</code> method rather than a <em>pointer receiver</em> like <code>func (r *Runtime) MarshalJSON()</code>. This gives us more flexibility because it means that our custom JSON encoding will work on <em>both</em> <code>Runtime</code> values and pointers to <code>Runtime</code> values. As <a href="https://golang.org/doc/effective_go.html#methods">Effective Go</a> mentions:</p>
+
+<blockquote>
+<p>The rule about pointers vs. values for receivers is that value methods can be invoked on pointers and values, but pointer methods can only be invoked on pointers.</p>
+</blockquote>
+
+<aside class="hint"><p>
+<strong>Hint:</strong> If you&rsquo;re not confident about the difference between pointer and value receivers, then <a href="https://medium.com/globant/go-method-receiver-pointer-vs-value-ffc5ab7acdb">this blog post</a> provides a good summary.
+</p></aside></li>
+</ul>
+
+<p>OK, now that the custom <code>Runtime</code> type is defined, open your <code>internal/data/movies.go</code> file and update the <code>Movie</code> struct to use it like so:</p>
+
+<figure class="code go">
+<figcaption>File: internal/data/movies.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">data</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;time&#34;</span>
+<span class="p">)</span>
+
+<span class="kd">type</span> <span class="nx">Movie</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">ID</span>        <span class="kt">int64</span>     <span class="s">`</span><span class="s">json:&#34;id&#34;</span><span class="s">`</span>
+    <span class="nx">CreatedAt</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Time</span> <span class="s">`</span><span class="s">json:&#34;-&#34;</span><span class="s">`</span>
+    <span class="nx">Title</span>     <span class="kt">string</span>    <span class="s">`</span><span class="s">json:&#34;title&#34;</span><span class="s">`</span>
+    <span class="nx">Year</span>      <span class="kt">int32</span>     <span class="s">`</span><span class="s">json:&#34;year,omitzero&#34;</span><span class="s">`</span>
+    <span class="c1">// Use the Runtime type instead of int32. Note that the omitzero directive will
+</span><span class="c1"></span>    <span class="c1">// still work on this: if the Runtime field has the underlying value 0, then it will
+</span><span class="c1"></span>    <span class="c1">// be considered zero and omitted -- and the MarshalJSON() method we just made 
+</span><span class="c1"></span>    <span class="c1">// won&#39;t be called at all.
+</span><span class="c1"></span>    <span class="nx">Runtime</span> <span class="nx">Runtime</span>  <span class="s">`</span><span class="s">json:&#34;runtime,omitzero&#34;</span><span class="s">`</span>
+    <span class="nx">Genres</span>  <span class="p">[</span><span class="p">]</span><span class="kt">string</span> <span class="s">`</span><span class="s">json:&#34;genres,omitzero&#34;</span><span class="s">`</span>
+    <span class="nx">Version</span> <span class="kt">int32</span>    <span class="s">`</span><span class="s">json:&#34;version&#34;</span><span class="s">`</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Let&rsquo;s try this out by restarting the API and making a request to the <code>GET /v1/movies/:id</code> endpoint. You should now see a response containing the custom runtime value in the format <code>&quot;&lt;runtime&gt; mins&quot;</code>, similar to this:</p>
+
+<figure class="code bash">
+<pre>$ curl localhost:4000/v1/movies/123
+<samp>{
+    &#34;movie&#34;: {
+        &#34;id&#34;: 123,
+        &#34;title&#34;: &#34;Casablanca&#34;,
+        &#34;runtime&#34;: &#34;102 mins&#34;,
+        &#34;genres&#34;: [
+            &#34;drama&#34;,
+            &#34;romance&#34;,
+            &#34;war&#34;
+        ],
+        &#34;version&#34;: 1
+    }
+}</samp></pre>
+</figure>
+
+<p>All in all, this is a pretty nice way to generate custom JSON. Our code is succinct and clear, and we&rsquo;ve got a custom <code>Runtime</code> type that we can use wherever and whenever we need it.</p>
+
+<p>But there is a downside. It&rsquo;s important to be aware that using custom types can sometimes be awkward when integrating your code with other packages, and you may need to perform type conversions to change your custom type to and from a value that the other packages understand and accept.</p>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<p>There are a couple of alternative approaches that you <em>could</em> take to reach the same end result here, and I&rsquo;d like to quickly describe them and talk through their pros and cons. If you&rsquo;re coding along with the build, don&rsquo;t make any of these changes (unless you&rsquo;re curious, of course!).</p>
+
+<h4 id="alternative-1-customizing-the-movie-struct">Alternative #1 - Customizing the Movie struct</h4>
+
+<p>Instead of creating a custom <code>Runtime</code> type, we could have implemented a <code>MarshalJSON()</code> method on our <code>Movie</code> struct and customized the whole thing. Like this:</p>
+
+<figure class="code go">
+<pre><span class="c1">// Note that there are no struct tags on the Movie struct itself.
+</span><span class="c1"></span><span class="kd">type</span> <span class="nx">Movie</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">ID</span>        <span class="kt">int64</span>
+    <span class="nx">CreatedAt</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Time</span>
+    <span class="nx">Title</span>     <span class="kt">string</span>
+    <span class="nx">Year</span>      <span class="kt">int32</span>
+    <span class="nx">Runtime</span>   <span class="kt">int32</span>
+    <span class="nx">Genres</span>    <span class="p">[</span><span class="p">]</span><span class="kt">string</span>
+    <span class="nx">Version</span>   <span class="kt">int32</span>
+<span class="p">}</span>
+
+<span class="c1">// Implement a MarshalJSON() method on the Movie struct, so that it satisfies the
+</span><span class="c1"></span><span class="c1">// json.Marshaler interface.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="nx">Movie</span><span class="p">)</span> <span class="nf">MarshalJSON</span><span class="p">(</span><span class="p">)</span> <span class="p">(</span><span class="p">[</span><span class="p">]</span><span class="kt">byte</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Declare a variable to hold the custom runtime string (this will be the empty 
+</span><span class="c1"></span>    <span class="c1">// string &#34;&#34; by default).
+</span><span class="c1"></span>    <span class="kd">var</span> <span class="nx">runtime</span> <span class="kt">string</span>
+
+    <span class="c1">// If the value of the Runtime field is not zero, set the runtime variable to be a
+</span><span class="c1"></span>    <span class="c1">// string in the format &#34;&lt;runtime&gt; mins&#34;.
+</span><span class="c1"></span>    <span class="k">if</span> <span class="nx">m</span><span class="p">.</span><span class="nx">Runtime</span> <span class="o">!=</span> <span class="mi">0</span> <span class="p">{</span>
+        <span class="nx">runtime</span> <span class="p">=</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;%d mins&#34;</span><span class="p">,</span> <span class="nx">m</span><span class="p">.</span><span class="nx">Runtime</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Create an anonymous struct to hold the data for JSON encoding. This has exactly
+</span><span class="c1"></span>    <span class="c1">// the same fields, types and tags as our Movie struct, except that the Runtime
+</span><span class="c1"></span>    <span class="c1">// field here is a string, instead of an int32. Also notice that we don&#39;t include
+</span><span class="c1"></span>    <span class="c1">// a CreatedAt field at all (there&#39;s no point including one, because we don&#39;t want
+</span><span class="c1"></span>    <span class="c1">// it to appear in the JSON output).
+</span><span class="c1"></span>    <span class="nx">aux</span> <span class="o">:=</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">ID</span>      <span class="kt">int64</span>    <span class="s">`</span><span class="s">json:&#34;id&#34;</span><span class="s">`</span>
+        <span class="nx">Title</span>   <span class="kt">string</span>   <span class="s">`</span><span class="s">json:&#34;title&#34;</span><span class="s">`</span>
+        <span class="nx">Year</span>    <span class="kt">int32</span>    <span class="s">`</span><span class="s">json:&#34;year,omitzero&#34;</span><span class="s">`</span>
+        <span class="nx">Runtime</span> <span class="kt">string</span>   <span class="s">`</span><span class="s">json:&#34;runtime,omitzero&#34;</span><span class="s">`</span> <span class="c1">// This is a string.
+</span><span class="c1"></span>        <span class="nx">Genres</span>  <span class="p">[</span><span class="p">]</span><span class="kt">string</span> <span class="s">`</span><span class="s">json:&#34;genres,omitzero&#34;</span><span class="s">`</span>
+        <span class="nx">Version</span> <span class="kt">int32</span>    <span class="s">`</span><span class="s">json:&#34;version&#34;</span><span class="s">`</span>
+    <span class="p">}</span><span class="p">{</span>
+        <span class="c1">// Set the values for the anonymous struct.
+</span><span class="c1"></span>        <span class="nx">ID</span><span class="p">:</span>      <span class="nx">m</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span>
+        <span class="nx">Title</span><span class="p">:</span>   <span class="nx">m</span><span class="p">.</span><span class="nx">Title</span><span class="p">,</span>
+        <span class="nx">Year</span><span class="p">:</span>    <span class="nx">m</span><span class="p">.</span><span class="nx">Year</span><span class="p">,</span>
+        <span class="nx">Runtime</span><span class="p">:</span> <span class="nx">runtime</span><span class="p">,</span> <span class="c1">// Note that we assign the value from the runtime variable here.
+</span><span class="c1"></span>        <span class="nx">Genres</span><span class="p">:</span>  <span class="nx">m</span><span class="p">.</span><span class="nx">Genres</span><span class="p">,</span>
+        <span class="nx">Version</span><span class="p">:</span> <span class="nx">m</span><span class="p">.</span><span class="nx">Version</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Encode the anonymous struct to JSON, and return it.
+</span><span class="c1"></span>    <span class="k">return</span> <span class="nx">json</span><span class="p">.</span><span class="nf">Marshal</span><span class="p">(</span><span class="nx">aux</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Let&rsquo;s quickly take stock of what&rsquo;s going on here.</p>
+
+<p>In the <code>MarshalJSON()</code> method we create a new &lsquo;anonymous&rsquo; struct and assign it to the variable <code>aux</code>. This anonymous struct is basically identical to our <code>Movie</code> struct, except for the fact that the <code>Runtime</code> field has the type <code>string</code> instead of <code>int32</code>. We then copy all the values from the <code>Movie</code> struct directly into the anonymous struct, except for the <code>Runtime</code> value which we convert to a string in the format <code>&quot;&lt;runtime&gt; mins&quot;</code> first. Then finally, we <em>encode the anonymous struct to JSON</em> &mdash; not the original <code>Movie</code> struct &mdash; and return it.</p>
+
+<p>It&rsquo;s also worth pointing out that this is designed so the <code>omitzero</code> directive still works with our custom encoding. If the value of the <code>Runtime</code> field is zero, then the local <code>runtime</code> variable will remain equal to <code>&quot;&quot;</code> (which is the zero value for a string) and it will be omitted.</p>
+
+<h4 id="alternative-2-embedding-an-alias">Alternative #2 - Embedding an alias</h4>
+
+<p>The downside of the approach above is that the code feels quite verbose and repetitive. You might be wondering: <em>is there a better way?</em></p>
+
+<p>To reduce duplication, instead of writing out all the struct fields long-hand it&rsquo;s possible to embed an alias of the <code>Movie</code> struct in the anonymous struct. Like so:</p>
+
+<figure class="code go">
+<pre><span class="c1">// Notice that we use the - directive on the Runtime field, so that it never appears 
+</span><span class="c1"></span><span class="c1">// in the JSON output.
+</span><span class="c1"></span><span class="kd">type</span> <span class="nx">Movie</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">ID</span>        <span class="kt">int64</span>     <span class="s">`</span><span class="s">json:&#34;id&#34;</span><span class="s">`</span>
+    <span class="nx">CreatedAt</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Time</span> <span class="s">`</span><span class="s">json:&#34;-&#34;</span><span class="s">`</span>
+    <span class="nx">Title</span>     <span class="kt">string</span>    <span class="s">`</span><span class="s">json:&#34;title&#34;</span><span class="s">`</span>
+    <span class="nx">Year</span>      <span class="kt">int32</span>     <span class="s">`</span><span class="s">json:&#34;year,omitzero&#34;</span><span class="s">`</span>
+    <span class="nx">Runtime</span>   <span class="kt">int32</span>     <span class="s">`</span><span class="s">json:&#34;-&#34;</span><span class="s">`</span>
+    <span class="nx">Genres</span>    <span class="p">[</span><span class="p">]</span><span class="kt">string</span>  <span class="s">`</span><span class="s">json:&#34;genres,omitzero&#34;</span><span class="s">`</span>
+    <span class="nx">Version</span>   <span class="kt">int32</span>     <span class="s">`</span><span class="s">json:&#34;version&#34;</span><span class="s">`</span>
+<span class="p">}</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="nx">Movie</span><span class="p">)</span> <span class="nf">MarshalJSON</span><span class="p">(</span><span class="p">)</span> <span class="p">(</span><span class="p">[</span><span class="p">]</span><span class="kt">byte</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Create a variable holding the custom runtime string, just like before.
+</span><span class="c1"></span>    <span class="kd">var</span> <span class="nx">runtime</span> <span class="kt">string</span>
+
+    <span class="k">if</span> <span class="nx">m</span><span class="p">.</span><span class="nx">Runtime</span> <span class="o">!=</span> <span class="mi">0</span> <span class="p">{</span>
+        <span class="nx">runtime</span> <span class="p">=</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;%d mins&#34;</span><span class="p">,</span> <span class="nx">m</span><span class="p">.</span><span class="nx">Runtime</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Define a MovieAlias type which has the underlying type Movie. Due to the way that
+</span><span class="c1"></span>    <span class="c1">// Go handles type definitions (https://golang.org/ref/spec#Type_definitions) the
+</span><span class="c1"></span>    <span class="c1">// MovieAlias type will contain all the fields that our Movie struct has but, 
+</span><span class="c1"></span>    <span class="c1">// importantly, none of the methods. 
+</span><span class="c1"></span>    <span class="kd">type</span> <span class="nx">MovieAlias</span> <span class="nx">Movie</span>
+
+    <span class="c1">// Embed the MovieAlias type inside the anonymous struct, along with a Runtime field 
+</span><span class="c1"></span>    <span class="c1">// that has the type string and the necessary struct tags. It&#39;s important that we 
+</span><span class="c1"></span>    <span class="c1">// embed the MovieAlias type here, rather than the Movie type directly, to avoid 
+</span><span class="c1"></span>    <span class="c1">// inheriting the MarshalJSON() method of the Movie type (which would result in an 
+</span><span class="c1"></span>    <span class="c1">// infinite loop during encoding).
+</span><span class="c1"></span>    <span class="nx">aux</span> <span class="o">:=</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">MovieAlias</span>
+        <span class="nx">Runtime</span> <span class="kt">string</span> <span class="s">`</span><span class="s">json:&#34;runtime,omitzero&#34;</span><span class="s">`</span>
+    <span class="p">}</span><span class="p">{</span>
+        <span class="nx">MovieAlias</span><span class="p">:</span> <span class="nf">MovieAlias</span><span class="p">(</span><span class="nx">m</span><span class="p">)</span><span class="p">,</span>
+        <span class="nx">Runtime</span><span class="p">:</span>    <span class="nx">runtime</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="nx">json</span><span class="p">.</span><span class="nf">Marshal</span><span class="p">(</span><span class="nx">aux</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<aside class="important"><p>
+<strong>Note:</strong> Although we&rsquo;ve used the word &lsquo;alias&rsquo; here, the line <code>type MovieAlias Movie</code> is just a regular type definition. It is <em>not</em> a <a href="https://golang.org/doc/go1.9#language">type alias</a>, which are generally used to help with code refactoring and migrations.
+</p></aside>
+
+<p>On one hand, this approach is nice because it drastically cuts the number of lines of code and reduces repetition. And if you have a large struct and only need to customize a couple of fields it can be a good option. But it&rsquo;s not without some downsides.</p>
+
+<p>In particular:</p>
+
+<ul>
+<li><p>This technique feels like a bit of a &lsquo;trick&rsquo;, which hinges on the fact that newly defined types do not inherit methods. Although it&rsquo;s still idiomatic Go, it&rsquo;s more <em>clever</em> and less <em>clear</em> than the first approach. That&rsquo;s <a href="https://dave.cheney.net/2019/07/09/clear-is-better-than-clever">not always a good trade-off</a>&hellip; especially if you have new Gophers working with you on a codebase.</p></li>
+
+<li><p>You lose granular control over the ordering of fields in the JSON response. In the above example, the <code>runtime</code> key will always now be the last item in the JSON object, like so:</p>
+
+<figure class="code plain">
+<pre>{
+    &#34;id&#34;: 123,
+    &#34;title&#34;: &#34;Casablanca&#34;,
+    &#34;genres&#34;: [
+        &#34;drama&#34;,
+        &#34;romance&#34;,
+        &#34;war&#34;
+    ],
+    &#34;version&#34;: 1,
+    &#34;runtime&#34;: &#34;102 mins&#34;
+}</pre>
+</figure>
+
+<p>Technically, this shouldn&rsquo;t matter as the <a href="https://tools.ietf.org/html/rfc7159#section-1">JSON RFC</a> states that JSON objects are <em>&ldquo;unordered</em> collections of zero or more name/value pairs&rdquo;. But it still might be unsatisfactory from an aesthetic or UI point of view, or be problematic if you need to maintain a precise field order for backward-compatibility purposes.</p></li>
+</ul>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="03.04-formatting-and-enveloping-responses.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="03.06-sending-error-messages.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "03.04-formatting-and-enveloping-responses.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "03.06-sending-error-messages.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

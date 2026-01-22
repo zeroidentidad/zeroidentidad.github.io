@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Project setup and skeleton structure &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="02.00-getting-started.html">Getting started</a> &rsaquo; Project setup and skeleton structure</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="02.00-getting-started.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="02.02-a-basic-http-server.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 2.1.</div>
+			<h2 id="project-setup-and-skeleton-structure">Project setup and skeleton structure</h2>
+
+<p>Let&rsquo;s kick things off by creating a <code>greenlight</code> directory to act as the top-level &lsquo;home&rsquo; for this project. I&rsquo;m going to create my project directory at <code>$HOME/Projects/greenlight</code>, but feel free to choose a different location if you wish.</p>
+
+<figure class="code bash">
+<pre>$ mkdir -p $HOME/Projects/greenlight</pre>
+</figure>
+
+<p>Then change into this directory and use the <code>go mod init</code> command to <em>enable modules</em> for the project.</p>
+
+<p>When running this command, you&rsquo;ll need to specify a <em>module path</em>. This is essentially a unique identifier for your project. In this book I&rsquo;ll use <code>greenlight.alexedwards.net</code> as my module path, but if you&rsquo;re following along you should ideally swap this for something that is unique to you instead.</p>
+
+<figure class="code bash">
+<pre>$ cd $HOME/Projects/greenlight
+$ go mod init greenlight.alexedwards.net
+<samp>go: creating new go.mod: module greenlight.alexedwards.net</samp></pre>
+</figure>
+
+<p>At this point you&rsquo;ll see that a <code>go.mod</code> file has been created in the root of your project directory. If you open it up, it should look similar to this:</p>
+
+<figure class="code plain">
+<figcaption>File: go.mod</figcaption>
+<pre>module greenlight.alexedwards.net
+
+go 1.25.0</pre>
+</figure>
+
+<p>We discussed modules in detail in the first <em>Let&rsquo;s Go</em> book, but as a quick refresher let&rsquo;s recap the main points here.</p>
+
+<ul>
+<li>When there is a valid <code>go.mod</code> file in the root of your project directory, your project <em>is a module</em>.</li>
+<li>When you&rsquo;re working inside your project directory and download a dependency with <code>go get</code>, then the exact version of the dependency will be recorded in the <code>go.mod</code> file. Because the exact version is known, this makes it much easier to ensure reproducible builds across different machines and environments.</li>
+<li>When you run or build the code in your project, Go will use the exact dependencies listed in the <code>go.mod</code> file. If the necessary dependencies aren&rsquo;t already on your local machine, then Go will automatically download them for you — along with any recursive dependencies too.</li>
+<li>The <code>go.mod</code> file also defines the <em>module path</em> (which is <code>greenlight.alexedwards.net</code> in my case). This is essentially the identifier that will be used as the <em>root import path</em> for the packages in your project.</li>
+<li>It&rsquo;s good practice to make the module path unique to you and your project. A common convention in the Go community is to base it on a URL that you own.</li>
+</ul>
+
+<aside class="hint"><p>
+<strong>Hint</strong>: If you feel unsure about any aspect of modules or how they work, the official <a href="https://github.com/golang/go/wiki/Modules">Go Modules Wiki</a> is an excellent resource and contains answers to a wide range of <a href="https://github.com/golang/go/wiki/Modules#faqs">FAQs</a>.
+</p></aside>
+
+<h3 id="generating-the-skeleton-directory-structure">Generating the skeleton directory structure</h3>
+
+<p>Alright, now that our project directory has been created and we have a <code>go.mod</code> file, you can go ahead and run the following commands to generate a high-level skeleton structure for the project:</p>
+
+<figure class="code bash">
+<pre>$ mkdir -p bin cmd/api internal migrations remote
+$ touch Makefile
+$ touch cmd/api/main.go</pre>
+</figure>
+
+<p>At this point your project directory should look exactly like this:</p>
+
+<figure class="code plain tree"><pre>
+.
+├── <b>bin</b>
+├── <b>cmd</b>
+│   └── <b>api</b>
+│       └── main.go
+├── <b>internal</b>
+├── <b>migrations</b>
+├── <b>remote</b>
+├── go.mod
+└── Makefile</pre></figure>
+
+<p>Let&rsquo;s take a moment to talk through these files and folders and explain the purpose they&rsquo;ll serve in our finished project.</p>
+
+<ul>
+<li>The <code>bin</code> directory will contain our compiled application binaries, ready for deployment to a production server.</li>
+<li>The <code>cmd/api</code> directory will contain the application-specific code for our <em>Greenlight</em> API application. This will include the code for running the server, reading and writing HTTP requests, and managing authentication.</li>
+<li>The <code>internal</code> directory will contain various ancillary packages used by our API. It will contain the code for interacting with our database, doing data validation, sending emails and so on. Basically, any code that <em>isn&rsquo;t</em> application-specific and can potentially be reused will live in here. Our Go code under <code>cmd/api</code> will <em>import</em> the packages in the <code>internal</code> directory (but never the other way around).</li>
+<li>The <code>migrations</code> directory will contain the SQL migration files for our database.</li>
+<li>The <code>remote</code> directory will contain the configuration files and setup scripts for our production server.</li>
+<li>The <code>go.mod</code> file will declare our project dependencies, versions and module path.</li>
+<li>The <code>Makefile</code> will contain <em>recipes</em> for automating common administrative tasks &mdash; like auditing our Go code, building binaries, and executing database migrations.</li>
+</ul>
+
+<p>It&rsquo;s important to point out that the directory name <code>internal</code> carries a special meaning and behavior in Go: any packages which live under this directory can only be imported by code <em>inside the parent of the <code>internal</code> directory</em>. In our case, this means that any packages which live in <code>internal</code> can only be imported by code inside our <code>greenlight</code> project directory.</p>
+
+<p>Or, looking at it the other way, this means that any packages under <code>internal</code> <em>cannot be imported by code outside of our project</em>.</p>
+
+<p>This is useful because it prevents other codebases from importing and relying on the (potentially unversioned and unsupported) packages in our <code>internal</code> directory &mdash; even if the project code is publicly available somewhere like GitHub.</p>
+
+<h3 id="hello-world">Hello world!</h3>
+
+<p>Before we continue, let&rsquo;s quickly check that everything is set up correctly. Open the <code>cmd/api/main.go</code> file in your text editor and add the following code:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/main.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="s">&#34;fmt&#34;</span>
+
+<span class="kd">func</span> <span class="nf">main</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;Hello world!&#34;</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Save this file, then use the <code>go run</code> command in your terminal to compile and execute the code in the <code>cmd/api</code> package. All being well, you will see the following output:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api
+<samp>Hello world!</samp></pre>
+</figure>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="02.00-getting-started.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="02.02-a-basic-http-server.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "02.00-getting-started.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "02.02-a-basic-http-server.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

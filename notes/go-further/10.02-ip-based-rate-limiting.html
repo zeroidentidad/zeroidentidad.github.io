@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>IP-based rate limiting &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="10.00-rate-limiting.html">Rate limiting</a> &rsaquo; IP-based rate limiting</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="10.01-global-rate-limiting.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="10.03-configuring-the-rate-limiters.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 10.2.</div>
+			<h2 id="ip-based-rate-limiting">IP-based rate limiting</h2>
+
+<p>Using a global rate limiter can be useful when you want to enforce a strict limit on the total rate of requests to your API, and you don&rsquo;t care about where the requests are coming from. But it&rsquo;s generally more common to want an individual rate limiter for each client, so that one bad client making too many requests doesn&rsquo;t affect all the others.</p>
+
+<p>A conceptually straightforward way to implement this is to create an in-memory <em>map of rate limiters</em>, using the IP address for each client as the map key.</p>
+
+<p>Each time a new client makes a request to our API, we will initialize a new rate limiter and add it to the map. For any subsequent requests, we will retrieve the client&rsquo;s rate limiter from the map and check whether the request is permitted by calling its <code>Allow()</code> method, just like we did before.</p>
+
+<p>But there&rsquo;s one thing to be aware of: <em>by default, maps are not safe for concurrent use</em>. This is a problem for us because our <code>rateLimit()</code> middleware may be running in multiple goroutines at the same time (remember, Go&rsquo;s <code>http.Server</code> handles each HTTP request in its own goroutine).</p>
+
+<p>From the <a href="https://go.dev/blog/maps">Go blog</a>:</p>
+
+<blockquote>
+<p>Maps are not safe for concurrent use: it&rsquo;s not defined what happens when you read and write to them simultaneously. If you need to read from and write to a map from concurrently executing goroutines, the accesses must be mediated by some kind of synchronization mechanism.</p>
+</blockquote>
+
+<p>So to get around this, we&rsquo;ll need to synchronize access to the map of rate limiters using a <a href="http://golang.org/pkg/sync/#Mutex"><code>sync.Mutex</code></a> (a mutual exclusion lock), so that only one goroutine can read or write to the map at any moment in time.</p>
+
+<aside class="important"><p>
+<strong>Important:</strong> How mutexes work, and how to use them, can be quite confusing if you haven’t encountered them before and it’s impossible to fully explain in a few short sentences. I’ve written a much more detailed article &mdash; <a href="https://www.alexedwards.net/blog/understanding-mutexes">Understanding Mutexes</a> &mdash; which provides a proper explanation. If you’re not already confident with mutexes, I highly recommend reading this before you continue.
+</p></aside>
+
+<p>Now let&rsquo;s talk about IP addresses.</p>
+
+<p>The request&rsquo;s <code>r.RemoteAddr</code> field should contain the IP address of the client making the request. But&hellip; in the real world it&rsquo;s possible that there will be proxy servers positioned between your application and the client, meaning that the IP address stored in <code>r.RemoteAddr</code> may not actually be the true IP address of the original client &mdash; instead it might be the IP address of a proxy.</p>
+
+<p>Well-behaved proxies will typically add a <code>X-Forwarded-For</code> or <code>X-Real-IP</code> header to the request, containing the IP of the original client. So we can increase the chance of getting the real client&rsquo;s IP by checking for these headers and &mdash; if they exist &mdash; using the IP address from them.</p>
+
+<p>Although we could write the logic to do this ourselves, I recommend using the <a href="https://github.com/tomasen/realip"><code>realip</code></a> package to help with this. It&rsquo;s very small, and simply retrieves the client IP address from any <code>X-Forwarded-For</code> or <code>X-Real-IP</code> headers, falling back on <code>r.RemoteAddr</code> if neither of them are present.</p>
+
+<p>If you&rsquo;re following along, go ahead and install the latest version of <code>realip</code> using the <code>go get</code> command:</p>
+
+<figure class="code bash">
+<pre>$ go get github.com/tomasen/realip@latest
+<samp>go: downloading github.com/tomasen/realip v0.0.0-20180522021738-f0c99a92ddce
+go get: added github.com/tomasen/realip v0.0.0-20180522021738-f0c99a92ddce</samp></pre>
+</figure>
+
+<p>OK, with that setup out of the way, let&rsquo;s jump into the code and update our <code>rateLimit()</code> middleware to implement the changes.</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/middleware.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;fmt&#34;</span>
+    <span class="s">&#34;net&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;net/http&#34;</span>
+    <span class="s">&#34;sync&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>
+    <span class="s">&#34;github.com/tomasen/realip&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;golang.org/x/time/rate&#34;</span> 
+<span class="p">)</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">rateLimit</span><span class="p">(</span><span class="nx">next</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span> <span class="p">{</span>
+    <span class="c1">// Declare a mutex and a map to hold the clients&#39; IP addresses and rate limiters.
+</span><span class="c1"></span>    <span class="kd">var</span> <span class="p">(</span>
+        <span class="nx">mu</span>      <span class="nx">sync</span><span class="p">.</span><span class="nx">Mutex</span>
+        <span class="nx">clients</span> <span class="p">=</span> <span class="nb">make</span><span class="p">(</span><span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="o">*</span><span class="nx">rate</span><span class="p">.</span><span class="nx">Limiter</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+        <span class="c1">// Use the realip.FromRequest() function to get the client&#39;s IP address.
+</span><span class="c1"></span>        <span class="nx">ip</span> <span class="o">:=</span> <span class="nx">realip</span><span class="p">.</span><span class="nf">FromRequest</span><span class="p">(</span><span class="nx">r</span><span class="p">)</span>
+
+        <span class="c1">// Lock the mutex to prevent this code from being executed concurrently.
+</span><span class="c1"></span>        <span class="nx">mu</span><span class="p">.</span><span class="nf">Lock</span><span class="p">(</span><span class="p">)</span>
+
+        <span class="c1">// Check to see if the IP address already exists in the map. If it doesn&#39;t, then
+</span><span class="c1"></span>        <span class="c1">// initialize a new rate limiter and add the IP address and limiter to the map.
+</span><span class="c1"></span>        <span class="k">if</span> <span class="nx">_</span><span class="p">,</span> <span class="nx">found</span> <span class="o">:=</span> <span class="nx">clients</span><span class="p">[</span><span class="nx">ip</span><span class="p">]</span><span class="p">;</span> <span class="p">!</span><span class="nx">found</span> <span class="p">{</span>
+            <span class="nx">clients</span><span class="p">[</span><span class="nx">ip</span><span class="p">]</span> <span class="p">=</span> <span class="nx">rate</span><span class="p">.</span><span class="nf">NewLimiter</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+        <span class="p">}</span>
+
+        <span class="c1">// Call the Allow() method on the rate limiter for the current IP address. If
+</span><span class="c1"></span>        <span class="c1">// the request isn&#39;t allowed, unlock the mutex and send a 429 Too Many Requests
+</span><span class="c1"></span>        <span class="c1">// response, just like before.
+</span><span class="c1"></span>        <span class="k">if</span> <span class="p">!</span><span class="nx">clients</span><span class="p">[</span><span class="nx">ip</span><span class="p">]</span><span class="p">.</span><span class="nf">Allow</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+            <span class="nx">mu</span><span class="p">.</span><span class="nf">Unlock</span><span class="p">(</span><span class="p">)</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">rateLimitExceededResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+            <span class="k">return</span>
+        <span class="p">}</span>
+
+        <span class="c1">// Very importantly, unlock the mutex before calling the next handler in the
+</span><span class="c1"></span>        <span class="c1">// chain. Notice that we DON&#39;T use defer to unlock the mutex, as that would mean
+</span><span class="c1"></span>        <span class="c1">// that the mutex isn&#39;t unlocked until all the handlers downstream of this 
+</span><span class="c1"></span>        <span class="c1">// middleware have also returned.
+</span><span class="c1"></span>        <span class="nx">mu</span><span class="p">.</span><span class="nf">Unlock</span><span class="p">(</span><span class="p">)</span>
+
+        <span class="nx">next</span><span class="p">.</span><span class="nf">ServeHTTP</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+    <span class="p">}</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<h3 id="deleting-old-limiters">Deleting old limiters</h3>
+
+<p>The code above will work, but there&rsquo;s a slight problem &mdash; the <code>clients</code> map will grow indefinitely, taking up more and more resources with every new IP address and rate limiter that we add.</p>
+
+<p>To prevent this, let&rsquo;s update our code so that we also record the <em>last seen</em> time for each client. We can then run a background goroutine in which we periodically delete any clients that we haven&rsquo;t seen recently from the <code>clients</code> map.</p>
+
+<p>To make this work, we&rsquo;ll need to create a custom <code>client</code> struct which holds both the rate limiter and last seen time for each client, and launch the background cleanup goroutine when initializing the middleware.</p>
+
+<p>Like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/middleware.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;fmt&#34;</span>
+    <span class="s">&#34;net&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+    <span class="s">&#34;sync&#34;</span>
+    <span class="s">&#34;time&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>
+    <span class="s">&#34;github.com/tomasen/realip&#34;</span>
+    <span class="s">&#34;golang.org/x/time/rate&#34;</span>
+<span class="p">)</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">rateLimit</span><span class="p">(</span><span class="nx">next</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span> <span class="p">{</span>
+    <span class="c1">// Define a client struct to hold the rate limiter and last seen time for each
+</span><span class="c1"></span>    <span class="c1">// client.
+</span><span class="c1"></span>    <span class="kd">type</span> <span class="nx">client</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">limiter</span>  <span class="o">*</span><span class="nx">rate</span><span class="p">.</span><span class="nx">Limiter</span>
+        <span class="nx">lastSeen</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Time</span>
+    <span class="p">}</span>
+
+    <span class="kd">var</span> <span class="p">(</span>
+        <span class="nx">mu</span> <span class="nx">sync</span><span class="p">.</span><span class="nx">Mutex</span>
+        <span class="c1">// Update the map so the values are pointers to a client struct.
+</span><span class="c1"></span>        <span class="nx">clients</span> <span class="p">=</span> <span class="nb">make</span><span class="p">(</span><span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="o">*</span><span class="nx">client</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="c1">// Launch a background goroutine which removes old entries from the clients map once
+</span><span class="c1"></span>    <span class="c1">// every minute.
+</span><span class="c1"></span>    <span class="k">go</span> <span class="kd">func</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">for</span> <span class="p">{</span>
+            <span class="nx">time</span><span class="p">.</span><span class="nf">Sleep</span><span class="p">(</span><span class="nx">time</span><span class="p">.</span><span class="nx">Minute</span><span class="p">)</span>
+
+            <span class="c1">// Lock the mutex to prevent any rate limiter checks from happening while
+</span><span class="c1"></span>            <span class="c1">// the cleanup is taking place.
+</span><span class="c1"></span>            <span class="nx">mu</span><span class="p">.</span><span class="nf">Lock</span><span class="p">(</span><span class="p">)</span>
+
+            <span class="c1">// Loop through all clients. If they haven&#39;t been seen within the last three
+</span><span class="c1"></span>            <span class="c1">// minutes, delete the corresponding entry from the map.
+</span><span class="c1"></span>            <span class="k">for</span> <span class="nx">ip</span><span class="p">,</span> <span class="nx">client</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">clients</span> <span class="p">{</span>
+                <span class="k">if</span> <span class="nx">time</span><span class="p">.</span><span class="nf">Since</span><span class="p">(</span><span class="nx">client</span><span class="p">.</span><span class="nx">lastSeen</span><span class="p">)</span> <span class="p">&gt;</span> <span class="mi">3</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Minute</span> <span class="p">{</span>
+                    <span class="nb">delete</span><span class="p">(</span><span class="nx">clients</span><span class="p">,</span> <span class="nx">ip</span><span class="p">)</span>
+                <span class="p">}</span>
+            <span class="p">}</span>
+
+            <span class="c1">// Importantly, unlock the mutex when the cleanup is complete.
+</span><span class="c1"></span>            <span class="nx">mu</span><span class="p">.</span><span class="nf">Unlock</span><span class="p">(</span><span class="p">)</span>
+        <span class="p">}</span>
+    <span class="p">}</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">ip</span> <span class="o">:=</span> <span class="nx">realip</span><span class="p">.</span><span class="nf">FromRequest</span><span class="p">(</span><span class="nx">r</span><span class="p">)</span>
+
+        <span class="nx">mu</span><span class="p">.</span><span class="nf">Lock</span><span class="p">(</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nx">_</span><span class="p">,</span> <span class="nx">found</span> <span class="o">:=</span> <span class="nx">clients</span><span class="p">[</span><span class="nx">ip</span><span class="p">]</span><span class="p">;</span> <span class="p">!</span><span class="nx">found</span> <span class="p">{</span>
+            <span class="c1">// Create and add a new client struct to the map if it doesn&#39;t already exist.
+</span><span class="c1"></span>            <span class="nx">clients</span><span class="p">[</span><span class="nx">ip</span><span class="p">]</span> <span class="p">=</span> <span class="o">&amp;</span><span class="nx">client</span><span class="p">{</span><span class="nx">limiter</span><span class="p">:</span> <span class="nx">rate</span><span class="p">.</span><span class="nf">NewLimiter</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span><span class="p">}</span>
+        <span class="p">}</span>
+
+        <span class="c1">// Update the last seen time for the client.
+</span><span class="c1"></span>        <span class="nx">clients</span><span class="p">[</span><span class="nx">ip</span><span class="p">]</span><span class="p">.</span><span class="nx">lastSeen</span> <span class="p">=</span> <span class="nx">time</span><span class="p">.</span><span class="nf">Now</span><span class="p">(</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="p">!</span><span class="nx">clients</span><span class="p">[</span><span class="nx">ip</span><span class="p">]</span><span class="p">.</span><span class="nx">limiter</span><span class="p">.</span><span class="nf">Allow</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+            <span class="nx">mu</span><span class="p">.</span><span class="nf">Unlock</span><span class="p">(</span><span class="p">)</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">rateLimitExceededResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+            <span class="k">return</span>
+        <span class="p">}</span>
+
+        <span class="nx">mu</span><span class="p">.</span><span class="nf">Unlock</span><span class="p">(</span><span class="p">)</span>
+
+        <span class="nx">next</span><span class="p">.</span><span class="nf">ServeHTTP</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+    <span class="p">}</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>At this point, if you restart the API and try making a batch of requests in quick succession again, you should find that the rate limiter continues to work correctly from the perspective of an individual client &mdash; just like it did before.</p>
+
+<figure class="code bash">
+<pre>$ for i in {1..6}; do curl  http://localhost:4000/v1/healthcheck; done
+<samp>{
+    &#34;status&#34;: &#34;available&#34;,
+    &#34;system_info&#34;: {
+        &#34;environment&#34;: &#34;development&#34;,
+        &#34;version&#34;: &#34;1.0.0&#34;
+    }
+}
+{
+    &#34;status&#34;: &#34;available&#34;,
+    &#34;system_info&#34;: {
+        &#34;environment&#34;: &#34;development&#34;,
+        &#34;version&#34;: &#34;1.0.0&#34;
+    }
+}
+{
+    &#34;status&#34;: &#34;available&#34;,
+    &#34;system_info&#34;: {
+        &#34;environment&#34;: &#34;development&#34;,
+        &#34;version&#34;: &#34;1.0.0&#34;
+    }
+}
+{
+    &#34;status&#34;: &#34;available&#34;,
+    &#34;system_info&#34;: {
+        &#34;environment&#34;: &#34;development&#34;,
+        &#34;version&#34;: &#34;1.0.0&#34;
+    }
+}
+{
+    &#34;error&#34;: &#34;rate limit exceeded&#34;
+}
+{
+    &#34;error&#34;: &#34;rate limit exceeded&#34;
+}</samp></pre>
+</figure>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="distributed-applications">Distributed applications</h4>
+
+<p>Using this pattern for rate-limiting will only work if your API application is running on a single-machine. If your infrastructure is distributed, with your application running on multiple servers behind a load balancer, then you&rsquo;ll need to use an alternative approach.</p>
+
+<p>If you&rsquo;re using HAProxy or Nginx as a load balancer or reverse proxy, both of these have built-in functionality for rate limiting that you can  use. Alternatively, you could use a fast database like Redis to maintain a request count for clients, running on a server which all your application servers can communicate with.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="10.01-global-rate-limiting.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="10.03-configuring-the-rate-limiters.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "10.01-global-rate-limiting.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "10.03-configuring-the-rate-limiters.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Building binaries &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="19.00-building-versioning-and-quality-control.html">Building, versioning and quality control</a> &rsaquo; Building binaries</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="19.04-module-proxies-and-vendoring.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="19.06-managing-and-automating-version-numbers.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 19.5.</div>
+			<h2 id="building-binaries">Building binaries</h2>
+
+<p>So far we&rsquo;ve been running our API using the <code>go run</code> command (or more recently, <code>make run/api</code>). But in this chapter we&rsquo;re going to focus on explaining how to <em>build an executable binary</em> that you can distribute and run on other machines without needing the Go toolchain installed.</p>
+
+<p>To build a binary we need to use the <code>go build</code> command. As a simple example, usage looks like this:</p>
+
+<figure class="code bash">
+<pre>$ go build -o=./bin/api ./cmd/api</pre>
+</figure>
+
+<p>When we run this command, <code>go build</code> will <em>compile</em> the <code>cmd/api</code> package (and any dependent packages) into files containing machine code, and then <em>link</em> these together to form an executable binary. In the command above, the executable binary will be output to <code>./bin/api</code>.</p>
+
+<p>For convenience, let&rsquo;s add a new <code>build/api</code> rule to our makefile which runs this command, like so:</p>
+
+<figure class="code shell">
+<figcaption>File: Makefile</figcaption>
+<pre>
+...
+
+<span class="c1"># ==================================================================================== #</span>
+<span class="c1"># BUILD</span>
+<span class="c1"># ==================================================================================== #</span>
+
+<span class="c1">## build/api: build the cmd/api application</span>
+.PHONY: build/api
+build/api:
+	@echo <span class="s1">&#39;Building cmd/api...&#39;</span>
+	go build -o<span class="o">=</span>./bin/api ./cmd/api</pre>
+</figure>
+
+<p>Once that&rsquo;s done, go ahead and execute the <code>make build/api</code> rule. You should see that an executable binary file gets created at <code>./bin/api</code>.</p>
+
+<figure class="code bash">
+<pre>$ make build/api 
+<samp>Building cmd/api...
+go build -o=./bin/api ./cmd/api</samp>
+$ ls -l ./bin/
+<samp>total 10228
+-rwxrwxr-x 1 alex alex 10470419 Apr 18 16:05 api</samp></pre>
+</figure>
+
+<p>And you should be able to run this executable to start your API application, passing in any command-line flag values as necessary. For example:</p>
+
+<figure class="code bash">
+<pre>$ ./bin/api -port=4040 -db-dsn=postgres://greenlight:pa55word@localhost/greenlight
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4040 env=development</samp></pre>
+</figure>
+
+<h3 id="reducing-binary-size">Reducing binary size</h3>
+
+<p>If you take a closer look at the executable binary you&rsquo;ll see that it weighs in at 10470419 bytes (about 10.5MB).</p>
+
+<figure class="code bash">
+<pre>$ ls -l ./bin/api 
+<samp>-rwxrwxr-x 1 alex alex 10470419 Apr 18 16:05 ./bin/api</samp></pre>
+</figure>
+
+<aside class="hint"><p>
+<strong>Note:</strong> If you&rsquo;re following along, your binary size may be slightly different. It depends on your operating system, and the exact version of Go and the third-party dependencies that you&rsquo;re using.
+</p></aside>
+
+<p>It&rsquo;s possible to reduce the binary size by around 25% by instructing the Go linker to strip <a href="https://medium.com/a-journey-with-go/go-how-to-take-advantage-of-the-symbols-table-360dd52269e5">symbol tables</a>  and <a href="https://golang.org/pkg/debug/dwarf/">DWARF</a> debugging information from the binary. We can do this as part of the <code>go build</code> command by using the <em>linker flag</em> <code>-ldflags=&quot;-s&quot;</code> as follows:</p>
+
+<figure class="code shell">
+<figcaption>File: Makefile</figcaption>
+<pre>...
+
+<span class="c1"># ==================================================================================== #</span>
+<span class="c1"># BUILD</span>
+<span class="c1"># ==================================================================================== #</span>
+
+<span class="c1">## build/api: build the cmd/api application</span>
+.PHONY: build/api
+build/api:
+	@echo <span class="s1">&#39;Building cmd/api...&#39;</span>
+	go build -ldflags<span class="o">=</span><span class="s1">&#39;-s&#39;</span> -o<span class="o">=</span>./bin/api ./cmd/api</pre>
+</figure>
+
+<p>If you run <code>make build/api</code> again, you should now find that the binary is noticeably smaller (in my case about 7.6MB).</p>
+
+<figure class="code bash">
+<pre>$ make build/api 
+<samp>Building cmd/api...
+go build -ldflags=&#39;-s&#39; -o=./bin/api ./cmd/api</samp>
+$ ls -l ./bin/api 
+<samp>-rwxrwxr-x 1 alex alex 7618560 Apr 18 16:08 ./bin/api</samp></pre>
+</figure>
+
+<p>It&rsquo;s important to be aware that stripping out this information will make it harder to debug an executable using a tool like <a href="https://github.com/go-delve/delve">Delve</a> or <a href="https://www.gnu.org/software/gdb/">gdb</a>. But, generally, it&rsquo;s not often that you&rsquo;ll need to do this &mdash; and there&rsquo;s even an <a href="https://github.com/golang/go/issues/26074">open proposal</a> from Rob Pike to make omitting DWARF information the default behavior of the linker in the future.</p>
+
+<aside class="note"><p>
+<strong>Note:</strong> The linker flag <code>-ldflags='-s'</code> strips out <em>both</em> symbol tables and DWARF debugging information. If you want to only omit the DWARF debugging information, you can use the linker flag <code>-ldflags='-w'</code> instead. If you want to only omit the symbol table, you can use the flags <code>-ldflags='-s -w=0'</code>
+</p></aside>
+
+<h3 id="cross-compilation">Cross-compilation</h3>
+
+<p>By default, the <code>go build</code> command will output a binary suitable for use on your <em>local machine&rsquo;s operating system and architecture</em>. But it also supports cross-compilation, so you can generate a binary suitable for use on a different machine. This is particularly useful if you&rsquo;re developing on one operating system and deploying on another.</p>
+
+<p>To see a list of all the operating system/architecture combinations that Go supports, you can run the <code>go tool dist list</code> command like so:</p>
+
+<figure class="code bash">
+<pre>$ go tool dist list
+<samp>aix/ppc64
+android/386
+android/amd64
+android/arm
+android/arm64
+darwin/amd64
+...</samp></pre>
+</figure>
+
+<p>And you can specify the operating system and architecture that you want to create the binary for by setting <code>GOOS</code> and <code>GOARCH</code> environment variables when running <code>go build</code>. For example:</p>
+
+<figure class="code bash">
+<pre>$ GOOS=linux GOARCH=amd64 go build {args}</pre>
+</figure>
+
+<p>In the next section of the book, we&rsquo;re going to walk through how to deploy an executable binary on an Ubuntu Linux server hosted by DigitalOcean. For this, we&rsquo;ll need a binary which is designed to run on a machine with a <code>linux/amd64</code> OS and architecture combination.</p>
+
+<p>So let&rsquo;s update our <code>make build/api</code> rule so that it creates two binaries &mdash; one for use on your local machine, and another for deploying to the Ubuntu Linux server.</p>
+
+<figure class="code shell">
+<figcaption>File: Makefile</figcaption>
+<pre>...
+
+<span class="c1"># ==================================================================================== #</span>
+<span class="c1"># BUILD</span>
+<span class="c1"># ==================================================================================== #</span>
+
+<span class="c1">## build/api: build the cmd/api application</span>
+.PHONY: build/api
+build/api:
+	@echo <span class="s1">&#39;Building cmd/api...&#39;</span>
+	go build -ldflags<span class="o">=</span><span class="s1">&#39;-s&#39;</span> -o<span class="o">=</span>./bin/api ./cmd/api
+	<span class="nv">GOOS</span><span class="o">=</span>linux <span class="nv">GOARCH</span><span class="o">=</span>amd64 go build -ldflags<span class="o">=</span><span class="s1">&#39;-s&#39;</span> -o<span class="o">=</span>./bin/linux_amd64/api ./cmd/api</pre>
+</figure>
+
+<p>If you&rsquo;re following along, go ahead and run <code>make build/api</code> again.</p>
+
+<p>You should see that two binaries are now created &mdash; with the cross-compiled binary located under the <code>./bin/linux_amd64</code> directory, like so:</p>
+
+<figure class="code bash">
+<pre>$ make build/api 
+<samp>Building cmd/api...
+go build -ldflags=&#39;-s&#39; -o=./bin/api ./cmd/api
+GOOS=linux GOARCH=amd64 go build -ldflags=&#39;-s&#39; -o=./bin/linux_amd64/api ./cmd/api</samp>
+$ tree ./bin
+<samp>./bin
+├── api
+└── linux_amd64
+    └── api</samp></pre>
+</figure>
+
+<p>As a general rule, you probably don&rsquo;t want to commit your Go binaries into version control alongside your source code as they will significantly inflate the size of your repository.</p>
+
+<p>So, if you&rsquo;re following along, let&rsquo;s quickly add an additional rule to the <code>.gitignore</code> file which instructs Git to ignore the contents of the <code>bin</code> directory.</p>
+
+<figure class="code bash">
+<pre>$ echo &#39;bin/&#39; &gt;&gt; .gitignore
+$ cat .gitignore
+<samp>.envrc
+bin/</samp></pre>
+</figure>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="build-caching">Build caching</h4>
+
+<p>It&rsquo;s important to note that the <code>go build</code> command caches build output in the Go <em>build cache</em>. This cached output will be reused again in future builds where appropriate, which can significantly speed up the overall build time for your application.</p>
+
+<p>If you&rsquo;re not sure where your build cache is, you can check by running the <code>go env GOCACHE</code> command:</p>
+
+<figure class="code bash">
+<pre>$ go env GOCACHE
+<samp>/home/alex/.cache/go-build</samp></pre>
+</figure>
+
+<p>You should also be aware that the build cache does not automatically detect any changes to C libraries that your code imports with <a href="https://golang.org/cmd/cgo/"><code>cgo</code></a>. So, if you&rsquo;ve changed a C library since the last build, you&rsquo;ll need to use the <code>-a</code> flag to force all packages to be rebuilt when running <code>go build</code>. Alternatively, you could use <code>go clean</code> to purge the cache:</p>
+
+<figure class="code bash">
+<pre>$ go build -a -o=/bin/foo ./cmd/foo        <samp># Force all packages to be rebuilt</samp>
+$ go clean -cache                          <samp># Remove everything from the build cache</samp></pre>
+</figure>
+
+<aside class="hint"><p>
+<strong>Note:</strong> If you ever run <code>go build</code> on a non-<code>main</code> package, the build output will be stored in the build cache so it can be reused, but no executable will be produced.
+</p></aside>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="19.04-module-proxies-and-vendoring.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="19.06-managing-and-automating-version-numbers.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "19.04-module-proxies-and-vendoring.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "19.06-managing-and-automating-version-numbers.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

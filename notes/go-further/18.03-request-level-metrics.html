@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Request-level metrics &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="18.00-metrics.html">Metrics</a> &rsaquo; Request-level metrics</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="18.02-creating-custom-metrics.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="18.04-recording-http-status-codes.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 18.3.</div>
+			<h2 id="request-level-metrics">Request-level metrics</h2>
+
+<p>In this chapter we&rsquo;re going to create some new middleware to record custom <em>request-level</em> metrics for our application. We&rsquo;ll start by recording the following three things:</p>
+
+<ul>
+<li>The total number of requests received.</li>
+<li>The total number of responses sent.</li>
+<li>The total (cumulative) time taken to process all requests in <a href="https://en.wikipedia.org/wiki/Microsecond">microseconds</a>.</li>
+</ul>
+
+<p>All these values will be integers, so we&rsquo;ll be able to register these metrics with the <code>expvar</code> package using the <a href="https://golang.org/pkg/expvar/#NewInt"><code>expvar.NewInt()</code></a> function.</p>
+
+<p>Let&rsquo;s jump straight into the code and create a new <code>metrics()</code> middleware method, which initializes the necessary <code>expvar</code> variables and then updates them each time we process a request. Like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/middleware.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;errors&#34;</span>
+    <span class="s">&#34;expvar&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;fmt&#34;</span>
+    <span class="s">&#34;net&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+    <span class="s">&#34;strings&#34;</span>
+    <span class="s">&#34;sync&#34;</span>
+    <span class="s">&#34;time&#34;</span>
+
+    <span class="s">&#34;greenlight.alexedwards.net/internal/data&#34;</span>
+    <span class="s">&#34;greenlight.alexedwards.net/internal/validator&#34;</span>
+
+    <span class="s">&#34;golang.org/x/time/rate&#34;</span>
+<span class="p">)</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">metrics</span><span class="p">(</span><span class="nx">next</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span> <span class="p">{</span>
+    <span class="c1">// Initialize the new expvar variables when the middleware chain is first built.
+</span><span class="c1"></span>    <span class="kd">var</span> <span class="p">(</span>
+        <span class="nx">totalRequestsReceived</span>           <span class="p">=</span> <span class="nx">expvar</span><span class="p">.</span><span class="nf">NewInt</span><span class="p">(</span><span class="s">&#34;total_requests_received&#34;</span><span class="p">)</span>
+        <span class="nx">totalResponsesSent</span>              <span class="p">=</span> <span class="nx">expvar</span><span class="p">.</span><span class="nf">NewInt</span><span class="p">(</span><span class="s">&#34;total_responses_sent&#34;</span><span class="p">)</span>
+        <span class="nx">totalProcessingTimeMicroseconds</span> <span class="p">=</span> <span class="nx">expvar</span><span class="p">.</span><span class="nf">NewInt</span><span class="p">(</span><span class="s">&#34;total_processing_time_μs&#34;</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="c1">// The following code will be run for every request...
+</span><span class="c1"></span>    <span class="k">return</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+        <span class="c1">// Record the time that we started to process the request.
+</span><span class="c1"></span>        <span class="nx">start</span> <span class="o">:=</span> <span class="nx">time</span><span class="p">.</span><span class="nf">Now</span><span class="p">(</span><span class="p">)</span>
+
+        <span class="c1">// Use the Add() method to increment the number of requests received by 1.
+</span><span class="c1"></span>        <span class="nx">totalRequestsReceived</span><span class="p">.</span><span class="nf">Add</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="c1">// Call the next handler in the chain.
+</span><span class="c1"></span>        <span class="nx">next</span><span class="p">.</span><span class="nf">ServeHTTP</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+
+        <span class="c1">// On the way back up the middleware chain, increment the number of responses
+</span><span class="c1"></span>        <span class="c1">// sent by 1.
+</span><span class="c1"></span>        <span class="nx">totalResponsesSent</span><span class="p">.</span><span class="nf">Add</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="c1">// Calculate the number of microseconds since we began to process the request,
+</span><span class="c1"></span>        <span class="c1">// then increment the total processing time by this amount.
+</span><span class="c1"></span>        <span class="nx">duration</span> <span class="o">:=</span> <span class="nx">time</span><span class="p">.</span><span class="nf">Since</span><span class="p">(</span><span class="nx">start</span><span class="p">)</span><span class="p">.</span><span class="nf">Microseconds</span><span class="p">(</span><span class="p">)</span>
+        <span class="nx">totalProcessingTimeMicroseconds</span><span class="p">.</span><span class="nf">Add</span><span class="p">(</span><span class="nx">duration</span><span class="p">)</span>
+    <span class="p">}</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Once that&rsquo;s done, we need to update the <code>cmd/api/routes.go</code> file to include the new <code>metrics()</code> middleware, right at the beginning of the chain. Like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/routes.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">routes</span><span class="p">(</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span> <span class="p">{</span>
+    <span class="nx">router</span> <span class="o">:=</span> <span class="nx">httprouter</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nx">NotFound</span> <span class="p">=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">notFoundResponse</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nx">MethodNotAllowed</span> <span class="p">=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">methodNotAllowedResponse</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/healthcheck&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">healthcheckHandler</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/movies&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nf">requirePermission</span><span class="p">(</span><span class="s">&#34;movies:read&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">listMoviesHandler</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span> <span class="s">&#34;/v1/movies&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nf">requirePermission</span><span class="p">(</span><span class="s">&#34;movies:write&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">createMovieHandler</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nf">requirePermission</span><span class="p">(</span><span class="s">&#34;movies:read&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">showMovieHandler</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPatch</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nf">requirePermission</span><span class="p">(</span><span class="s">&#34;movies:write&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">updateMovieHandler</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodDelete</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nf">requirePermission</span><span class="p">(</span><span class="s">&#34;movies:write&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">deleteMovieHandler</span><span class="p">)</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span> <span class="s">&#34;/v1/users&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">registerUserHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPut</span><span class="p">,</span> <span class="s">&#34;/v1/users/activated&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">activateUserHandler</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span> <span class="s">&#34;/v1/tokens/authentication&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">createAuthenticationTokenHandler</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">Handler</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/debug/vars&#34;</span><span class="p">,</span> <span class="nx">expvar</span><span class="p">.</span><span class="nf">Handler</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+
+    <span class="c1">// Use the new metrics() middleware at the start of the chain.
+</span><span class="c1"></span>    <span class="k">return</span> <span class="nx">app</span><span class="p">.</span><span class="nf">metrics</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nf">recoverPanic</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nf">enableCORS</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nf">rateLimit</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nf">authenticate</span><span class="p">(</span><span class="nx">router</span><span class="p">)</span><span class="p">)</span><span class="p">)</span><span class="p">)</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>OK, let&rsquo;s try this out. Go ahead and run the API with rate limiting disabled again:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api -limiter-enabled=false
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development</samp></pre>
+</figure>
+
+<p>And when you visit <a href="http://localhost:4000/debug/vars"><code>localhost:4000/debug/vars</code></a> in your browser, you should now see that the JSON response includes items for <code>total_requests_received</code>, <code>total_responses_sent</code> and <code>total_processing_time_μs</code>. Like so:</p>
+
+<figure class="img">
+<img src="assets/img/18.03-01.png" alt="18.03-01.png" />
+</figure>
+
+<p>At this point, we can see that our API has received one request and sent zero responses. That makes sense if you think about it &mdash; at the moment that <em>this JSON response</em> was generated, it hadn&rsquo;t actually been sent.</p>
+
+<p>If you refresh the page, you should see these numbers increment &mdash; including an increase in the <code>total_processing_time_μs</code> value:</p>
+
+<figure class="img">
+<img src="assets/img/18.03-02.png" alt="18.03-02.png" />
+</figure>
+
+<p>Let&rsquo;s try this out under load and use <code>hey</code> to make some requests to the <code>POST /v1/tokens/authentication</code> endpoint again.</p>
+
+<p>First restart the API:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api -limiter-enabled=false
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development</samp></pre>
+</figure>
+
+<p>And then use <code>hey</code> to generate the load like so:</p>
+
+<figure class="code bash">
+<pre>$ BODY=&#39;{&#34;email&#34;: &#34;alice@example.com&#34;, &#34;password&#34;: &#34;pa55word&#34;}&#39;
+$ hey -d &#34;$BODY&#34; -m &#34;POST&#34; http://localhost:4000/v1/tokens/authentication
+
+<samp>Summary:
+  Total:        9.9141 secs
+  Slowest:      3.0333 secs
+  Fastest:      1.6788 secs
+  Average:      2.4302 secs
+  Requests/sec: 20.1732
+  
+  Total data:   24987 bytes
+  Size/request: 124 bytes
+
+Response time histogram:
+  1.679 [1]  |■
+  1.814 [1]  |■
+  1.950 [3]  |■■■
+  2.085 [8]  |■■■■■■■
+  2.221 [28] |■■■■■■■■■■■■■■■■■■■■■■■■
+  2.356 [39] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+  2.491 [46] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+  2.627 [34] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+  2.762 [20] |■■■■■■■■■■■■■■■■■
+  2.898 [9]  |■■■■■■■■
+  3.033 [11] |■■■■■■■■■■
+
+
+Latency distribution:
+  10% in 2.1386 secs
+  25% in 2.2678 secs
+  50% in 2.4197 secs
+  75% in 2.5769 secs
+  90% in 2.7718 secs
+  95% in 2.9125 secs
+  99% in 3.0220 secs
+
+Details (average, fastest, slowest):
+  DNS+dialup: 0.0007 secs, 1.6788 secs, 3.0333 secs
+  DNS-lookup: 0.0005 secs, 0.0000 secs, 0.0047 secs
+  req write:  0.0001 secs, 0.0000 secs, 0.0012 secs
+  resp wait:  2.4293 secs, 1.6787 secs, 3.0293 secs
+  resp read:  0.0000 secs, 0.0000 secs, 0.0001 secs
+
+Status code distribution:
+  [201]	200 responses</samp></pre>
+</figure>
+
+<p>Once that has completed, if you refresh <a href="http://localhost:4000/debug/vars"><code>localhost:4000/debug/vars</code></a> in your browser your metrics should now look something like this:</p>
+
+<figure class="img">
+<img src="assets/img/18.03-03.png" alt="18.03-03.png" />
+</figure>
+
+<p>Based on the <code>total_processing_time_μs</code> and <code>total_responses_sent</code> values, we can calculate that the average processing time per request was approximately 2.4 seconds (remember, this endpoint is deliberately slow and computationally expensive since we need to verify the bcrypted user password).</p>
+
+<figure class="code plain">
+<pre>481455830 μs / 201 reqs =  2395303 μs/req = 2.4 s/req</pre>
+</figure>
+
+<p>This aligns with the data that we see in the results summary from <code>hey</code>, which gives the average response time as 2.4302 secs. The <code>hey</code> figure is the time for the complete round-trip, so it will always be a little higher as it includes network latency and the time taken for <code>http.Server</code> to manage the request.</p>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="calculating-additional-metrics">Calculating additional metrics</h4>
+
+<p>Based on the information in the <code>GET /debug/vars</code> response, you can also derive some additional interesting metrics. Such as&hellip;</p>
+
+<ul>
+<li><p>The number of &lsquo;active&rsquo; in-flight requests:</p>
+
+<figure class="code plain">
+<pre>total_requests_received - total_responses_sent</pre>
+</figure>
+</li>
+
+<li><p>The average number of requests received per second (between calls A and B to the <code>GET /debug/vars</code> endpoint):</p>
+
+<figure class="code plain">
+<pre>(total_requests_received_B - total_requests_received_A) / (timestamp_B - timestamp_A)</pre>
+</figure>
+</li>
+
+<li><p>The average processing time per request (between calls A and B to the <code>GET /debug/vars</code> endpoint):</p>
+
+<figure class="code plain">
+<pre>(total_processing_time_μs_B - total_processing_time_μs_A) / (total_requests_received_B - total_requests_received_A)</pre>
+</figure>
+</li>
+</ul>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="18.02-creating-custom-metrics.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="18.04-recording-http-status-codes.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "18.02-creating-custom-metrics.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "18.04-recording-http-status-codes.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

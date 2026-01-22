@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Formatting and enveloping responses &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="03.00-sending-json-responses.html">Sending JSON responses</a> &rsaquo; Formatting and enveloping responses</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="03.03-encoding-structs.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="03.05-advanced-json-customization.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 3.4.</div>
+			<h2 id="formatting-and-enveloping-responses">Formatting and enveloping responses</h2>
+
+<p>So far in this book we&rsquo;ve generally been making requests to our API using Firefox, which makes the JSON responses easy to read thanks to the &lsquo;pretty printing&rsquo; provided by the built-in JSON viewer.</p>
+
+<p>But if you try making some requests using curl, you&rsquo;ll see that the actual JSON response data is all just on one line with no whitespace.</p>
+
+<figure class="code bash">
+<pre>$ curl localhost:4000/v1/healthcheck
+<samp>{&#34;environment&#34;:&#34;development&#34;,&#34;status&#34;:&#34;available&#34;,&#34;version&#34;:&#34;1.0.0&#34;}</samp>
+
+$ curl localhost:4000/v1/movies/123
+<samp>{&#34;id&#34;:123,&#34;title&#34;:&#34;Casablanca&#34;,&#34;runtime&#34;:102,&#34;genres&#34;:[&#34;drama&#34;,&#34;romance&#34;,&#34;war&#34;],&#34;version&#34;:1}</samp></pre>
+</figure>
+
+<p>We can make these easier to read in terminals by using the <a href="https://golang.org/pkg/encoding/json/#MarshalIndent"><code>json.MarshalIndent()</code></a> function to encode our response data, instead of the regular <code>json.Marshal()</code> function. This automatically adds whitespace to the JSON output, putting each element on a separate line and prefixing each line with optional <em>prefix</em> and <em>indent</em> characters.</p>
+
+<p>Let&rsquo;s update our <code>writeJSON()</code> helper to use this instead:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/helpers.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">writeJSON</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">status</span> <span class="kt">int</span><span class="p">,</span> <span class="nx">data</span> <span class="nx">any</span><span class="p">,</span> <span class="nx">headers</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Header</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+    <span class="c1">// Use the json.MarshalIndent() function so that whitespace is added to the encoded 
+</span><span class="c1"></span>    <span class="c1">// JSON. Here we use no line prefix (&#34;&#34;) and tab indents (&#34;\t&#34;) for each element.
+</span><span class="c1"></span>    <span class="nx">js</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">json</span><span class="p">.</span><span class="nf">MarshalIndent</span><span class="p">(</span><span class="nx">data</span><span class="p">,</span> <span class="s">&#34;&#34;</span><span class="p">,</span> <span class="s">&#34;\t&#34;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">err</span>
+    <span class="p">}</span>
+
+    <span class="nx">js</span> <span class="p">=</span> <span class="nb">append</span><span class="p">(</span><span class="nx">js</span><span class="p">,</span> <span class="sc">&#39;\n&#39;</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="nx">key</span><span class="p">,</span> <span class="nx">values</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">headers</span> <span class="p">{</span>
+        <span class="k">for</span> <span class="nx">_</span><span class="p">,</span> <span class="nx">value</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">values</span> <span class="p">{</span>
+            <span class="nx">w</span><span class="p">.</span><span class="nf">Header</span><span class="p">(</span><span class="p">)</span><span class="p">.</span><span class="nf">Add</span><span class="p">(</span><span class="nx">key</span><span class="p">,</span> <span class="nx">value</span><span class="p">)</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="nx">w</span><span class="p">.</span><span class="nf">Header</span><span class="p">(</span><span class="p">)</span><span class="p">.</span><span class="nf">Set</span><span class="p">(</span><span class="s">&#34;Content-Type&#34;</span><span class="p">,</span> <span class="s">&#34;application/json&#34;</span><span class="p">)</span>
+    <span class="nx">w</span><span class="p">.</span><span class="nf">WriteHeader</span><span class="p">(</span><span class="nx">status</span><span class="p">)</span>
+    <span class="nx">w</span><span class="p">.</span><span class="nf">Write</span><span class="p">(</span><span class="nx">js</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="kc">nil</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>If you restart the API and try making the same requests from your terminal again, you will now receive some nicely whitespaced JSON responses similar to these:</p>
+
+<figure class="code bash">
+<pre>$ curl -i localhost:4000/v1/healthcheck
+<samp>{
+        &#34;environment&#34;: &#34;development&#34;,
+        &#34;status&#34;: &#34;available&#34;,
+        &#34;version&#34;: &#34;1.0.0&#34;
+}</samp>
+
+$ curl localhost:4000/v1/movies/123
+<samp>{
+        &#34;id&#34;: 123,
+        &#34;title&#34;: &#34;Casablanca&#34;,
+        &#34;runtime&#34;: 102,
+        &#34;genres&#34;: [
+                &#34;drama&#34;,
+                &#34;romance&#34;,
+                &#34;war&#34;
+        ],
+        &#34;version&#34;: 1
+}</samp></pre>
+</figure>
+
+<h3 id="relative-performance">Relative performance</h3>
+
+<p>While using <code>json.MarshalIndent()</code> is positive from a readability and user-experience point of view, it unfortunately doesn&rsquo;t come for free. As well as the fact that the responses are now slightly larger in terms of total bytes, the extra work that Go does to add the whitespace has a notable impact on performance.</p>
+
+<p>The following benchmarks help to demonstrate the relative performance of <code>json.Marshal()</code> and <code>json.MarshalIndent()</code> using the code in <a href="https://gist.github.com/alexedwards/809db1839a062c4f92a65f40359e18b7">this gist</a>.</p>
+
+<figure class="code bash">
+<pre>$ go test -run=^$ -bench=. -benchmem -count=3 -benchtime=5s
+<samp>goos: linux
+goarch: amd64
+BenchmarkMarshalIndent-8        2177511     2695 ns/op     1472 B/op     18 allocs/op
+BenchmarkMarshalIndent-8        2170448     2677 ns/op     1473 B/op     18 allocs/op
+BenchmarkMarshalIndent-8        2150780     2712 ns/op     1476 B/op     18 allocs/op
+BenchmarkMarshal-8              3289424     1681 ns/op     1135 B/op     16 allocs/op
+BenchmarkMarshal-8              3532242     1641 ns/op     1123 B/op     16 allocs/op
+BenchmarkMarshal-8              3619472     1637 ns/op     1119 B/op     16 allocs/op</samp></pre>
+</figure>
+
+<p>In these benchmarks we can see that <code>json.MarshalIndent()</code> takes 65% longer to run and uses around 30% more memory than <code>json.Marshal()</code>, as well as making two more heap allocations. Those figures will change depending on what you&rsquo;re encoding, but in my experience they&rsquo;re fairly indicative of the performance impact.</p>
+
+<p>For most applications this performance difference simply isn&rsquo;t something that you need to worry about. In real terms we&rsquo;re talking about a few thousandths of a <em>millisecond</em> &mdash; and the improved readability of responses is probably worth this trade-off. But if your API is operating in a very resource-constrained environment, or needs to manage extremely high levels of traffic, then it&rsquo;s worth being aware of this and you may prefer to stick with using <code>json.Marshal()</code> instead.</p>
+
+<aside class="hint"><p>
+<strong>Note:</strong> Behind the scenes <code>json.MarshalIndent()</code> works by calling <code>json.Marshal()</code> as normal, then running the JSON through the standalone <a href="https://golang.org/pkg/encoding/json/#Indent"><code>json.Indent()</code></a> function to add the whitespace. There&rsquo;s also a reverse function available, <a href="https://golang.org/pkg/encoding/json/#Compact"><code>json.Compact()</code></a>, which you can use to remove whitespace from JSON.
+</p></aside>
+
+<h3 id="enveloping-responses">Enveloping responses</h3>
+
+<p>Next let&rsquo;s work on updating our responses so that the JSON data is always <em>enveloped</em> in an outer JSON object. Similar to this:</p>
+
+<figure class="code plain">
+<pre>{
+    &#34;movie&#34;: {
+        &#34;id&#34;: 123,
+        &#34;title&#34;: &#34;Casablanca&#34;,
+        &#34;runtime&#34;: 102,
+        &#34;genres&#34;: [
+            &#34;drama&#34;,
+            &#34;romance&#34;,
+            &#34;war&#34;
+        ],
+        &#34;version&#34;:1
+    }
+}</pre>
+</figure>
+
+<p>Notice how the movie data is nested under the key <code>&quot;movie&quot;</code> here, rather than being the top-level JSON object itself?</p>
+
+<p>Enveloping response data like this isn&rsquo;t strictly necessary, and whether you choose to do so is partly a matter of style and taste. But there are a few tangible benefits:</p>
+
+<ol>
+<li><p>Including a key name (like <code>&quot;movie&quot;</code>) at the top-level of the JSON helps make the response more self-documenting. For any humans who see the response out of context, it is a bit easier to understand what the data relates to.</p></li>
+
+<li><p>It reduces the risk of errors on the client side, because it&rsquo;s harder to accidentally process one response thinking that it is something different. To get at the data, a client must explicitly reference it via the <code>&quot;movie&quot;</code> key.</p></li>
+
+<li><p>If we always envelope the data returned by our API, then we mitigate <a href="https://haacked.com/archive/2008/11/20/anatomy-of-a-subtle-json-vulnerability.aspx/">a security vulnerability</a> in older browsers which can arise if you return a JSON array as a response.</p></li>
+</ol>
+
+<p>There are a couple of techniques that we could use to envelope our API responses, but we&rsquo;re going to keep things simple and do it by creating a custom <code>envelope</code> type with the underlying type <code>map[string]any</code>.</p>
+
+<p>I&rsquo;ll demonstrate.</p>
+
+<p>Let&rsquo;s start by updating the <code>cmd/api/helpers.go</code> file as follows:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/helpers.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="c1">// Define an envelope type.
+</span><span class="c1"></span><span class="kd">type</span> <span class="nx">envelope</span> <span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="nx">any</span>
+
+<span class="c1">// Change the data parameter to have the type envelope instead of any.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">writeJSON</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">status</span> <span class="kt">int</span><span class="p">,</span> <span class="nx">data</span> <span class="nx">envelope</span><span class="p">,</span> <span class="nx">headers</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Header</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+    <span class="nx">js</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">json</span><span class="p">.</span><span class="nf">MarshalIndent</span><span class="p">(</span><span class="nx">data</span><span class="p">,</span> <span class="s">&#34;&#34;</span><span class="p">,</span> <span class="s">&#34;\t&#34;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">err</span>
+    <span class="p">}</span>
+
+    <span class="nx">js</span> <span class="p">=</span> <span class="nb">append</span><span class="p">(</span><span class="nx">js</span><span class="p">,</span> <span class="sc">&#39;\n&#39;</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="nx">key</span><span class="p">,</span> <span class="nx">values</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">headers</span> <span class="p">{</span>
+        <span class="k">for</span> <span class="nx">_</span><span class="p">,</span> <span class="nx">value</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">values</span> <span class="p">{</span>
+            <span class="nx">w</span><span class="p">.</span><span class="nf">Header</span><span class="p">(</span><span class="p">)</span><span class="p">.</span><span class="nf">Add</span><span class="p">(</span><span class="nx">key</span><span class="p">,</span> <span class="nx">value</span><span class="p">)</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="nx">w</span><span class="p">.</span><span class="nf">Header</span><span class="p">(</span><span class="p">)</span><span class="p">.</span><span class="nf">Set</span><span class="p">(</span><span class="s">&#34;Content-Type&#34;</span><span class="p">,</span> <span class="s">&#34;application/json&#34;</span><span class="p">)</span>
+    <span class="nx">w</span><span class="p">.</span><span class="nf">WriteHeader</span><span class="p">(</span><span class="nx">status</span><span class="p">)</span>
+    <span class="nx">w</span><span class="p">.</span><span class="nf">Write</span><span class="p">(</span><span class="nx">js</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="kc">nil</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Then we need to update our <code>showMovieHandler</code> to create an instance of the <code>envelope</code> map containing the movie data, and pass this onwards to our <code>writeJSON()</code> helper instead of passing the movie data directly.</p>
+
+<p>Like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/movies.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">showMovieHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">id</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readIDParam</span><span class="p">(</span><span class="nx">r</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">http</span><span class="p">.</span><span class="nf">NotFound</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="nx">movie</span> <span class="o">:=</span> <span class="nx">data</span><span class="p">.</span><span class="nx">Movie</span><span class="p">{</span>
+        <span class="nx">ID</span><span class="p">:</span>        <span class="nx">id</span><span class="p">,</span>
+        <span class="nx">CreatedAt</span><span class="p">:</span> <span class="nx">time</span><span class="p">.</span><span class="nf">Now</span><span class="p">(</span><span class="p">)</span><span class="p">,</span>
+        <span class="nx">Title</span><span class="p">:</span>     <span class="s">&#34;Casablanca&#34;</span><span class="p">,</span>
+        <span class="nx">Runtime</span><span class="p">:</span>   <span class="mi">102</span><span class="p">,</span>
+        <span class="nx">Genres</span><span class="p">:</span>    <span class="p">[</span><span class="p">]</span><span class="kt">string</span><span class="p">{</span><span class="s">&#34;drama&#34;</span><span class="p">,</span> <span class="s">&#34;romance&#34;</span><span class="p">,</span> <span class="s">&#34;war&#34;</span><span class="p">}</span><span class="p">,</span>
+        <span class="nx">Version</span><span class="p">:</span>   <span class="mi">1</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Create an envelope{&#34;movie&#34;: movie} instance and pass it to writeJSON(), instead
+</span><span class="c1"></span>    <span class="c1">// of passing the plain movie struct.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">writeJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusOK</span><span class="p">,</span> <span class="nx">envelope</span><span class="p">{</span><span class="s">&#34;movie&#34;</span><span class="p">:</span> <span class="nx">movie</span><span class="p">}</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="nx">http</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="s">&#34;The server encountered a problem and could not process your request&#34;</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusInternalServerError</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>We also need to update the code in our <code>healthcheckHandler</code> so that it passes an <code>envelope</code> type to the <code>writeJSON()</code> helper too:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/healthcheck.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">healthcheckHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Declare an envelope map containing the data for the response. Notice that the way
+</span><span class="c1"></span>    <span class="c1">// we&#39;ve constructed this means the environment and version data will now be nested 
+</span><span class="c1"></span>    <span class="c1">// under a system_info key in the JSON response.
+</span><span class="c1"></span>    <span class="nx">env</span> <span class="o">:=</span> <span class="nx">envelope</span><span class="p">{</span>
+        <span class="s">&#34;status&#34;</span><span class="p">:</span> <span class="s">&#34;available&#34;</span><span class="p">,</span>
+        <span class="s">&#34;system_info&#34;</span><span class="p">:</span> <span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="kt">string</span><span class="p">{</span>
+            <span class="s">&#34;environment&#34;</span><span class="p">:</span> <span class="nx">app</span><span class="p">.</span><span class="nx">config</span><span class="p">.</span><span class="nx">env</span><span class="p">,</span>
+            <span class="s">&#34;version&#34;</span><span class="p">:</span>     <span class="nx">version</span><span class="p">,</span>
+        <span class="p">}</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">writeJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusOK</span><span class="p">,</span> <span class="nx">env</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="nx">http</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="s">&#34;The server encountered a problem and could not process your request&#34;</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusInternalServerError</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Alright, let&rsquo;s try these changes out. Go ahead and restart the server, then use <code>curl</code> to make some requests to the API endpoints again. You should now get responses formatted like the ones below.</p>
+
+<figure class="code bash">
+<pre>$ curl localhost:4000/v1/movies/123
+<samp>{
+        &#34;movie&#34;: {
+                &#34;id&#34;: 123,
+                &#34;title&#34;: &#34;Casablanca&#34;,
+                &#34;runtime&#34;: 102,
+                &#34;genres&#34;: [
+                        &#34;drama&#34;,
+                        &#34;romance&#34;,
+                        &#34;war&#34;
+                ],
+                &#34;version&#34;:1
+        }
+}</samp>
+
+$ curl localhost:4000/v1/healthcheck
+<samp>{
+        &#34;status&#34;: &#34;available&#34;,
+        &#34;system_info&#34;: {
+                &#34;environment&#34;: &#34;development&#34;,
+                &#34;version&#34;: &#34;1.0.0&#34;
+        }
+}</samp></pre>
+</figure>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="response-structure">Response structure</h4>
+
+<p>It&rsquo;s important to emphasize that there&rsquo;s no single right or wrong way to structure your JSON responses. There are some popular formats like <a href="https://jsonapi.org/">JSON:API</a> and <a href="https://github.com/omniti-labs/jsend">jsend</a> that you might like to follow or use for inspiration, but it&rsquo;s certainly not necessary and most APIs <em>don&rsquo;t</em> follow these formats.</p>
+
+<p>But whatever you do, it <em>is</em> valuable to think about formatting upfront and to maintain a clear and consistent response structure across your different API endpoints &mdash; especially if they are intended for public use.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="03.03-encoding-structs.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="03.05-advanced-json-customization.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "03.03-encoding-structs.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "03.05-advanced-json-customization.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

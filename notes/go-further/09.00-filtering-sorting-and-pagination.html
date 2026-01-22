@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Filtering, sorting, and pagination &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; Filtering, sorting, and pagination</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="08.03-managing-sql-query-timeouts.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="09.01-parsing-query-string-parameters.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 9.</div>
+			<h1 id="filtering-sorting-and-pagination">Filtering, sorting, and pagination</h1>
+
+<p>In this section of the book we&rsquo;re going to focus on building up the functionality for a new <code>GET /v1/movies</code> endpoint, which will return the details of multiple movies in a JSON array.</p>
+
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>URL Pattern</th>
+<th>Handler</th>
+<th>Action</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td>GET</td>
+<td>/v1/healthcheck</td>
+<td>healthcheckHandler</td>
+<td>Show application information</td>
+</tr>
+
+<tr>
+<td><strong>GET</strong></td>
+<td><strong>/v1/movies</strong></td>
+<td><strong>listMoviesHandler</strong></td>
+<td><strong>Show the details of all movies</strong></td>
+</tr>
+
+<tr>
+<td>POST</td>
+<td>/v1/movies</td>
+<td>createMovieHandler</td>
+<td>Create a new movie</td>
+</tr>
+
+<tr>
+<td>GET</td>
+<td>/v1/movies/:id</td>
+<td>showMovieHandler</td>
+<td>Show the details of a specific movie</td>
+</tr>
+
+<tr>
+<td>PATCH</td>
+<td>/v1/movies/:id</td>
+<td>updateMovieHandler</td>
+<td>Update the details of a specific movie</td>
+</tr>
+
+<tr>
+<td>DELETE</td>
+<td>/v1/movies/:id</td>
+<td>deleteMovieHandler</td>
+<td>Delete a specific movie</td>
+</tr>
+</tbody>
+</table>
+<p>We&rsquo;ll develop the functionality for this endpoint incrementally, starting out by returning data for <em>all</em> movies and then gradually making it more useful and usable by adding filtering, sorting, and pagination functionality.</p>
+
+<p>In this section you&rsquo;ll learn how to:</p>
+
+<ul>
+<li><p>Return the details of multiple resources in a single JSON response.</p></li>
+
+<li><p>Accept and apply optional filter parameters to narrow down the returned data set.</p></li>
+
+<li><p>Implement full-text search on your database fields using PostgreSQL&rsquo;s inbuilt functionality.</p></li>
+
+<li><p>Accept and safely apply sort parameters to change the order of results in the data set.</p></li>
+
+<li><p>Develop a pragmatic reusable pattern to support pagination on large data sets, and return pagination metadata in your JSON responses.</p></li>
+</ul>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="08.03-managing-sql-query-timeouts.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="09.01-parsing-query-string-parameters.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "08.03-managing-sql-query-timeouts.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "09.01-parsing-query-string-parameters.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

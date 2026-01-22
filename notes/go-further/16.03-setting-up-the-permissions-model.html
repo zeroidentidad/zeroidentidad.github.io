@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Setting up the permissions model  &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="16.00-authorization.html">Permission-based authorization</a> &rsaquo; Setting up the permissions model </span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="16.02-setting-up-the-permissions-database-table.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="16.04-checking-permissions.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 16.3.</div>
+			<h2 id="setting-up-the-permissions-model">Setting up the permissions model</h2>
+
+<p>Next, let&rsquo;s head to our <code>internal/data</code> package and add a <code>PermissionModel</code> to manage the interactions with our new tables. For now, the only thing we want to include in this model is a <code>GetAllForUser()</code> method to <em>return all permission codes for a specific user</em>. The idea is that we&rsquo;ll be able to use this in our handlers and middleware like so:</p>
+
+<figure class="code go">
+<pre><span class="c1">// Return a slice of the permission codes for the user with ID = 1. This would return
+</span><span class="c1"></span><span class="c1">// something like []string{&#34;movies:read&#34;, &#34;movies:write&#34;}.
+</span><span class="c1"></span><span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Permissions</span><span class="p">.</span><span class="nf">GetAllForUser</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> </pre>
+</figure>
+
+<p>Behind the scenes, the SQL statement that we need to fetch the permission codes for a specific user looks like this:</p>
+
+<figure class="code plain">
+<pre>SELECT permissions.code
+FROM permissions
+INNER JOIN users_permissions ON users_permissions.permission_id = permissions.id
+INNER JOIN users ON users_permissions.user_id = users.id
+WHERE users.id = $1</pre>
+</figure>
+
+<p>In this query we are using the <code>INNER JOIN</code> clause to join our <code>permissions</code> table to our <code>users_permissions</code> table, and then using it again to join <em>that</em> to the <code>users</code> table. Then we use the <code>WHERE</code> clause to filter the result, leaving only rows which relate to a specific user ID.</p>
+
+<p>Let&rsquo;s go ahead and set up the new <code>PermissionModel</code>. First create a new <code>internal/data/permissions.go</code> file:</p>
+
+<figure class="code bash">
+<pre>$ touch internal/data/permissions.go</pre>
+</figure>
+
+<p>And then add the following code:</p>
+
+<figure class="code go">
+<figcaption>File: internal/data/permissions.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">data</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;context&#34;</span>
+    <span class="s">&#34;database/sql&#34;</span>
+    <span class="s">&#34;time&#34;</span>
+<span class="p">)</span>
+
+<span class="c1">// Define a Permissions slice, which we will use to hold the permission codes (such as
+</span><span class="c1"></span><span class="c1">// &#34;movies:read&#34; and &#34;movies:write&#34;) for a single user.
+</span><span class="c1"></span><span class="kd">type</span> <span class="nx">Permissions</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span>
+
+<span class="c1">// Add a helper method to check whether the Permissions slice contains a specific 
+</span><span class="c1"></span><span class="c1">// permission code.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">p</span> <span class="nx">Permissions</span><span class="p">)</span> <span class="nf">Include</span><span class="p">(</span><span class="nx">code</span> <span class="kt">string</span><span class="p">)</span> <span class="kt">bool</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="nx">slices</span><span class="p">.</span><span class="nf">Contains</span><span class="p">(</span><span class="nx">p</span><span class="p">,</span> <span class="nx">code</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="c1">// Define the PermissionModel type.
+</span><span class="c1"></span><span class="kd">type</span> <span class="nx">PermissionModel</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">DB</span> <span class="o">*</span><span class="nx">sql</span><span class="p">.</span><span class="nx">DB</span>
+<span class="p">}</span>
+
+<span class="c1">// The GetAllForUser() method returns all permission codes for a specific user in a 
+</span><span class="c1"></span><span class="c1">// Permissions slice. The code in this method should feel very familiar --- it uses the
+</span><span class="c1"></span><span class="c1">// standard pattern that we&#39;ve already seen before for retrieving multiple data rows in 
+</span><span class="c1"></span><span class="c1">// an SQL query.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="nx">PermissionModel</span><span class="p">)</span> <span class="nf">GetAllForUser</span><span class="p">(</span><span class="nx">userID</span> <span class="kt">int64</span><span class="p">)</span> <span class="p">(</span><span class="nx">Permissions</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">query</span> <span class="o">:=</span> <span class="s">`</span><span class="s">
+</span><span class="s">        SELECT permissions.code
+</span><span class="s">        FROM permissions
+</span><span class="s">        INNER JOIN users_permissions ON users_permissions.permission_id = permissions.id
+</span><span class="s">        INNER JOIN users ON users_permissions.user_id = users.id
+</span><span class="s">        WHERE users.id = $1</span><span class="s">`</span>
+
+    <span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="mi">3</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">)</span>
+    <span class="k">defer</span> <span class="nf">cancel</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">rows</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">m</span><span class="p">.</span><span class="nx">DB</span><span class="p">.</span><span class="nf">QueryContext</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">query</span><span class="p">,</span> <span class="nx">userID</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">err</span>
+    <span class="p">}</span>
+    <span class="k">defer</span> <span class="nx">rows</span><span class="p">.</span><span class="nf">Close</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="kd">var</span> <span class="nx">permissions</span> <span class="nx">Permissions</span>
+
+    <span class="k">for</span> <span class="nx">rows</span><span class="p">.</span><span class="nf">Next</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="kd">var</span> <span class="nx">permission</span> <span class="kt">string</span>
+
+        <span class="nx">err</span> <span class="o">:=</span> <span class="nx">rows</span><span class="p">.</span><span class="nf">Scan</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">permission</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">err</span>
+        <span class="p">}</span>
+
+        <span class="nx">permissions</span> <span class="p">=</span> <span class="nb">append</span><span class="p">(</span><span class="nx">permissions</span><span class="p">,</span> <span class="nx">permission</span><span class="p">)</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="p">=</span> <span class="nx">rows</span><span class="p">.</span><span class="nf">Err</span><span class="p">(</span><span class="p">)</span><span class="p">;</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">err</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="nx">permissions</span><span class="p">,</span> <span class="kc">nil</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Then the last thing we need to do is add the <code>PermissionModel</code> to our parent <code>Model</code> struct, so it&rsquo;s available to our handlers and middleware. Like so:</p>
+
+<figure class="code go">
+<figcaption>File: internal/data/models.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">data</span>
+
+<span class="o">...</span>
+
+<span class="kd">type</span> <span class="nx">Models</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">Movies</span>      <span class="nx">MovieModel</span>
+    <span class="nx">Permissions</span> <span class="nx">PermissionModel</span> <span class="c1">// Add a new Permissions field.
+</span><span class="c1"></span>    <span class="nx">Tokens</span>      <span class="nx">TokenModel</span>
+    <span class="nx">Users</span>       <span class="nx">UserModel</span>
+<span class="p">}</span>
+
+<span class="kd">func</span> <span class="nf">NewModels</span><span class="p">(</span><span class="nx">db</span> <span class="o">*</span><span class="nx">sql</span><span class="p">.</span><span class="nx">DB</span><span class="p">)</span> <span class="nx">Models</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="nx">Models</span><span class="p">{</span>
+        <span class="nx">Movies</span><span class="p">:</span>      <span class="nx">MovieModel</span><span class="p">{</span><span class="nx">DB</span><span class="p">:</span> <span class="nx">db</span><span class="p">}</span><span class="p">,</span>
+        <span class="nx">Permissions</span><span class="p">:</span> <span class="nx">PermissionModel</span><span class="p">{</span><span class="nx">DB</span><span class="p">:</span> <span class="nx">db</span><span class="p">}</span><span class="p">,</span> <span class="c1">// Initialize a new PermissionModel instance.
+</span><span class="c1"></span>        <span class="nx">Tokens</span><span class="p">:</span>      <span class="nx">TokenModel</span><span class="p">{</span><span class="nx">DB</span><span class="p">:</span> <span class="nx">db</span><span class="p">}</span><span class="p">,</span>
+        <span class="nx">Users</span><span class="p">:</span>       <span class="nx">UserModel</span><span class="p">{</span><span class="nx">DB</span><span class="p">:</span> <span class="nx">db</span><span class="p">}</span><span class="p">,</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre>
+</figure>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="16.02-setting-up-the-permissions-database-table.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="16.04-checking-permissions.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "16.02-setting-up-the-permissions-database-table.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "16.04-checking-permissions.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

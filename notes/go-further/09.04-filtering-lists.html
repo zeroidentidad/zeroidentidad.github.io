@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Filtering lists &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="09.00-filtering-sorting-and-pagination.html">Filtering, sorting, and pagination</a> &rsaquo; Filtering lists</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="09.03-listing-data.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="09.05-full-text-search.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 9.4.</div>
+			<h2 id="filtering-lists">Filtering lists</h2>
+
+<p>In this chapter we&rsquo;re going to start putting our query string parameters to use, so that clients can search for movies with a specific title or genres.</p>
+
+<p>Specifically, we&rsquo;ll build a <a href="https://ux.stackexchange.com/questions/88993/inclusive-additive-vs-exclusive-reductive-filtering-how-to-differentiate">reductive filter</a> which allows clients to search based on a case-insensitive exact match for movie title and/or one or more movie genres. For example:</p>
+
+<figure class="code js">
+<pre><span class="c1">// List all movies.
+</span><span class="c1"></span><span class="err">/</span><span class="err">v</span><span class="err">1</span><span class="err">/</span><span class="err">m</span><span class="err">o</span><span class="err">v</span><span class="err">i</span><span class="err">e</span><span class="err">s</span>
+
+<span class="c1">// List movies where the title is a case-insensitive exact match for &#39;black panther&#39;.
+</span><span class="c1"></span><span class="err">/</span><span class="err">v</span><span class="err">1</span><span class="err">/</span><span class="err">m</span><span class="err">o</span><span class="err">v</span><span class="err">i</span><span class="err">e</span><span class="err">s</span><span class="err">?</span><span class="err">t</span><span class="err">i</span><span class="err">t</span><span class="err">l</span><span class="err">e</span><span class="err">=</span><span class="err">b</span><span class="err">l</span><span class="err">a</span><span class="err">c</span><span class="err">k</span><span class="err">+</span><span class="err">p</span><span class="err">a</span><span class="err">n</span><span class="err">t</span><span class="err">h</span><span class="err">e</span><span class="err">r</span>
+
+<span class="c1">// List movies where the genres include &#39;adventure&#39;.
+</span><span class="c1"></span><span class="err">/</span><span class="err">v</span><span class="err">1</span><span class="err">/</span><span class="err">m</span><span class="err">o</span><span class="err">v</span><span class="err">i</span><span class="err">e</span><span class="err">s</span><span class="err">?</span><span class="err">g</span><span class="err">e</span><span class="err">n</span><span class="err">r</span><span class="err">e</span><span class="err">s</span><span class="err">=</span><span class="err">a</span><span class="err">d</span><span class="err">v</span><span class="err">e</span><span class="err">n</span><span class="err">t</span><span class="err">u</span><span class="err">r</span><span class="err">e</span>
+
+<span class="c1">// List movies where the title is a case-insensitive exact match for &#39;moana&#39; AND the 
+</span><span class="c1"></span><span class="c1">// genres include both &#39;animation&#39; AND &#39;adventure&#39;.
+</span><span class="c1"></span><span class="err">/</span><span class="err">v</span><span class="err">1</span><span class="err">/</span><span class="err">m</span><span class="err">o</span><span class="err">v</span><span class="err">i</span><span class="err">e</span><span class="err">s</span><span class="err">?</span><span class="err">t</span><span class="err">i</span><span class="err">t</span><span class="err">l</span><span class="err">e</span><span class="err">=</span><span class="err">m</span><span class="err">o</span><span class="err">a</span><span class="err">n</span><span class="err">a</span><span class="err">&amp;</span><span class="err">g</span><span class="err">e</span><span class="err">n</span><span class="err">r</span><span class="err">e</span><span class="err">s</span><span class="err">=</span><span class="err">a</span><span class="err">n</span><span class="err">i</span><span class="err">m</span><span class="err">a</span><span class="err">t</span><span class="err">i</span><span class="err">o</span><span class="err">n</span><span class="err">,</span><span class="err">a</span><span class="err">d</span><span class="err">v</span><span class="err">e</span><span class="err">n</span><span class="err">t</span><span class="err">u</span><span class="err">r</span><span class="err">e</span></pre>
+</figure>
+
+<aside class="hint"><p>
+<strong>Note:</strong> The <code>+</code> symbol in the query strings above is a URL-encoded space character. Alternatively you could use <code>%20</code> instead&hellip; either will work in the context of a query string.
+</p></aside>
+
+<h3 id="dynamic-filtering-in-the-sql-query">Dynamic filtering in the SQL query</h3>
+
+<p>The hardest part of building a dynamic filtering feature like this is the SQL query to retrieve the data &mdash; we need it to work with no filters, filters on both <code>title</code> and <code>genres</code>, or a filter on only one of them.</p>
+
+<p>To deal with this, one option is to build up the SQL query dynamically at runtime&hellip; with the necessary SQL for each filter concatenated or interpolated into the <code>WHERE</code> clause. But this approach can make your code messy and difficult to understand, especially for large queries which need to support lots of filter options.</p>
+
+<p>In this book we&rsquo;ll opt for a different technique and use a fixed SQL query which looks like this:</p>
+
+<figure class="code plain">
+<pre>SELECT id, created_at, title, year, runtime, genres, version
+FROM movies
+WHERE (LOWER(title) = LOWER($1) OR $1 = &#39;&#39;) 
+AND (genres @&gt; $2 OR $2 = &#39;{}&#39;) 
+ORDER BY id</pre>
+</figure>
+
+<p>This SQL query is designed so that each of the filters behaves like it is &lsquo;optional&rsquo;. For example, the condition <code>(LOWER(title) = LOWER($1) OR $1 = '')</code> will evaluate as <code>true</code> if the placeholder parameter <code>$1</code> is a case-insensitive match for the movie title <em>or</em> the placeholder parameter equals <code>''</code>. So this filter condition will essentially be &lsquo;skipped&rsquo; when the movie title being searched for is the empty string <code>&quot;&quot;</code>.</p>
+
+<p>The <code>(genres @&gt; $2 OR $2 = '{}')</code> condition works in the same way. The <code>@&gt;</code> symbol is the &lsquo;contains&rsquo; operator for PostgreSQL arrays, and this condition will return <code>true</code> if each value in the placeholder parameter <code>$2</code> appears in the database <code>genres</code> field <em>or</em> the placeholder parameter contains an empty array.</p>
+
+<p>You&rsquo;ll remember that earlier in the book we set up our <code>listMoviesHandler</code> so that the empty string <code>&quot;&quot;</code> and an empty slice are used as the default values for the <code>title</code> and <code>genres</code> filter parameters:</p>
+
+<figure class="code go">
+<pre><span class="nx">input</span><span class="p">.</span><span class="nx">Title</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readString</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;title&#34;</span><span class="p">,</span> <span class="s">&#34;&#34;</span><span class="p">)</span>
+<span class="nx">input</span><span class="p">.</span><span class="nx">Genres</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readCSV</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;genres&#34;</span><span class="p">,</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span><span class="p">{</span><span class="p">}</span><span class="p">)</span></pre>
+</figure>
+
+<p>So, putting this all together, it means that if a client doesn&rsquo;t provide a <code>title</code> parameter in their query string, then the value for the <code>$1</code> placeholder will be the empty string <code>&quot;&quot;</code>, and the filter condition in the SQL query will evaluate to <code>true</code> and act like it has been &lsquo;skipped&rsquo;. Likewise with the <code>genres</code> parameter.</p>
+
+<aside class="hint"><p>
+<strong>Note:</strong> PostgreSQL also provides a range of other useful array operators and functions, including the <code>&amp;&amp;</code> &lsquo;overlap&rsquo; operator, the <code>&lt;@</code> &lsquo;contained by&rsquo; operator, and the <code>array_length()</code> function. A complete list <a href="https://www.postgresql.org/docs/current/functions-array.html">can be found here</a>.
+</p></aside>
+
+<p>Alright, let&rsquo;s head back to our <code>internal/data/movies.go</code> file, and update the <code>GetAll()</code> method to use this new query. Like so:</p>
+
+<figure class="code go">
+<figcaption>File: internal/data/movies.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">data</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="nx">MovieModel</span><span class="p">)</span> <span class="nf">GetAll</span><span class="p">(</span><span class="nx">title</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">genres</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span><span class="p">,</span> <span class="nx">filters</span> <span class="nx">Filters</span><span class="p">)</span> <span class="p">(</span><span class="p">[</span><span class="p">]</span><span class="o">*</span><span class="nx">Movie</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Update the SQL query to include the filter conditions.
+</span><span class="c1"></span>    <span class="nx">query</span> <span class="o">:=</span> <span class="s">`</span><span class="s">
+</span><span class="s">        SELECT id, created_at, title, year, runtime, genres, version
+</span><span class="s">        FROM movies
+</span><span class="s">        WHERE (LOWER(title) = LOWER($1) OR $1 = &#39;&#39;) 
+</span><span class="s">        AND (genres @&gt; $2 OR $2 = &#39;</span><span class="s">{</span><span class="s">}&#39;)     
+</span><span class="s">        ORDER BY id</span><span class="s">`</span>
+
+    <span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="mi">3</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">)</span>
+    <span class="k">defer</span> <span class="nf">cancel</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="c1">// Pass the title and genres as the placeholder parameter values.
+</span><span class="c1"></span>    <span class="nx">rows</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">m</span><span class="p">.</span><span class="nx">DB</span><span class="p">.</span><span class="nf">QueryContext</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">query</span><span class="p">,</span> <span class="nx">title</span><span class="p">,</span> <span class="nx">pq</span><span class="p">.</span><span class="nf">Array</span><span class="p">(</span><span class="nx">genres</span><span class="p">)</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">err</span>
+    <span class="p">}</span>
+
+    <span class="k">defer</span> <span class="nx">rows</span><span class="p">.</span><span class="nf">Close</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">movies</span> <span class="o">:=</span> <span class="p">[</span><span class="p">]</span><span class="o">*</span><span class="nx">Movie</span><span class="p">{</span><span class="p">}</span>
+
+    <span class="k">for</span> <span class="nx">rows</span><span class="p">.</span><span class="nf">Next</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="kd">var</span> <span class="nx">movie</span> <span class="nx">Movie</span>
+
+        <span class="nx">err</span> <span class="o">:=</span> <span class="nx">rows</span><span class="p">.</span><span class="nf">Scan</span><span class="p">(</span>
+            <span class="o">&amp;</span><span class="nx">movie</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span>
+            <span class="o">&amp;</span><span class="nx">movie</span><span class="p">.</span><span class="nx">CreatedAt</span><span class="p">,</span>
+            <span class="o">&amp;</span><span class="nx">movie</span><span class="p">.</span><span class="nx">Title</span><span class="p">,</span>
+            <span class="o">&amp;</span><span class="nx">movie</span><span class="p">.</span><span class="nx">Year</span><span class="p">,</span>
+            <span class="o">&amp;</span><span class="nx">movie</span><span class="p">.</span><span class="nx">Runtime</span><span class="p">,</span>
+            <span class="nx">pq</span><span class="p">.</span><span class="nf">Array</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">movie</span><span class="p">.</span><span class="nx">Genres</span><span class="p">)</span><span class="p">,</span>
+            <span class="o">&amp;</span><span class="nx">movie</span><span class="p">.</span><span class="nx">Version</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">err</span>
+        <span class="p">}</span>
+
+        <span class="nx">movies</span> <span class="p">=</span> <span class="nb">append</span><span class="p">(</span><span class="nx">movies</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">movie</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="k">if</span> <span class="nx">err</span> <span class="p">=</span> <span class="nx">rows</span><span class="p">.</span><span class="nf">Err</span><span class="p">(</span><span class="p">)</span><span class="p">;</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">err</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="nx">movies</span><span class="p">,</span> <span class="kc">nil</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Now let&rsquo;s restart the application and try this out, using the examples that we gave at the start of the chapter. If you&rsquo;ve been following along, the responses should look similar to this:</p>
+
+<figure class="code bash">
+<pre>$ curl &#34;localhost:4000/v1/movies?title=black+panther&#34;
+<samp>{
+    &#34;movies&#34;: [
+        {
+            &#34;id&#34;: 2,
+            &#34;title&#34;: &#34;Black Panther&#34;,
+            &#34;year&#34;: 2018,
+            &#34;runtime&#34;: &#34;134 mins&#34;,
+            &#34;genres&#34;: [
+                &#34;sci-fi&#34;,
+                &#34;action&#34;,
+                &#34;adventure&#34;
+            ],
+            &#34;version&#34;: 2
+        }
+    ]
+}</samp></pre>
+</figure>
+
+<figure class="code bash">
+<pre>$ curl &#34;localhost:4000/v1/movies?genres=adventure&#34;
+<samp>{
+    &#34;movies&#34;: [
+        {
+            &#34;id&#34;: 1,
+            &#34;title&#34;: &#34;Moana&#34;,
+            &#34;year&#34;: 2015,
+            &#34;runtime&#34;: &#34;107 mins&#34;,
+            &#34;genres&#34;: [
+                &#34;animation&#34;,
+                &#34;adventure&#34;
+            ],
+            &#34;version&#34;: 1
+        },
+        {
+            &#34;id&#34;: 2,
+            &#34;title&#34;: &#34;Black Panther&#34;,
+            &#34;year&#34;: 2018,
+            &#34;runtime&#34;: &#34;134 mins&#34;,
+            &#34;genres&#34;: [
+                &#34;sci-fi&#34;,
+                &#34;action&#34;,
+                &#34;adventure&#34;
+            ],
+            &#34;version&#34;: 2
+        }
+    ]
+}</samp></pre>
+</figure>
+
+<figure class="code bash">
+<pre>$ curl &#34;localhost:4000/v1/movies?title=moana&amp;genres=animation,adventure&#34;
+<samp>{
+    &#34;movies&#34;: [
+        {
+            &#34;id&#34;: 1,
+            &#34;title&#34;: &#34;Moana&#34;,
+            &#34;year&#34;: 2016,
+            &#34;runtime&#34;: &#34;107 mins&#34;,
+            &#34;genres&#34;: [
+                &#34;animation&#34;,
+                &#34;adventure&#34;
+            ],
+            &#34;version&#34;: 1
+        }
+    ]
+}</samp></pre>
+</figure>
+
+<p>You can also try making a request with a filter that doesn&rsquo;t match any records. In this case, you should get an empty JSON array in the response like so:</p>
+
+<figure class="code bash">
+<pre>$ curl &#34;localhost:4000/v1/movies?genres=western&#34;
+<samp>{
+    &#34;movies&#34;: []
+}</samp></pre>
+</figure>
+
+<p>This is shaping up nicely. Our API endpoint is now returning the appropriately filtered movie records, and we have a pattern that we can easily extend to include other filtering rules in the future (such as a filter on the movie year or runtime) if we want to.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="09.03-listing-data.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="09.05-full-text-search.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "09.03-listing-data.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "09.05-full-text-search.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

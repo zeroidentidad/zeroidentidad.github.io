@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Authentication with JSON Web Tokens &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="21.00-appendices.html">Appendices</a> &rsaquo; Authentication with JSON Web Tokens</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="21.02-creating-additional-activation-tokens.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="21.04-json-encoding-nuances.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 21.3.</div>
+			<h2 id="authentication-with-json-web-tokens">Authentication with JSON Web Tokens</h2>
+
+<p>In this appendix we&rsquo;re going to switch the authentication process for our API to use JSON Web Tokens (JWTs).</p>
+
+<aside class="important">
+<p><strong>Important:</strong> Using JWTs for this particular application doesn't have any benefits over our current ‘stateful token’ approach. The JWT approach is more complex, ultimately requires the same number of database lookups, and we lose the ability to revoke tokens. For those reasons, it doesn't make much sense to use them here. But I still want to explain the pattern for two reasons:</p>
+<ul>
+<li>JWTs have a lot of mind-share, and as a developer it’s likely that you will run into existing codebases that use them for authentication, or that outside influences mean you are forced to use them.</li>
+<li>It’s worth understanding how they work in case you need to implement APIs that require <em>delegated authentication</em>, which <em>is</em> a scenario that they’re useful in.</li>
+</ul>
+</aside>
+
+<aside class="hint"><p>
+<strong>Note:</strong> If you&rsquo;re completely new to JWTs, I recommend reading the <a href="https://jwt.io/introduction">Introduction to JSON Web Tokens</a> article as a starting point.
+</p></aside>
+
+<p>As we briefly explained earlier in the book, JWTs are a type of <em>stateless token</em>. They contain a set of <em>claims</em> which are signed (using either a symmetric or asymmetric signing algorithm) and then encoded using base64. In our case, we&rsquo;ll use JWTs to carry a <em>subject</em> claim containing the ID of an authenticated user.</p>
+
+<p>There are a few different packages available which make working with JWTs relatively simple in Go. In most cases the <a href="https://github.com/pascaldekloe/jwt"><code>pascaldekloe/jwt</code></a> package is a good choice &mdash; it has a clear and simple API, and is designed to avoid a couple of the major JWT security vulnerabilities by default.</p>
+
+<p>If you want to follow along, please install it like so:</p>
+
+<figure class="code bash">
+<pre>$ go get github.com/pascaldekloe/jwt@v1</pre>
+</figure>
+
+<p>One of the first things that you need to consider when using JWTs is the choice of signing algorithm.</p>
+
+<p>If your JWT is going to be consumed by a <em>different</em> application to the one that created it, you should normally use an asymmetric-key algorithm like ECDSA or RSA. The &lsquo;creating&rsquo; application uses its private key to sign the JWT, and the &lsquo;consuming&rsquo; application uses the corresponding public key to verify the signature.</p>
+
+<p>Whereas if your JWT is going to be <em>consumed by the same application that created it</em>, then the appropriate choice is a (simpler and faster) symmetric-key algorithm like HMAC-SHA256 with a random secret key. This is what we&rsquo;ll use for our API.</p>
+
+<p>So, to get authentication with JWTs working, you&rsquo;ll first need to add a secret key for signing the JWTs to your <code>.envrc</code> file. For example:</p>
+
+<figure class="code plain">
+<figcaption>File: .envrc</figcaption>
+<pre>export GREENLIGHT_DB_DSN=postgres://greenlight:pa55word@localhost/greenlight
+export JWT_SECRET=pei3einoh0Beem6uM6Ungohn2heiv5lah1ael4joopie5JaigeikoozaoTew2Eh6</pre>
+</figure>
+
+<aside class="hint"><p>
+<strong>Note:</strong> Your secret key should be a cryptographically secure random string with an underlying entropy of at least 32 bytes (256 bits).
+</p></aside>
+
+<p>And then you&rsquo;ll need to update your <code>Makefile</code> to pass in the secret key as a command-line flag when starting the application, like so:</p>
+
+<figure class="code shell">
+<figcaption>File: Makefile</figcaption>
+<pre>...
+
+<span class="c1"># ==================================================================================== #</span>
+<span class="c1"># DEVELOPMENT</span>
+<span class="c1"># ==================================================================================== #</span>
+
+<span class="c1">## run/api: run the cmd/api application</span>
+.PHONY: run/api
+run/api:
+	@go run ./cmd/api -db-dsn<span class="o">=</span><span class="si">${</span><span class="nv">GREENLIGHT_DB_DSN</span><span class="si">}</span> -jwt-secret<span class="o">=</span><span class="si">${</span><span class="nv">JWT_SECRET</span><span class="si">}</span>
+
+...</pre>
+</figure>
+
+<p>Next you&rsquo;ll need to edit the <code>cmd/api/main.go</code> file so that it parses the JWT secret from the command-line flag into the <code>config</code> struct:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/main.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">type</span> <span class="nx">config</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">port</span> <span class="kt">int</span>
+    <span class="nx">env</span>  <span class="kt">string</span>
+    <span class="nx">db</span>   <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">dsn</span>          <span class="kt">string</span>
+        <span class="nx">maxOpenConns</span> <span class="kt">int</span>
+        <span class="nx">maxIdleConns</span> <span class="kt">int</span>
+        <span class="nx">maxIdleTime</span>  <span class="nx">time</span><span class="p">.</span><span class="nx">Duration</span>
+    <span class="p">}</span>
+    <span class="nx">limiter</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">enabled</span> <span class="kt">bool</span>
+        <span class="nx">rps</span>     <span class="kt">float64</span>
+        <span class="nx">burst</span>   <span class="kt">int</span>
+    <span class="p">}</span>
+    <span class="nx">smtp</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">host</span>     <span class="kt">string</span>
+        <span class="nx">port</span>     <span class="kt">int</span>
+        <span class="nx">username</span> <span class="kt">string</span>
+        <span class="nx">password</span> <span class="kt">string</span>
+        <span class="nx">sender</span>   <span class="kt">string</span>
+    <span class="p">}</span>
+    <span class="nx">cors</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">trustedOrigins</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span>
+    <span class="p">}</span>
+    <span class="nx">jwt</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">secret</span> <span class="kt">string</span> <span class="c1">// Add a new field to store the JWT signing secret.
+</span><span class="c1"></span>    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="nf">main</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">cfg</span> <span class="nx">config</span>
+
+    <span class="o">...</span>
+
+    <span class="c1">// Parse the JWT signing secret from the command-line flag. Notice that we leave the
+</span><span class="c1"></span>    <span class="c1">// default value as the empty string if no flag is provided.
+</span><span class="c1"></span>    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">jwt</span><span class="p">.</span><span class="nx">secret</span><span class="p">,</span> <span class="s">&#34;jwt-secret&#34;</span><span class="p">,</span> <span class="s">&#34;&#34;</span><span class="p">,</span> <span class="s">&#34;JWT secret&#34;</span><span class="p">)</span>
+
+    <span class="nx">displayVersion</span> <span class="o">:=</span> <span class="nx">flag</span><span class="p">.</span><span class="nf">Bool</span><span class="p">(</span><span class="s">&#34;version&#34;</span><span class="p">,</span> <span class="kc">false</span><span class="p">,</span> <span class="s">&#34;Display version and exit&#34;</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">Parse</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="o">...</span>
+<span class="p">}</span>
+
+<span class="o">...</span></pre>
+</figure>
+
+<p>And once that&rsquo;s done, you can change the <code>createAuthenticationTokenHandler()</code> so that it generates and sends a JWT instead of a stateful token. Like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/tokens.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;errors&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+    <span class="s">&#34;strconv&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;time&#34;</span>
+
+    <span class="s">&#34;greenlight.alexedwards.net/internal/data&#34;</span>
+    <span class="s">&#34;greenlight.alexedwards.net/internal/validator&#34;</span>
+
+    <span class="s">&#34;github.com/pascaldekloe/jwt&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span><span class="p">)</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">createAuthenticationTokenHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">input</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">Email</span>    <span class="kt">string</span> <span class="s">`</span><span class="s">json:&#34;email&#34;</span><span class="s">`</span>
+        <span class="nx">Password</span> <span class="kt">string</span> <span class="s">`</span><span class="s">json:&#34;password&#34;</span><span class="s">`</span>
+    <span class="p">}</span>
+
+    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">input</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">badRequestResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="nx">v</span> <span class="o">:=</span> <span class="nx">validator</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">data</span><span class="p">.</span><span class="nf">ValidateEmail</span><span class="p">(</span><span class="nx">v</span><span class="p">,</span> <span class="nx">input</span><span class="p">.</span><span class="nx">Email</span><span class="p">)</span>
+    <span class="nx">data</span><span class="p">.</span><span class="nf">ValidatePasswordPlaintext</span><span class="p">(</span><span class="nx">v</span><span class="p">,</span> <span class="nx">input</span><span class="p">.</span><span class="nx">Password</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="p">!</span><span class="nx">v</span><span class="p">.</span><span class="nf">Valid</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">failedValidationResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nx">Errors</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="nx">user</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Users</span><span class="p">.</span><span class="nf">GetByEmail</span><span class="p">(</span><span class="nx">input</span><span class="p">.</span><span class="nx">Email</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">switch</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">data</span><span class="p">.</span><span class="nx">ErrRecordNotFound</span><span class="p">)</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">invalidCredentialsResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+        <span class="k">default</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="p">}</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="nx">match</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">user</span><span class="p">.</span><span class="nx">Password</span><span class="p">.</span><span class="nf">Matches</span><span class="p">(</span><span class="nx">input</span><span class="p">.</span><span class="nx">Password</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="k">if</span> <span class="p">!</span><span class="nx">match</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">invalidCredentialsResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Create a JWT claims struct containing the user ID as the subject, with an issued
+</span><span class="c1"></span>    <span class="c1">// time of now and validity window of the next 24 hours. We also set the issuer and
+</span><span class="c1"></span>    <span class="c1">// audience to a unique identifier for our application.
+</span><span class="c1"></span>    <span class="kd">var</span> <span class="nx">claims</span> <span class="nx">jwt</span><span class="p">.</span><span class="nx">Claims</span>
+    <span class="nx">claims</span><span class="p">.</span><span class="nx">Subject</span> <span class="p">=</span> <span class="nx">strconv</span><span class="p">.</span><span class="nf">FormatInt</span><span class="p">(</span><span class="nx">user</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span> <span class="mi">10</span><span class="p">)</span>
+    <span class="nx">claims</span><span class="p">.</span><span class="nx">Issued</span> <span class="p">=</span> <span class="nx">jwt</span><span class="p">.</span><span class="nf">NewNumericTime</span><span class="p">(</span><span class="nx">time</span><span class="p">.</span><span class="nf">Now</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">claims</span><span class="p">.</span><span class="nx">NotBefore</span> <span class="p">=</span> <span class="nx">jwt</span><span class="p">.</span><span class="nf">NewNumericTime</span><span class="p">(</span><span class="nx">time</span><span class="p">.</span><span class="nf">Now</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">claims</span><span class="p">.</span><span class="nx">Expires</span> <span class="p">=</span> <span class="nx">jwt</span><span class="p">.</span><span class="nf">NewNumericTime</span><span class="p">(</span><span class="nx">time</span><span class="p">.</span><span class="nf">Now</span><span class="p">(</span><span class="p">)</span><span class="p">.</span><span class="nf">Add</span><span class="p">(</span><span class="mi">24</span> <span class="o">*</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Hour</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">claims</span><span class="p">.</span><span class="nx">Issuer</span> <span class="p">=</span> <span class="s">&#34;greenlight.alexedwards.net&#34;</span>
+    <span class="nx">claims</span><span class="p">.</span><span class="nx">Audiences</span> <span class="p">=</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span><span class="p">{</span><span class="s">&#34;greenlight.alexedwards.net&#34;</span><span class="p">}</span>
+
+    <span class="c1">// Sign the JWT claims using the HMAC-SHA256 algorithm and the secret key from the
+</span><span class="c1"></span>    <span class="c1">// application config. This returns a []byte slice containing the JWT as a base64-
+</span><span class="c1"></span>    <span class="c1">// encoded string.
+</span><span class="c1"></span>    <span class="nx">jwtBytes</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">claims</span><span class="p">.</span><span class="nf">HMACSign</span><span class="p">(</span><span class="nx">jwt</span><span class="p">.</span><span class="nx">HS256</span><span class="p">,</span> <span class="p">[</span><span class="p">]</span><span class="nb">byte</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">config</span><span class="p">.</span><span class="nx">jwt</span><span class="p">.</span><span class="nx">secret</span><span class="p">)</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Convert the []byte slice to a string and return it in a JSON response.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">writeJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusCreated</span><span class="p">,</span> <span class="nx">envelope</span><span class="p">{</span><span class="s">&#34;authentication_token&#34;</span><span class="p">:</span> <span class="nb">string</span><span class="p">(</span><span class="nx">jwtBytes</span><span class="p">)</span><span class="p">}</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="o">...</span></pre>
+</figure>
+
+<p>Go ahead and vendor the new <code>github.com/pascaldekloe/jwt</code> dependency and run the API like so:</p>
+
+<figure class="code bash">
+<pre>$ make vendor
+$ make run/api</pre>
+</figure>
+
+<p>Then when you make a request to the <code>POST /v1/tokens/authentication</code> endpoint with a valid email address and password, you should now get a response containing a JWT like this (line breaks added for readability):</p>
+
+<figure class="code bash">
+<pre>$ curl -X POST -d &#39;{&#34;email&#34;: &#34;faith@example.com&#34;, &#34;password&#34;: &#34;pa55word&#34;}&#39; localhost:4000/v1/tokens/authentication
+<samp>{
+    &#34;authentication_token&#34;: &#34;eyJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJncmVlbmxpZ2h0LmFsZXhlZHdhcm
+    RzLm5ldCIsInN1YiI6IjciLCJhdWQiOlsiZ3JlZW5saWdodC5hbGV4ZWR3YXJkcy5uZXQiXSwiZXhwIjoxNj
+    E4OTM4MjY0LjgxOTIwNSwibmJmIjoxNjE4ODUxODY0LjgxOTIwNSwiaWF0IjoxNjE4ODUxODY0LjgxOTIwND
+    h9.zNK1bJPl5rlr_YvjyOXuimJwaC3KgPqmW2M1u5RvgeA&#34;
+}</samp></pre>
+</figure>
+
+<p>If you&rsquo;re curious, you can <a href="https://www.base64decode.org/">decode the base64-encoded JWT data</a>. You should see that the content of the claims matches the information that you would expect, similar to this:</p>
+
+<figure class="code plain">
+<pre>{&#34;alg&#34;:&#34;HS256&#34;}{&#34;iss&#34;:&#34;greenlight.alexedwards.net&#34;,&#34;sub&#34;:&#34;7&#34;,&#34;aud&#34;:[&#34;greenlight.alexedwards.net&#34;],
+&#34;exp&#34;:1618938264.819205,&#34;nbf&#34;:1618851864.819205,&#34;iat&#34;:1618851864.8192048}...</pre>
+</figure>
+
+<p>Next you&rsquo;ll need to update the <code>authenticate()</code> middleware to accept JWTs in an <code>Authorization: Bearer &lt;jwt&gt;</code> header, verify the JWT, and extract the user ID from the <code>subject</code> claim.</p>
+
+<p>When we say &ldquo;verify the JWT&rdquo;, what we actually mean is the following four things:</p>
+
+<ul>
+<li>Check that the signature of the JWT matches the contents of the JWT, given our secret key. This will confirm that the token hasn&rsquo;t been altered by the client.</li>
+<li>Check that the current time is between the &ldquo;not before&rdquo; and &ldquo;expires&rdquo; times for the JWT.</li>
+<li>Check that the JWT &ldquo;issuer&rdquo; is <code>&quot;greenlight.alexedwards.net&quot;</code>.</li>
+<li>Check that <code>&quot;greenlight.alexedwards.net&quot;</code> is in the JWT &ldquo;audiences&rdquo;.</li>
+</ul>
+
+<p>Go ahead and update the <code>authenticate()</code> middleware as follows:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/middleware.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;errors&#34;</span>
+    <span class="s">&#34;expvar&#34;</span>
+    <span class="s">&#34;fmt&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+    <span class="s">&#34;strconv&#34;</span>
+    <span class="s">&#34;strings&#34;</span>
+    <span class="s">&#34;sync&#34;</span>
+    <span class="s">&#34;time&#34;</span>
+
+    <span class="s">&#34;greenlight.alexedwards.net/internal/data&#34;</span>
+
+    <span class="s">&#34;github.com/pascaldekloe/jwt&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;github.com/tomasen/realip&#34;</span>
+    <span class="s">&#34;golang.org/x/time/rate&#34;</span>
+<span class="p">)</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">authenticate</span><span class="p">(</span><span class="nx">next</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">w</span><span class="p">.</span><span class="nf">Header</span><span class="p">(</span><span class="p">)</span><span class="p">.</span><span class="nf">Add</span><span class="p">(</span><span class="s">&#34;Vary&#34;</span><span class="p">,</span> <span class="s">&#34;Authorization&#34;</span><span class="p">)</span>
+
+        <span class="nx">authorizationHeader</span> <span class="o">:=</span> <span class="nx">r</span><span class="p">.</span><span class="nx">Header</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="s">&#34;Authorization&#34;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nx">authorizationHeader</span> <span class="o">==</span> <span class="s">&#34;&#34;</span> <span class="p">{</span>
+            <span class="nx">r</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">contextSetUser</span><span class="p">(</span><span class="nx">r</span><span class="p">,</span> <span class="nx">data</span><span class="p">.</span><span class="nx">AnonymousUser</span><span class="p">)</span>
+            <span class="nx">next</span><span class="p">.</span><span class="nf">ServeHTTP</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+            <span class="k">return</span>
+        <span class="p">}</span>
+
+        <span class="nx">headerParts</span> <span class="o">:=</span> <span class="nx">strings</span><span class="p">.</span><span class="nf">Split</span><span class="p">(</span><span class="nx">authorizationHeader</span><span class="p">,</span> <span class="s">&#34; &#34;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="nx">headerParts</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">2</span> <span class="o">||</span> <span class="nx">headerParts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="s">&#34;Bearer&#34;</span> <span class="p">{</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">invalidAuthenticationTokenResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+            <span class="k">return</span>
+        <span class="p">}</span>
+
+        <span class="nx">token</span> <span class="o">:=</span> <span class="nx">headerParts</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+        <span class="c1">// Parse the JWT and extract the claims. This will return an error if the JWT 
+</span><span class="c1"></span>        <span class="c1">// content doesn&#39;t match the signature (i.e. the token has been tampered with)
+</span><span class="c1"></span>        <span class="c1">// or the algorithm isn&#39;t valid.
+</span><span class="c1"></span>        <span class="nx">claims</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">jwt</span><span class="p">.</span><span class="nf">HMACCheck</span><span class="p">(</span><span class="p">[</span><span class="p">]</span><span class="nb">byte</span><span class="p">(</span><span class="nx">token</span><span class="p">)</span><span class="p">,</span> <span class="p">[</span><span class="p">]</span><span class="nb">byte</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">config</span><span class="p">.</span><span class="nx">jwt</span><span class="p">.</span><span class="nx">secret</span><span class="p">)</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">invalidAuthenticationTokenResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+            <span class="k">return</span>
+        <span class="p">}</span>
+
+        <span class="c1">// Check if the JWT is still valid at this moment in time.
+</span><span class="c1"></span>        <span class="k">if</span> <span class="p">!</span><span class="nx">claims</span><span class="p">.</span><span class="nf">Valid</span><span class="p">(</span><span class="nx">time</span><span class="p">.</span><span class="nf">Now</span><span class="p">(</span><span class="p">)</span><span class="p">)</span> <span class="p">{</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">invalidAuthenticationTokenResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+            <span class="k">return</span>
+        <span class="p">}</span>
+
+        <span class="c1">// Check that the issuer is our application.
+</span><span class="c1"></span>        <span class="k">if</span> <span class="nx">claims</span><span class="p">.</span><span class="nx">Issuer</span> <span class="o">!=</span> <span class="s">&#34;greenlight.alexedwards.net&#34;</span> <span class="p">{</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">invalidAuthenticationTokenResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+            <span class="k">return</span>
+        <span class="p">}</span>
+
+        <span class="c1">// Check that our application is in the expected audiences for the JWT.
+</span><span class="c1"></span>        <span class="k">if</span> <span class="p">!</span><span class="nx">claims</span><span class="p">.</span><span class="nf">AcceptAudience</span><span class="p">(</span><span class="s">&#34;greenlight.alexedwards.net&#34;</span><span class="p">)</span> <span class="p">{</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">invalidAuthenticationTokenResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+            <span class="k">return</span>
+        <span class="p">}</span>
+
+        <span class="c1">// At this point, we know that the JWT is all OK and we can trust the data in 
+</span><span class="c1"></span>        <span class="c1">// it. We extract the user ID from the claims subject and convert it from a 
+</span><span class="c1"></span>        <span class="c1">// string into an int64.
+</span><span class="c1"></span>        <span class="nx">userID</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">strconv</span><span class="p">.</span><span class="nf">ParseInt</span><span class="p">(</span><span class="nx">claims</span><span class="p">.</span><span class="nx">Subject</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">64</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+            <span class="k">return</span>
+        <span class="p">}</span>
+
+        <span class="c1">// Lookup the user record from the database.
+</span><span class="c1"></span>        <span class="nx">user</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Users</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">userID</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+            <span class="k">switch</span> <span class="p">{</span>
+            <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">data</span><span class="p">.</span><span class="nx">ErrRecordNotFound</span><span class="p">)</span><span class="p">:</span>
+                <span class="nx">app</span><span class="p">.</span><span class="nf">invalidAuthenticationTokenResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+            <span class="k">default</span><span class="p">:</span>
+                <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+            <span class="p">}</span>
+            <span class="k">return</span>
+        <span class="p">}</span>
+
+        <span class="c1">// Add the user record to the request context and continue as normal.
+</span><span class="c1"></span>        <span class="nx">r</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">contextSetUser</span><span class="p">(</span><span class="nx">r</span><span class="p">,</span> <span class="nx">user</span><span class="p">)</span>
+
+        <span class="nx">next</span><span class="p">.</span><span class="nf">ServeHTTP</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+    <span class="p">}</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Lastly, to get this working, you&rsquo;ll need to create a new <code>UserModel.Get()</code> method to retrieve the user details from the database based on their ID.</p>
+
+<figure class="code go">
+<figcaption>File: internal/data/users.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">data</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="nx">UserModel</span><span class="p">)</span> <span class="nf">Get</span><span class="p">(</span><span class="nx">id</span> <span class="kt">int64</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">User</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">query</span> <span class="o">:=</span> <span class="s">`</span><span class="s">
+</span><span class="s">        SELECT id, created_at, name, email, password_hash, activated, version
+</span><span class="s">        FROM users
+</span><span class="s">        WHERE id = $1</span><span class="s">`</span>
+
+    <span class="kd">var</span> <span class="nx">user</span> <span class="nx">User</span>
+
+    <span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="mi">3</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">)</span>
+    <span class="k">defer</span> <span class="nf">cancel</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">m</span><span class="p">.</span><span class="nx">DB</span><span class="p">.</span><span class="nf">QueryRowContext</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">query</span><span class="p">,</span> <span class="nx">id</span><span class="p">)</span><span class="p">.</span><span class="nf">Scan</span><span class="p">(</span>
+        <span class="o">&amp;</span><span class="nx">user</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span>
+        <span class="o">&amp;</span><span class="nx">user</span><span class="p">.</span><span class="nx">CreatedAt</span><span class="p">,</span>
+        <span class="o">&amp;</span><span class="nx">user</span><span class="p">.</span><span class="nx">Name</span><span class="p">,</span>
+        <span class="o">&amp;</span><span class="nx">user</span><span class="p">.</span><span class="nx">Email</span><span class="p">,</span>
+        <span class="o">&amp;</span><span class="nx">user</span><span class="p">.</span><span class="nx">Password</span><span class="p">.</span><span class="nx">hash</span><span class="p">,</span>
+        <span class="o">&amp;</span><span class="nx">user</span><span class="p">.</span><span class="nx">Activated</span><span class="p">,</span>
+        <span class="o">&amp;</span><span class="nx">user</span><span class="p">.</span><span class="nx">Version</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">switch</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">sql</span><span class="p">.</span><span class="nx">ErrNoRows</span><span class="p">)</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">ErrRecordNotFound</span>
+        <span class="k">default</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">err</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="o">&amp;</span><span class="nx">user</span><span class="p">,</span> <span class="kc">nil</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>You should now be able to make a request to one of the protected endpoints, and it will only succeed if your request contains a valid JWT in the <code>Authorization</code> header. For example:</p>
+
+<figure class="code bash">
+<pre>$ curl -H &#34;Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJncmVlbmxpZ...&#34; localhost:4000/v1/movies/2
+<samp>{
+    &#34;movie&#34;: {
+        &#34;id&#34;: 2,
+        &#34;title&#34;: &#34;Black Panther&#34;,
+        &#34;year&#34;: 2018,
+        &#34;runtime&#34;: &#34;134 mins&#34;,
+        &#34;genres&#34;: [
+            &#34;sci-fi&#34;,
+            &#34;action&#34;,
+            &#34;adventure&#34;
+        ],
+        &#34;version&#34;: 2
+    }
+}</samp>
+
+$ curl -H &#34;Authorization: Bearer INVALID&#34; localhost:4000/v1/movies/2
+<samp>{
+    &#34;error&#34;: &#34;invalid or missing authentication token&#34;
+}</samp></pre>
+</figure>
+
+<aside class="hint"><p>
+<strong>Note:</strong> Because JWTs are base64 encoded, you may be able to change the final character in the JWT and it will still be accepted as valid. This is OK, and a detailed explanation of why can be found in <a href="https://stackoverflow.com/questions/58492009/jwt-token-decoding-even-when-the-last-character-of-the-signature-is-changed">this StackOverflow post</a> and this <a href="https://github.com/jwtk/jjwt/issues/269">GitHub issue</a>.
+</p></aside>
+
+<p>If you&rsquo;re planning to put a system into production which uses JWTs, I also recommend spending some time to read and fully understand the following two articles:</p>
+
+<ul>
+<li><a href="https://curity.io/resources/learn/jwt-best-practices/">JWT Security Best Practices</a></li>
+<li><a href="https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/">Critical vulnerabilities in JSON Web Token libraries</a></li>
+</ul>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="21.02-creating-additional-activation-tokens.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="21.04-json-encoding-nuances.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "21.02-creating-additional-activation-tokens.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "21.04-json-encoding-nuances.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

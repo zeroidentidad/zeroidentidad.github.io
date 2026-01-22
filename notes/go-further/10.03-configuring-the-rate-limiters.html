@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Configuring the rate limiters &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="10.00-rate-limiting.html">Rate limiting</a> &rsaquo; Configuring the rate limiters</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="10.02-ip-based-rate-limiting.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="11.00-graceful-shutdown.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 10.3.</div>
+			<h2 id="configuring-the-rate-limiters">Configuring the rate limiters</h2>
+
+<p>At the moment our requests-per-second and burst values are hard-coded into the <code>rateLimit()</code> middleware. This is OK, but it would be more flexible if they were configurable at runtime instead. Likewise, it would be useful to have an easy way to turn off rate limiting altogether (for example, you might want to disable it when running benchmarks or carrying out load testing, and all requests are coming a small number of IP addresses).</p>
+
+<p>To make these things configurable, let&rsquo;s head back to our <code>cmd/api/main.go</code> file and update the <code>config</code> struct and command-line flags like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/main.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">type</span> <span class="nx">config</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">port</span> <span class="kt">int</span>
+    <span class="nx">env</span>  <span class="kt">string</span>
+    <span class="nx">db</span>   <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">dsn</span>          <span class="kt">string</span>
+        <span class="nx">maxOpenConns</span> <span class="kt">int</span>
+        <span class="nx">maxIdleConns</span> <span class="kt">int</span>
+        <span class="nx">maxIdleTime</span>  <span class="nx">time</span><span class="p">.</span><span class="nx">Duration</span>
+    <span class="p">}</span>
+    <span class="c1">// Add a new limiter struct containing fields for the requests-per-second and burst
+</span><span class="c1"></span>    <span class="c1">// values, and a boolean field which we can use to enable/disable rate limiting
+</span><span class="c1"></span>    <span class="c1">// altogether.
+</span><span class="c1"></span>    <span class="nx">limiter</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">rps</span>     <span class="kt">float64</span>
+        <span class="nx">burst</span>   <span class="kt">int</span>
+        <span class="nx">enabled</span> <span class="kt">bool</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="nf">main</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">cfg</span> <span class="nx">config</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">port</span><span class="p">,</span> <span class="s">&#34;port&#34;</span><span class="p">,</span> <span class="mi">4000</span><span class="p">,</span> <span class="s">&#34;API server port&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">env</span><span class="p">,</span> <span class="s">&#34;env&#34;</span><span class="p">,</span> <span class="s">&#34;development&#34;</span><span class="p">,</span> <span class="s">&#34;Environment (development|staging|production)&#34;</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">dsn</span><span class="p">,</span> <span class="s">&#34;db-dsn&#34;</span><span class="p">,</span> <span class="nx">os</span><span class="p">.</span><span class="nf">Getenv</span><span class="p">(</span><span class="s">&#34;GREENLIGHT_DB_DSN&#34;</span><span class="p">)</span><span class="p">,</span> <span class="s">&#34;PostgreSQL DSN&#34;</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">maxOpenConns</span><span class="p">,</span> <span class="s">&#34;db-max-open-conns&#34;</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="s">&#34;PostgreSQL max open connections&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">maxIdleConns</span><span class="p">,</span> <span class="s">&#34;db-max-idle-conns&#34;</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="s">&#34;PostgreSQL max idle connections&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">DurationVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">maxIdleTime</span><span class="p">,</span> <span class="s">&#34;db-max-idle-time&#34;</span><span class="p">,</span> <span class="mi">15</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Minute</span><span class="p">,</span> <span class="s">&#34;PostgreSQL max connection idle time&#34;</span><span class="p">)</span>
+
+    <span class="c1">// Create command-line flags to read the settings values into the config struct. 
+</span><span class="c1"></span>    <span class="c1">// Notice that we use true as the default for the &#39;enabled&#39; setting.
+</span><span class="c1"></span>    <span class="nx">flag</span><span class="p">.</span><span class="nf">Float64Var</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">limiter</span><span class="p">.</span><span class="nx">rps</span><span class="p">,</span> <span class="s">&#34;limiter-rps&#34;</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="s">&#34;Rate limiter maximum requests per second&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">limiter</span><span class="p">.</span><span class="nx">burst</span><span class="p">,</span> <span class="s">&#34;limiter-burst&#34;</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="s">&#34;Rate limiter maximum burst&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">BoolVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">limiter</span><span class="p">.</span><span class="nx">enabled</span><span class="p">,</span> <span class="s">&#34;limiter-enabled&#34;</span><span class="p">,</span> <span class="kc">true</span><span class="p">,</span> <span class="s">&#34;Enable rate limiter&#34;</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">Parse</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="o">...</span>
+<span class="p">}</span>
+
+<span class="o">...</span></pre>
+</figure>
+
+<p>And then let&rsquo;s update our <code>rateLimit()</code> middleware to use these settings, like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/middleware.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">rateLimit</span><span class="p">(</span><span class="nx">next</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span> <span class="p">{</span>
+    <span class="c1">// If rate limiting is not enabled, return the next handler in the chain with
+</span><span class="c1"></span>    <span class="c1">// with no further action.
+</span><span class="c1"></span>	<span class="k">if</span> <span class="p">!</span><span class="nx">app</span><span class="p">.</span><span class="nx">config</span><span class="p">.</span><span class="nx">limiter</span><span class="p">.</span><span class="nx">enabled</span> <span class="p">{</span>
+		<span class="k">return</span> <span class="nx">next</span>
+	<span class="p">}</span>
+
+	<span class="kd">type</span> <span class="nx">client</span> <span class="kd">struct</span> <span class="p">{</span>
+		<span class="nx">limiter</span>  <span class="o">*</span><span class="nx">rate</span><span class="p">.</span><span class="nx">Limiter</span>
+		<span class="nx">lastSeen</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Time</span>
+	<span class="p">}</span>
+
+	<span class="kd">var</span> <span class="p">(</span>
+		<span class="nx">mu</span>      <span class="nx">sync</span><span class="p">.</span><span class="nx">Mutex</span>
+		<span class="nx">clients</span> <span class="p">=</span> <span class="nb">make</span><span class="p">(</span><span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="o">*</span><span class="nx">client</span><span class="p">)</span>
+	<span class="p">)</span>
+
+	<span class="k">go</span> <span class="kd">func</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+		<span class="k">for</span> <span class="p">{</span>
+			<span class="nx">time</span><span class="p">.</span><span class="nf">Sleep</span><span class="p">(</span><span class="nx">time</span><span class="p">.</span><span class="nx">Minute</span><span class="p">)</span>
+
+			<span class="nx">mu</span><span class="p">.</span><span class="nf">Lock</span><span class="p">(</span><span class="p">)</span>
+
+			<span class="k">for</span> <span class="nx">ip</span><span class="p">,</span> <span class="nx">client</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">clients</span> <span class="p">{</span>
+				<span class="k">if</span> <span class="nx">time</span><span class="p">.</span><span class="nf">Since</span><span class="p">(</span><span class="nx">client</span><span class="p">.</span><span class="nx">lastSeen</span><span class="p">)</span> <span class="p">&gt;</span> <span class="mi">3</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Minute</span> <span class="p">{</span>
+					<span class="nb">delete</span><span class="p">(</span><span class="nx">clients</span><span class="p">,</span> <span class="nx">ip</span><span class="p">)</span>
+				<span class="p">}</span>
+			<span class="p">}</span>
+
+			<span class="nx">mu</span><span class="p">.</span><span class="nf">Unlock</span><span class="p">(</span><span class="p">)</span>
+		<span class="p">}</span>
+	<span class="p">}</span><span class="p">(</span><span class="p">)</span>
+
+	<span class="k">return</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+		<span class="nx">ip</span> <span class="o">:=</span> <span class="nx">realip</span><span class="p">.</span><span class="nf">FromRequest</span><span class="p">(</span><span class="nx">r</span><span class="p">)</span>
+
+		<span class="nx">mu</span><span class="p">.</span><span class="nf">Lock</span><span class="p">(</span><span class="p">)</span>
+
+		<span class="k">if</span> <span class="nx">_</span><span class="p">,</span> <span class="nx">found</span> <span class="o">:=</span> <span class="nx">clients</span><span class="p">[</span><span class="nx">ip</span><span class="p">]</span><span class="p">;</span> <span class="p">!</span><span class="nx">found</span> <span class="p">{</span>
+			<span class="nx">clients</span><span class="p">[</span><span class="nx">ip</span><span class="p">]</span> <span class="p">=</span> <span class="o">&amp;</span><span class="nx">client</span><span class="p">{</span>
+                <span class="c1">// Use the requests-per-second and burst values from the config
+</span><span class="c1"></span>                <span class="c1">// struct.
+</span><span class="c1"></span>				<span class="nx">limiter</span><span class="p">:</span> <span class="nx">rate</span><span class="p">.</span><span class="nf">NewLimiter</span><span class="p">(</span><span class="nx">rate</span><span class="p">.</span><span class="nf">Limit</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">config</span><span class="p">.</span><span class="nx">limiter</span><span class="p">.</span><span class="nx">rps</span><span class="p">)</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">config</span><span class="p">.</span><span class="nx">limiter</span><span class="p">.</span><span class="nx">burst</span><span class="p">)</span><span class="p">,</span>
+			<span class="p">}</span>
+		<span class="p">}</span>
+
+		<span class="nx">clients</span><span class="p">[</span><span class="nx">ip</span><span class="p">]</span><span class="p">.</span><span class="nx">lastSeen</span> <span class="p">=</span> <span class="nx">time</span><span class="p">.</span><span class="nf">Now</span><span class="p">(</span><span class="p">)</span>
+
+		<span class="k">if</span> <span class="p">!</span><span class="nx">clients</span><span class="p">[</span><span class="nx">ip</span><span class="p">]</span><span class="p">.</span><span class="nx">limiter</span><span class="p">.</span><span class="nf">Allow</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+			<span class="nx">mu</span><span class="p">.</span><span class="nf">Unlock</span><span class="p">(</span><span class="p">)</span>
+			<span class="nx">app</span><span class="p">.</span><span class="nf">rateLimitExceededResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+			<span class="k">return</span>
+		<span class="p">}</span>
+
+		<span class="nx">mu</span><span class="p">.</span><span class="nf">Unlock</span><span class="p">(</span><span class="p">)</span>
+
+		<span class="nx">next</span><span class="p">.</span><span class="nf">ServeHTTP</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+	<span class="p">}</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Once that&rsquo;s done, let&rsquo;s try this out by running the API with the <code>-limiter-burst</code> flag and the burst value reduced to 2:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api/ -limiter-burst=2
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development</samp></pre>
+</figure>
+
+<p>If you issue a batch of six requests in quick succession again, you should now find that only the first two succeed:</p>
+
+<figure class="code bash">
+<pre>$ for i in {1..6}; do curl  http://localhost:4000/v1/healthcheck; done
+<samp>{
+    &#34;status&#34;: &#34;available&#34;,
+    &#34;system_info&#34;: {
+        &#34;environment&#34;: &#34;development&#34;,
+        &#34;version&#34;: &#34;1.0.0&#34;
+    }
+}
+{
+    &#34;status&#34;: &#34;available&#34;,
+    &#34;system_info&#34;: {
+        &#34;environment&#34;: &#34;development&#34;,
+        &#34;version&#34;: &#34;1.0.0&#34;
+    }
+}
+{
+    &#34;error&#34;: &#34;rate limit exceeded&#34;
+}
+{
+    &#34;error&#34;: &#34;rate limit exceeded&#34;
+}
+{
+    &#34;error&#34;: &#34;rate limit exceeded&#34;
+}
+{
+    &#34;error&#34;: &#34;rate limit exceeded&#34;
+}</samp></pre>
+</figure>
+
+<p>Similarly, you can try disabling the rate limiter altogether with the <code>-limiter-enabled=false</code> flag like so:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api/ -limiter-enabled=false
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development</samp></pre>
+</figure>
+
+<p>And you should find that all requests now complete successfully, no matter how many you make.</p>
+
+<figure class="code bash">
+<pre>$ for i in {1..6}; do curl http://localhost:4000/v1/healthcheck; done
+<samp>{
+    &#34;status&#34;: &#34;available&#34;,
+    &#34;system_info&#34;: {
+        &#34;environment&#34;: &#34;development&#34;,
+        &#34;version&#34;: &#34;1.0.0&#34;
+    }
+}
+...
+{
+    &#34;status&#34;: &#34;available&#34;,
+    &#34;system_info&#34;: {
+        &#34;environment&#34;: &#34;development&#34;,
+        &#34;version&#34;: &#34;1.0.0&#34;
+    }
+}</samp></pre>
+</figure>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="10.02-ip-based-rate-limiting.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="11.00-graceful-shutdown.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "10.02-ip-based-rate-limiting.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "11.00-graceful-shutdown.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Creating a new movie &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="07.00-crud-operations.html">CRUD operations</a> &rsaquo; Creating a new movie</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="07.01-setting-up-the-movie-model.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="07.03-fetching-a-movie.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 7.2.</div>
+			<h2 id="creating-a-new-movie">Creating a new movie</h2>
+
+<p>Let&rsquo;s begin with the <code>Insert()</code> method of our database model and update this to create a new record in our <code>movies</code> table. Specifically, we want it to execute the following SQL query:</p>
+
+<figure class="code plain">
+<pre>INSERT INTO movies (title, year, runtime, genres) 
+VALUES ($1, $2, $3, $4)
+RETURNING id, created_at, version</pre>
+</figure>
+
+<p>There are a few things about this query which warrant a bit of explanation.</p>
+
+<ul>
+<li><p>It uses <code>$N</code> notation to represent <em>placeholder parameters</em> for the data that we want to insert in the <code>movies</code> table. As we explained in <em>Let&rsquo;s Go</em>, every time that you pass untrusted input data from a client to a SQL database it&rsquo;s important to use placeholder parameters to help prevent SQL injection attacks, unless you have a very specific reason for not using them.</p></li>
+
+<li><p>We&rsquo;re only inserting values for <code>title</code>, <code>year</code>, <code>runtime</code> and <code>genres</code>. The remaining columns in the <code>movies</code> table will be filled with <em>system-generated</em> values when the record is inserted &mdash; the <code>id</code> will be an auto-incrementing integer, and the <code>created_at</code> and <code>version</code> values will default to the current time and <code>1</code> respectively.</p></li>
+
+<li><p>At the end of the query we have a <a href="https://www.postgresql.org/docs/current/dml-returning.html"><code>RETURNING</code></a> clause. This is a PostgreSQL-specific clause (it&rsquo;s not part of the SQL standard) that you can use to return values from any record that is being manipulated by an <code>INSERT</code>, <code>UPDATE</code> or <code>DELETE</code> statement. In this query we&rsquo;re using it to return the system-generated <code>id</code>, <code>created_at</code> and <code>version</code> values.</p></li>
+</ul>
+
+<h3 id="executing-the-sql-query">Executing the SQL query</h3>
+
+<p>Throughout this project we&rsquo;ll stick with using Go&rsquo;s <a href="https://golang.org/pkg/database/sql/"><code>database/sql</code></a> package to execute our database queries, rather than using a third-party <a href="https://github.com/avelino/awesome-go#orm">ORM</a> or <a href="https://github.com/avelino/awesome-go#database">other tool</a>. We talked about how to use <code>database/sql</code> and its various features, behaviors and gotchas in <em>Let&rsquo;s Go</em>, so hopefully this will feel familiar to you. Consider it a short refresher!</p>
+
+<p>Normally, you would use Go&rsquo;s <a href="https://golang.org/pkg/database/sql/#DB.Exec"><code>Exec()</code></a> method to execute an <code>INSERT</code> statement against a database table. But because our SQL query is returning a single row of data (thanks to the <code>RETURNING</code> clause), we&rsquo;ll need to use the <a href="https://golang.org/pkg/database/sql/#DB.QueryRow"><code>QueryRow()</code></a> method here instead.</p>
+
+<p>Head back to your <code>internal/data/movies.go</code> file and update it like so:</p>
+
+<figure class="code go">
+<figcaption>File: internal/data/movies.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">data</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;database/sql&#34;</span>
+    <span class="s">&#34;time&#34;</span>
+
+    <span class="s">&#34;greenlight.alexedwards.net/internal/validator&#34;</span>
+
+    <span class="s">&#34;github.com/lib/pq&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span><span class="p">)</span>
+
+<span class="o">...</span>
+
+<span class="c1">// The Insert() method accepts a pointer to a movie struct, which should contain the 
+</span><span class="c1"></span><span class="c1">// data for the new record.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="nx">MovieModel</span><span class="p">)</span> <span class="nf">Insert</span><span class="p">(</span><span class="nx">movie</span> <span class="o">*</span><span class="nx">Movie</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+    <span class="c1">// Define a SQL query which inserts a new record in the movies table, and returns
+</span><span class="c1"></span>    <span class="c1">// the system-generated data.
+</span><span class="c1"></span>    <span class="nx">query</span> <span class="o">:=</span> <span class="s">`</span><span class="s">
+</span><span class="s">        INSERT INTO movies (title, year, runtime, genres) 
+</span><span class="s">        VALUES ($1, $2, $3, $4)
+</span><span class="s">        RETURNING id, created_at, version</span><span class="s">`</span>
+
+    <span class="c1">// Create an args slice containing the values for the placeholder parameters.
+</span><span class="c1"></span>    <span class="c1">// Declaring this slice immediately next to our SQL query helps to make it nice
+</span><span class="c1"></span>    <span class="c1">// and clear *what values are being used where* in the query.
+</span><span class="c1"></span>    <span class="nx">args</span> <span class="o">:=</span> <span class="p">[</span><span class="p">]</span><span class="nx">any</span><span class="p">{</span><span class="nx">movie</span><span class="p">.</span><span class="nx">Title</span><span class="p">,</span> <span class="nx">movie</span><span class="p">.</span><span class="nx">Year</span><span class="p">,</span> <span class="nx">movie</span><span class="p">.</span><span class="nx">Runtime</span><span class="p">,</span> <span class="nx">pq</span><span class="p">.</span><span class="nf">Array</span><span class="p">(</span><span class="nx">movie</span><span class="p">.</span><span class="nx">Genres</span><span class="p">)</span><span class="p">}</span>
+
+    <span class="c1">// Use the QueryRow() method to execute the SQL query on our connection pool,
+</span><span class="c1"></span>    <span class="c1">// passing in the elements of the args slice as variadic arguments and scanning 
+</span><span class="c1"></span>    <span class="c1">// the system-generated id, created_at and version values into the movie struct.
+</span><span class="c1"></span>    <span class="k">return</span> <span class="nx">m</span><span class="p">.</span><span class="nx">DB</span><span class="p">.</span><span class="nf">QueryRow</span><span class="p">(</span><span class="nx">query</span><span class="p">,</span> <span class="nx">args</span><span class="o">...</span><span class="p">)</span><span class="p">.</span><span class="nf">Scan</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">movie</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">movie</span><span class="p">.</span><span class="nx">CreatedAt</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">movie</span><span class="p">.</span><span class="nx">Version</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="o">...</span></pre>
+</figure>
+
+<p>That code is nice and succinct, but there are a few important things to mention.</p>
+
+<p>Because the <code>Insert()</code> method signature takes a <code>*Movie</code> pointer as the parameter, when we call <code>Scan()</code> to read in the system-generated data we&rsquo;re updating the values <em>at the location the parameter points to</em>. Essentially, our <code>Insert()</code> method <em>mutates</em> the <code>Movie</code> struct that we pass to it and adds the system-generated values to it.</p>
+
+<p>The next thing to talk about is the placeholder parameter inputs, which we declare in an <code>args</code> slice like this:</p>
+
+<figure class="code go">
+<pre><span class="nx">args</span> <span class="o">:=</span> <span class="p">[</span><span class="p">]</span><span class="nx">any</span><span class="p">{</span><span class="nx">movie</span><span class="p">.</span><span class="nx">Title</span><span class="p">,</span> <span class="nx">movie</span><span class="p">.</span><span class="nx">Year</span><span class="p">,</span> <span class="nx">movie</span><span class="p">.</span><span class="nx">Runtime</span><span class="p">,</span> <span class="nx">pq</span><span class="p">.</span><span class="nf">Array</span><span class="p">(</span><span class="nx">movie</span><span class="p">.</span><span class="nx">Genres</span><span class="p">)</span><span class="p">}</span></pre>
+</figure>
+
+<p>Storing the inputs in a slice isn&rsquo;t strictly necessary, but as mentioned in the code comments above it&rsquo;s a nice pattern that can help the clarity of your code. Personally, I usually do this for SQL queries with more than three placeholder parameters.</p>
+
+<p>Also, notice the final value in the slice? In order to store our <code>movie.Genres</code> value (which is a <code>[]string</code> slice) in the database, we need to pass it through the <a href="https://pkg.go.dev/github.com/lib/pq?tab=doc#Array"><code>pq.Array()</code></a> adapter function before executing the SQL query.</p>
+
+<p>Behind the scenes, the <code>pq.Array()</code> adapter takes our <code>[]string</code> slice and converts it to a <a href="https://pkg.go.dev/github.com/lib/pq#StringArray"><code>pq.StringArray</code></a> type. In turn, the <code>pq.StringArray</code> type implements the <a href="https://pkg.go.dev/database/sql/driver?tab=doc#Valuer"><code>driver.Valuer</code></a> and <a href="https://pkg.go.dev/database/sql?tab=doc#Scanner"><code>sql.Scanner</code></a> interfaces necessary to translate our native <code>[]string</code> slice to and from a value that our PostgreSQL database can understand and store in a <code>text[]</code> array column.</p>
+
+<aside class="hint"><p>
+<strong>Hint:</strong> You can also use the <code>pq.Array()</code> adapter function in the same way with <code>[]bool</code>, <code>[]byte</code>, <code>[]int32</code>, <code>[]int64</code>, <code>[]float32</code> and <code>[]float64</code> slices in your Go code.
+</p></aside>
+
+<h3 id="hooking-it-up-to-our-api-handler">Hooking it up to our API handler</h3>
+
+<p>Now for the exciting part. Let&rsquo;s hook up the <code>Insert()</code> method to our <code>createMovieHandler</code> so that our <code>POST /v1/movies</code> endpoint works in full. Like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/movies.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">createMovieHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">input</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">Title</span>   <span class="kt">string</span>       <span class="s">`</span><span class="s">json:&#34;title&#34;</span><span class="s">`</span>
+        <span class="nx">Year</span>    <span class="kt">int32</span>        <span class="s">`</span><span class="s">json:&#34;year&#34;</span><span class="s">`</span>
+        <span class="nx">Runtime</span> <span class="nx">data</span><span class="p">.</span><span class="nx">Runtime</span> <span class="s">`</span><span class="s">json:&#34;runtime&#34;</span><span class="s">`</span>
+        <span class="nx">Genres</span>  <span class="p">[</span><span class="p">]</span><span class="kt">string</span>     <span class="s">`</span><span class="s">json:&#34;genres&#34;</span><span class="s">`</span>
+    <span class="p">}</span>
+
+    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">input</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">badRequestResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Note that the movie variable contains a *pointer* to a Movie struct.
+</span><span class="c1"></span>    <span class="nx">movie</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">data</span><span class="p">.</span><span class="nx">Movie</span><span class="p">{</span>
+        <span class="nx">Title</span><span class="p">:</span>   <span class="nx">input</span><span class="p">.</span><span class="nx">Title</span><span class="p">,</span>
+        <span class="nx">Year</span><span class="p">:</span>    <span class="nx">input</span><span class="p">.</span><span class="nx">Year</span><span class="p">,</span>
+        <span class="nx">Runtime</span><span class="p">:</span> <span class="nx">input</span><span class="p">.</span><span class="nx">Runtime</span><span class="p">,</span>
+        <span class="nx">Genres</span><span class="p">:</span>  <span class="nx">input</span><span class="p">.</span><span class="nx">Genres</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="nx">v</span> <span class="o">:=</span> <span class="nx">validator</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="nx">data</span><span class="p">.</span><span class="nf">ValidateMovie</span><span class="p">(</span><span class="nx">v</span><span class="p">,</span> <span class="nx">movie</span><span class="p">)</span><span class="p">;</span> <span class="p">!</span><span class="nx">v</span><span class="p">.</span><span class="nf">Valid</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">failedValidationResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nx">Errors</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Call the Insert() method on our movies model, passing in a pointer to the 
+</span><span class="c1"></span>    <span class="c1">// validated movie struct. This will create a record in the database and update the 
+</span><span class="c1"></span>    <span class="c1">// movie struct with the system-generated information.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Movies</span><span class="p">.</span><span class="nf">Insert</span><span class="p">(</span><span class="nx">movie</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// When sending an HTTP response, we want to include a Location header to let the 
+</span><span class="c1"></span>    <span class="c1">// client know which URL they can find the newly-created resource at. We make an  
+</span><span class="c1"></span>    <span class="c1">// empty http.Header map and then use the Set() method to add a new Location header,
+</span><span class="c1"></span>    <span class="c1">// interpolating the system-generated ID for our new movie in the URL.
+</span><span class="c1"></span>    <span class="nx">headers</span> <span class="o">:=</span> <span class="nb">make</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">Header</span><span class="p">)</span>
+    <span class="nx">headers</span><span class="p">.</span><span class="nf">Set</span><span class="p">(</span><span class="s">&#34;Location&#34;</span><span class="p">,</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;/v1/movies/%d&#34;</span><span class="p">,</span> <span class="nx">movie</span><span class="p">.</span><span class="nx">ID</span><span class="p">)</span><span class="p">)</span>
+
+    <span class="c1">// Write a JSON response with a 201 Created status code, the movie data in the 
+</span><span class="c1"></span>    <span class="c1">// response body, and the Location header.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">writeJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusCreated</span><span class="p">,</span> <span class="nx">envelope</span><span class="p">{</span><span class="s">&#34;movie&#34;</span><span class="p">:</span> <span class="nx">movie</span><span class="p">}</span><span class="p">,</span> <span class="nx">headers</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="o">...</span></pre>
+</figure>
+
+<p>OK, let&rsquo;s try this out!</p>
+
+<p>Restart the API, then open up a second terminal window and make the following request to the <code>POST /v1/movies</code> endpoint:</p>
+
+<figure class="code bash">
+<pre>$ BODY=&#39;{&#34;title&#34;:&#34;Moana&#34;,&#34;year&#34;:2016,&#34;runtime&#34;:&#34;107 mins&#34;, &#34;genres&#34;:[&#34;animation&#34;,&#34;adventure&#34;]}&#39; 
+$ curl -i -d &#34;$BODY&#34; localhost:4000/v1/movies
+<samp>HTTP/1.1 201 Created
+Content-Type: application/json
+Location: /v1/movies/1
+Date: Wed, 07 Apr 2021 19:21:41 GMT
+Content-Length: 156
+
+{
+    &#34;movie&#34;: {
+        &#34;id&#34;: 1,
+        &#34;title&#34;: &#34;Moana&#34;,
+        &#34;year&#34;: 2016,
+        &#34;runtime&#34;: &#34;107 mins&#34;,
+        &#34;genres&#34;: [
+            &#34;animation&#34;,
+            &#34;adventure&#34;
+        ],
+        &#34;version&#34;: 1
+    }
+}</samp></pre>
+</figure>
+
+<p>That&rsquo;s looking perfect. We can see that the JSON response contains all the information for the new movie, including the system-generated ID and version numbers. And the response also includes the <code>Location: /v1/movies/1</code> header, pointing to the URL that will later represent the movie in our system.</p>
+
+<h3 id="creating-additional-records">Creating additional records</h3>
+
+<p>While we&rsquo;re at it, let&rsquo;s create a few more records in the system to help us demonstrate different functionality as our build progresses.</p>
+
+<p>If you&rsquo;re coding along, please run the following commands to create three more movie records in the database:</p>
+
+<figure class="code bash">
+<pre>$ BODY=&#39;{&#34;title&#34;:&#34;Black Panther&#34;,&#34;year&#34;:2018,&#34;runtime&#34;:&#34;134 mins&#34;,&#34;genres&#34;:[&#34;action&#34;,&#34;adventure&#34;]}&#39;
+$ curl -d &#34;$BODY&#34; localhost:4000/v1/movies
+<samp>{
+    &#34;movie&#34;: {
+        &#34;id&#34;: 2,
+        &#34;title&#34;: &#34;Black Panther&#34;,
+        &#34;year&#34;: 2018,
+        &#34;runtime&#34;: &#34;134 mins&#34;,
+        &#34;genres&#34;: [
+            &#34;action&#34;,
+            &#34;adventure&#34;
+        ],
+        &#34;version&#34;: 1
+    }
+}</samp>
+
+$ BODY=&#39;{&#34;title&#34;:&#34;Deadpool&#34;,&#34;year&#34;:2016, &#34;runtime&#34;:&#34;108 mins&#34;,&#34;genres&#34;:[&#34;action&#34;,&#34;comedy&#34;]}&#39;
+$ curl -d &#34;$BODY&#34; localhost:4000/v1/movies
+<samp>{
+    &#34;movie&#34;: {
+        &#34;id&#34;: 3,
+        &#34;title&#34;: &#34;Deadpool&#34;,
+        &#34;year&#34;: 2016,
+        &#34;runtime&#34;: &#34;108 mins&#34;,
+        &#34;genres&#34;: [
+            &#34;action&#34;,
+            &#34;comedy&#34;
+        ],
+        &#34;version&#34;: 1
+    }
+}</samp>
+
+$ BODY=&#39;{&#34;title&#34;:&#34;The Breakfast Club&#34;,&#34;year&#34;:1986, &#34;runtime&#34;:&#34;96 mins&#34;,&#34;genres&#34;:[&#34;drama&#34;]}&#39;
+$ curl -d &#34;$BODY&#34; localhost:4000/v1/movies
+<samp>{
+    &#34;movie&#34;: {
+        &#34;id&#34;: 4,
+        &#34;title&#34;: &#34;The Breakfast Club&#34;,
+        &#34;year&#34;: 1986,
+        &#34;runtime&#34;: &#34;96 mins&#34;,
+        &#34;genres&#34;: [
+            &#34;drama&#34;
+        ],
+        &#34;version&#34;: 1
+    }
+}</samp></pre>
+</figure>
+
+<p>At this point you might also want to take a look at PostgreSQL to confirm that the records have been created properly. You should see that the contents of the <code>movies</code> table now looks similar to this (including the appropriate movie <code>genres</code> in an array).</p>
+
+<figure class="code bash">
+<pre>$ psql $GREENLIGHT_DB_DSN
+<samp>Password for user greenlight: 
+psql (15.4 (Ubuntu 15.4-1.pgdg22.04+1))
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+Type &#34;help&#34; for help.</samp>
+
+greenlight=&gt; SELECT * FROM movies;
+<samp> id |       created_at       |       title        | year | runtime |        genres         | version 
+----+------------------------+--------------------+------+---------+-----------------------+---------
+  1 | 2021-04-07 21:21:41+02 | Moana              | 2016 |     107 | {animation,adventure} |       1
+  2 | 2021-04-07 21:28:28+02 | Black Panther      | 2018 |     134 | {action,adventure}    |       1
+  3 | 2021-04-07 21:28:36+02 | Deadpool           | 2016 |     108 | {action,comedy}       |       1
+  4 | 2021-04-07 21:28:44+02 | The Breakfast Club | 1986 |      96 | {drama}               |       1
+(4 rows)</samp></pre>
+</figure>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="n-notation">$N notation</h4>
+
+<p>A nice feature of the PostgreSQL placeholder parameter <code>$N</code> notation is that you can use the same parameter value in multiple places in your SQL statement. For example, it&rsquo;s perfectly acceptable to write code like this:</p>
+
+<figure class="code go">
+<pre><span class="c1">// This SQL statement uses the $1 parameter twice, and the value `123` will be used in 
+</span><span class="c1"></span><span class="c1">// both locations where $1 appears.
+</span><span class="c1"></span><span class="nx">stmt</span> <span class="o">:=</span> <span class="s">&#34;UPDATE foo SET bar = $1 + $2 WHERE bar = $1&#34;</span>
+<span class="nx">err</span> <span class="o">:=</span> <span class="nx">db</span><span class="p">.</span><span class="nf">Exec</span><span class="p">(</span><span class="nx">stmt</span><span class="p">,</span> <span class="mi">123</span><span class="p">,</span> <span class="mi">456</span><span class="p">)</span>
+<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+    <span class="o">...</span>
+<span class="p">}</span></pre>
+</figure>
+
+<h4 id="executing-multiple-statements">Executing multiple statements</h4>
+
+<p>Occasionally you might find yourself in the position where you want to execute more than one SQL statement in the same database call, like this:</p>
+
+<figure class="code go">
+<pre><span class="nx">stmt</span> <span class="o">:=</span> <span class="s">`</span><span class="s">
+</span><span class="s">    UPDATE foo SET bar = true; 
+</span><span class="s">    UPDATE foo SET baz = false;</span><span class="s">`</span>
+
+<span class="nx">err</span> <span class="o">:=</span> <span class="nx">db</span><span class="p">.</span><span class="nf">Exec</span><span class="p">(</span><span class="nx">stmt</span><span class="p">)</span>
+<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+    <span class="o">...</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Having multiple statements in the same call is supported by the <code>pq</code> driver, <em>so long as the statements do not contain any placeholder parameters</em>. If they do contain placeholder parameters, then you&rsquo;ll receive the following error message at runtime:</p>
+
+<figure class="code bash">
+<pre>pq: cannot insert multiple commands into a prepared statement</pre>
+</figure>
+
+<p>To work around this, you will need to either split out the statements into separate database calls, or if that&rsquo;s not possible, you can create a <a href="https://www.postgresql.org/docs/current/xfunc-sql.html">custom function</a> in PostgreSQL which acts as a wrapper around the multiple SQL statements that you want to run.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="07.01-setting-up-the-movie-model.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="07.03-fetching-a-movie.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "07.01-setting-up-the-movie-model.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "07.03-fetching-a-movie.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

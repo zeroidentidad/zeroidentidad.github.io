@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>API endpoints and RESTful routing  &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="02.00-getting-started.html">Getting started</a> &rsaquo; API endpoints and RESTful routing </span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="02.02-a-basic-http-server.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="03.00-sending-json-responses.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 2.3.</div>
+			<h2 id="api-endpoints-and-restful-routing">API endpoints and RESTful routing</h2>
+
+<p>Over the next few sections of this book, we&rsquo;re going to gradually build up our API so that the endpoints start to look like this:</p>
+
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>URL Pattern</th>
+<th>Handler</th>
+<th>Action</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td>GET</td>
+<td>/v1/healthcheck</td>
+<td>healthcheckHandler</td>
+<td>Show application information</td>
+</tr>
+
+<tr>
+<td>GET</td>
+<td>/v1/movies</td>
+<td>listMoviesHandler</td>
+<td>Show the details of all movies</td>
+</tr>
+
+<tr>
+<td>POST</td>
+<td>/v1/movies</td>
+<td>createMovieHandler</td>
+<td>Create a new movie</td>
+</tr>
+
+<tr>
+<td>GET</td>
+<td>/v1/movies/:id</td>
+<td>showMovieHandler</td>
+<td>Show the details of a specific movie</td>
+</tr>
+
+<tr>
+<td>PUT</td>
+<td>/v1/movies/:id</td>
+<td>editMovieHandler</td>
+<td>Update the details of a specific movie</td>
+</tr>
+
+<tr>
+<td>DELETE</td>
+<td>/v1/movies/:id</td>
+<td>deleteMovieHandler</td>
+<td>Delete a specific movie</td>
+</tr>
+</tbody>
+</table>
+<p>If you&rsquo;ve built APIs with <a href="https://en.wikipedia.org/wiki/Representational_state_transfer">REST</a> style endpoints before, then the table above probably looks very familiar to you and doesn&rsquo;t require much explanation. But if you&rsquo;re new to this, then there are a couple of important things to point out.</p>
+
+<p>The first thing is that requests with the same URL pattern will be routed to <em>different handlers based on the <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods">HTTP request method</a></em>. For both security and semantic correctness, it&rsquo;s important to use the appropriate HTTP method for the action that the handler is performing.</p>
+
+<p>In summary:</p>
+
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Usage</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td><strong>GET</strong></td>
+<td>Use for actions that retrieve information only and don&rsquo;t change the state of your application or any data.</td>
+</tr>
+
+<tr>
+<td><strong>POST</strong></td>
+<td>Use for <a href="https://tools.ietf.org/html/rfc7231#section-4.2.2">non-idempotent</a> actions that modify state. In the context of a REST API, <code>POST</code> is generally used for actions that <em>create</em> a new resource.</td>
+</tr>
+
+<tr>
+<td><strong>PUT</strong></td>
+<td>Use for <a href="https://tools.ietf.org/html/rfc7231#section-4.2.2">idempotent</a> actions that modify the state of a resource at a specific URL. In the context of a REST API, <code>PUT</code> is generally used for actions that <em>replace</em> or <em>update</em> an existing resource.</td>
+</tr>
+
+<tr>
+<td><strong>PATCH</strong></td>
+<td>Use for actions that <em>partially update</em> a resource at a specific URL. It&rsquo;s OK for the action to be either idempotent or non-idempotent.</td>
+</tr>
+
+<tr>
+<td><strong>DELETE</strong></td>
+<td>Use for actions that <em>delete</em> a resource at a specific URL.</td>
+</tr>
+</tbody>
+</table>
+<p>The other important thing to point out is that our API endpoints will use <a href="https://en.wikipedia.org/wiki/Clean_URL">clean URLs</a>, with wildcard parameters interpolated in the URL path. So &mdash; for example &mdash; to retrieve the details of a specific movie a client will make a request like <code>GET /v1/movies/1</code>, instead of appending the movie ID in a query string parameter like <code>GET /v1/movies?id=1</code>.</p>
+
+<h3 id="choosing-a-router">Choosing a router</h3>
+
+<p>In this book we&rsquo;re going to use the popular third-party package <a href="https://github.com/julienschmidt/httprouter"><code>httprouter</code></a> as the router for our application, instead of using <a href="https://golang.org/pkg/net/http/#ServeMux"><code>http.ServeMux</code></a> from the standard library.</p>
+
+<p>There are two reasons for this:</p>
+
+<ul>
+<li><p>We want our API to consistently send JSON responses wherever possible. Unfortunately, <code>http.ServeMux</code> sends plaintext (non-JSON) <code>404</code> and <code>405</code> responses when a matching route cannot be found, and it&rsquo;s not possible to easily customize these without causing a knock-on effect that inhibits the automatic sending of <code>405</code> responses. There is an <a href="https://github.com/golang/go/issues/65648">open proposal</a> to improve this in future versions of Go, but for now it&rsquo;s a fairly major drawback.</p></li>
+
+<li><p>Additionally, <code>http.ServeMux</code> does not automatically handle <code>OPTIONS</code> requests.</p></li>
+</ul>
+
+<p>Both of these things are supported by <code>httprouter</code>, along with providing all the other functionality that we need. The <code>httprouter</code> package itself is stable and well-tested, and as a bonus it&rsquo;s also <a href="https://github.com/julienschmidt/go-http-routing-benchmark#go-http-router-benchmark">extremely fast</a> thanks to its use of a radix tree for URL matching. If you&rsquo;re building a JSON REST API for public consumption, then <code>httprouter</code> is a solid choice and &mdash; on balance &mdash; it remains a better option than <code>http.ServeMux</code> right now.</p>
+
+<p>If you&rsquo;re coding along with this book, please use <code>go get</code> to download the latest <code>v1.N.N</code> release of <code>httprouter</code> like so:</p>
+
+<figure class="code bash">
+<pre>$ go get github.com/julienschmidt/httprouter@v1
+<samp>go: downloading github.com/julienschmidt/httprouter v1.3.0
+go get: added github.com/julienschmidt/httprouter v1.3.0</samp></pre>
+</figure>
+
+<aside class="hint"><p>
+<strong>Note:</strong> If you already have a copy of <code>httprouter</code> on your machine from another project, then your existing copy will be used and you won&rsquo;t see a <code>go: downloading...</code> message.
+</p></aside>
+
+<p>To demonstrate how <code>httprouter</code> works, we&rsquo;ll start by adding the two endpoints for <em>creating a new movie</em> and <em>showing the details of a specific movie</em> to our codebase. By the end of this chapter, our API endpoints will look like this:</p>
+
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>URL Pattern</th>
+<th>Handler</th>
+<th>Action</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td>GET</td>
+<td>/v1/healthcheck</td>
+<td>healthcheckHandler</td>
+<td>Show application information</td>
+</tr>
+
+<tr>
+<td>POST</td>
+<td>/v1/movies</td>
+<td>createMovieHandler</td>
+<td>Create a new movie</td>
+</tr>
+
+<tr>
+<td>GET</td>
+<td>/v1/movies/:id</td>
+<td>showMovieHandler</td>
+<td>Show the details of a specific movie</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="encapsulating-the-api-routes">Encapsulating the API routes</h3>
+
+<p>To prevent our <code>main()</code> function from becoming cluttered as the API grows, let&rsquo;s encapsulate all the routing rules in a new <code>cmd/api/routes.go</code> file.</p>
+
+<p>If you&rsquo;re following along, create this new file and add the following code:</p>
+
+<figure class="code bash">
+<pre>$ touch cmd/api/routes.go</pre>
+</figure>
+
+<figure class="code go">
+<figcaption>File: cmd/api/routes.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;net/http&#34;</span>
+
+    <span class="s">&#34;github.com/julienschmidt/httprouter&#34;</span>
+<span class="p">)</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">routes</span><span class="p">(</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span> <span class="p">{</span>
+    <span class="c1">// Initialize a new httprouter router instance.
+</span><span class="c1"></span>    <span class="nx">router</span> <span class="o">:=</span> <span class="nx">httprouter</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="c1">// Register the relevant methods, URL patterns and handler functions for our
+</span><span class="c1"></span>    <span class="c1">// endpoints using the HandlerFunc() method. Note that http.MethodGet and 
+</span><span class="c1"></span>    <span class="c1">// http.MethodPost are constants which equate to the strings &#34;GET&#34; and &#34;POST&#34; 
+</span><span class="c1"></span>    <span class="c1">// respectively.
+</span><span class="c1"></span>    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/healthcheck&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">healthcheckHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span> <span class="s">&#34;/v1/movies&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">createMovieHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">showMovieHandler</span><span class="p">)</span>
+
+    <span class="c1">// Return the httprouter instance.
+</span><span class="c1"></span>    <span class="k">return</span> <span class="nx">router</span>
+<span class="p">}</span></pre>
+</figure>
+
+<aside class="hint"><p>
+<strong>Hint</strong>: The <code>httprouter</code> package also provides a <a href="https://godoc.org/github.com/julienschmidt/httprouter#Router.Handler"><code>router.Handler()</code></a> method which you can use when you want to register a regular <code>http.Handler</code> (rather than handler functions, like we are in the code above).
+</p></aside>
+
+<p>There are a couple of benefits to encapsulating our routing rules in this way. The first benefit is that it keeps our <code>main()</code> function clean and ensures all our routes are defined in a single place. The other big benefit, which we demonstrated in the first <em>Let&rsquo;s Go</em> book, is that we can now easily access the router in any test code by initializing an <code>application</code> instance and calling the <code>routes()</code> method on it.</p>
+
+<p>The next thing that we need to do is update the <code>main()</code> function to remove the <code>http.ServeMux</code> declaration, and use the <code>httprouter</code> instance returned by <code>app.routes()</code> as our server handler instead. Like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/main.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="nf">main</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">cfg</span> <span class="nx">config</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">port</span><span class="p">,</span> <span class="s">&#34;port&#34;</span><span class="p">,</span> <span class="mi">4000</span><span class="p">,</span> <span class="s">&#34;API server port&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">env</span><span class="p">,</span> <span class="s">&#34;env&#34;</span><span class="p">,</span> <span class="s">&#34;development&#34;</span><span class="p">,</span> <span class="s">&#34;Environment (development|staging|production)&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">Parse</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">logger</span> <span class="o">:=</span> <span class="nx">slog</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="nx">slog</span><span class="p">.</span><span class="nf">NewTextHandler</span><span class="p">(</span><span class="nx">os</span><span class="p">.</span><span class="nx">Stdout</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span><span class="p">)</span>
+
+    <span class="nx">app</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">application</span><span class="p">{</span>
+        <span class="nx">config</span><span class="p">:</span> <span class="nx">cfg</span><span class="p">,</span>
+        <span class="nx">logger</span><span class="p">:</span> <span class="nx">logger</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Use the httprouter instance returned by app.routes() as the server handler.
+</span><span class="c1"></span>    <span class="nx">srv</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">http</span><span class="p">.</span><span class="nx">Server</span><span class="p">{</span>
+        <span class="nx">Addr</span><span class="p">:</span>         <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;:%d&#34;</span><span class="p">,</span> <span class="nx">cfg</span><span class="p">.</span><span class="nx">port</span><span class="p">)</span><span class="p">,</span>
+        <span class="nx">Handler</span><span class="p">:</span>      <span class="nx">app</span><span class="p">.</span><span class="nf">routes</span><span class="p">(</span><span class="p">)</span><span class="p">,</span>
+        <span class="nx">IdleTimeout</span><span class="p">:</span>  <span class="nx">time</span><span class="p">.</span><span class="nx">Minute</span><span class="p">,</span>
+        <span class="nx">ReadTimeout</span><span class="p">:</span>  <span class="mi">5</span> <span class="o">*</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">,</span>
+        <span class="nx">WriteTimeout</span><span class="p">:</span> <span class="mi">10</span> <span class="o">*</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">,</span>
+        <span class="nx">ErrorLog</span><span class="p">:</span>     <span class="nx">slog</span><span class="p">.</span><span class="nf">NewLogLogger</span><span class="p">(</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Handler</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="nx">slog</span><span class="p">.</span><span class="nx">LevelError</span><span class="p">)</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="nx">logger</span><span class="p">.</span><span class="nf">Info</span><span class="p">(</span><span class="s">&#34;starting server&#34;</span><span class="p">,</span> <span class="s">&#34;addr&#34;</span><span class="p">,</span> <span class="nx">srv</span><span class="p">.</span><span class="nx">Addr</span><span class="p">,</span> <span class="s">&#34;env&#34;</span><span class="p">,</span> <span class="nx">cfg</span><span class="p">.</span><span class="nx">env</span><span class="p">)</span>
+    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">srv</span><span class="p">.</span><span class="nf">ListenAndServe</span><span class="p">(</span><span class="p">)</span>
+    <span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">os</span><span class="p">.</span><span class="nf">Exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<h3 id="adding-the-new-handler-functions">Adding the new handler functions</h3>
+
+<p>Now that the routing rules are set up, we need to make the <code>createMovieHandler</code> and <code>showMovieHandler</code> methods for the new endpoints. The <code>showMovieHandler</code> is particularly interesting here, because as part of this we want to extract the movie ID parameter from the URL and use it in our HTTP response.</p>
+
+<p>Go ahead and create a new <code>cmd/api/movies.go</code> file to hold these two new handlers:</p>
+
+<figure class="code bash">
+<pre>$ touch cmd/api/movies.go</pre>
+</figure>
+
+<p>And then add the following code:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/movies.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;fmt&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+    <span class="s">&#34;strconv&#34;</span> 
+
+    <span class="s">&#34;github.com/julienschmidt/httprouter&#34;</span> 
+<span class="p">)</span>
+
+<span class="c1">// Add a createMovieHandler for the &#34;POST /v1/movies&#34; endpoint. For now we simply 
+</span><span class="c1"></span><span class="c1">// return a plain-text placeholder response.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">createMovieHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Fprintln</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="s">&#34;create a new movie&#34;</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="c1">// Add a showMovieHandler for the &#34;GET /v1/movies/:id&#34; endpoint. For now, we retrieve 
+</span><span class="c1"></span><span class="c1">// the interpolated &#34;id&#34; parameter from the current URL and include it in a placeholder 
+</span><span class="c1"></span><span class="c1">// response.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">showMovieHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// When httprouter is parsing a request, any interpolated URL parameters will be
+</span><span class="c1"></span>    <span class="c1">// stored in the request context. We can use the ParamsFromContext() function to
+</span><span class="c1"></span>    <span class="c1">// retrieve a slice containing these parameter names and values.
+</span><span class="c1"></span>    <span class="nx">params</span> <span class="o">:=</span> <span class="nx">httprouter</span><span class="p">.</span><span class="nf">ParamsFromContext</span><span class="p">(</span><span class="nx">r</span><span class="p">.</span><span class="nf">Context</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+
+    <span class="c1">// We can then use the ByName() method to get the value of the &#34;id&#34; parameter from 
+</span><span class="c1"></span>    <span class="c1">// the slice. In our project all movies will have a unique positive integer ID, but 
+</span><span class="c1"></span>    <span class="c1">// the value returned by ByName() is always a string. So we try to convert it to a 
+</span><span class="c1"></span>    <span class="c1">// base 10 integer (with a bit size of 64). If the parameter couldn&#39;t be converted, 
+</span><span class="c1"></span>    <span class="c1">// or is less than 1, we know the ID is invalid so we use the http.NotFound() 
+</span><span class="c1"></span>    <span class="c1">// function to return a 404 Not Found response.
+</span><span class="c1"></span>    <span class="nx">id</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">strconv</span><span class="p">.</span><span class="nf">ParseInt</span><span class="p">(</span><span class="nx">params</span><span class="p">.</span><span class="nf">ByName</span><span class="p">(</span><span class="s">&#34;id&#34;</span><span class="p">)</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">64</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="o">||</span> <span class="nx">id</span> <span class="p">&lt;</span> <span class="mi">1</span> <span class="p">{</span>
+        <span class="nx">http</span><span class="p">.</span><span class="nf">NotFound</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Otherwise, interpolate the movie ID in a placeholder response.
+</span><span class="c1"></span>    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Fprintf</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="s">&#34;show the details of movie %d\n&#34;</span><span class="p">,</span> <span class="nx">id</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>And with that, we&rsquo;re now ready to try this out!</p>
+
+<p>Go ahead and restart the API application&hellip;</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development</samp></pre>
+</figure>
+
+<p>Then while the server is running, open a second terminal window and use <code>curl</code> to make some requests to the different endpoints. If everything is set up correctly, you will see some responses which look similar to this:</p>
+
+<figure class="code bash">
+<pre>$ curl localhost:4000/v1/healthcheck
+<samp>status: available
+environment: development
+version: 1.0.0</samp>
+
+$ curl -X POST localhost:4000/v1/movies
+<samp>create a new movie</samp>
+
+$ curl localhost:4000/v1/movies/123
+<samp>show the details of movie 123</samp></pre>
+</figure>
+
+<p>Notice how, in the final example, the value of the movie <code>id</code> parameter <code>123</code> has been successfully retrieved from the URL and included in the response?</p>
+
+<p>You might also want to try making some requests for a particular URL <em>using an unsupported HTTP method</em>. For example, let&rsquo;s try making a <code>POST</code> request to <code>/v1/healthcheck</code>:</p>
+
+<figure class="code bash">
+<pre>$ curl -i -X POST localhost:4000/v1/healthcheck
+<samp>HTTP/1.1 405 Method Not Allowed
+Allow: GET, OPTIONS
+Content-Type: text/plain; charset=utf-8
+X-Content-Type-Options: nosniff
+Date: Tue, 06 Apr 2021 06:59:04 GMT
+Content-Length: 19
+
+Method Not Allowed</samp></pre>
+</figure>
+
+<p>That&rsquo;s looking really good. The <code>httprouter</code> package has automatically sent a <code>405 Method Not Allowed</code> response for us, including an <code>Allow</code> header which lists the HTTP methods that <em>are</em> supported for the endpoint.</p>
+
+<p>Likewise, you can make an <code>OPTIONS</code> request to a specific URL and <code>httprouter</code> will send back a response with an <code>Allow</code> header detailing the supported HTTP methods. Like so:</p>
+
+<figure class="code bash">
+<pre>$ curl -i -X OPTIONS localhost:4000/v1/healthcheck
+<samp>HTTP/1.1 200 OK
+Allow: GET, OPTIONS
+Date: Tue, 06 Apr 2021 07:01:29 GMT
+Content-Length: 0</samp></pre>
+</figure>
+
+<p>Lastly, you might want to try making a request to the <code>GET /v1/movies/:id</code> endpoint with a negative number or a non-numerical <code>id</code> value in the URL. This should result in a <code>404 Not Found</code> response, similar to this:</p>
+
+<figure class="code bash">
+<pre>$ curl -i localhost:4000/v1/movies/abc
+<samp>HTTP/1.1 404 Not Found
+Content-Type: text/plain; charset=utf-8
+X-Content-Type-Options: nosniff
+Date: Tue, 06 Apr 2021 07:02:01 GMT
+Content-Length: 19
+
+404 page not found</samp></pre>
+</figure>
+
+<h3 id="creating-a-helper-to-read-id-parameters">Creating a helper to read ID parameters</h3>
+
+<p>The code to extract an <code>id</code> parameter from a URL like <code>/v1/movies/:id</code> is something that we&rsquo;ll need repeatedly in our application, so let&rsquo;s abstract the logic for this into a small reusable helper method.</p>
+
+<p>Go ahead and create a new <code>cmd/api/helpers.go</code> file:</p>
+
+<figure class="code bash">
+<pre>$ touch cmd/api/helpers.go</pre>
+</figure>
+
+<p>And add a new <code>readIDParam()</code> method to the <code>application</code> struct, like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/helpers.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;errors&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+    <span class="s">&#34;strconv&#34;</span>
+
+    <span class="s">&#34;github.com/julienschmidt/httprouter&#34;</span>
+<span class="p">)</span>
+
+<span class="c1">// Retrieve the &#34;id&#34; URL parameter from the current request context, then convert it to
+</span><span class="c1"></span><span class="c1">// an integer and return it. If the operation isn&#39;t successful, return 0 and an error. 
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">readIDParam</span><span class="p">(</span><span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">(</span><span class="kt">int64</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">params</span> <span class="o">:=</span> <span class="nx">httprouter</span><span class="p">.</span><span class="nf">ParamsFromContext</span><span class="p">(</span><span class="nx">r</span><span class="p">.</span><span class="nf">Context</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+
+    <span class="nx">id</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">strconv</span><span class="p">.</span><span class="nf">ParseInt</span><span class="p">(</span><span class="nx">params</span><span class="p">.</span><span class="nf">ByName</span><span class="p">(</span><span class="s">&#34;id&#34;</span><span class="p">)</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">64</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="o">||</span> <span class="nx">id</span> <span class="p">&lt;</span> <span class="mi">1</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="mi">0</span><span class="p">,</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="s">&#34;invalid id parameter&#34;</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="nx">id</span><span class="p">,</span> <span class="kc">nil</span>
+<span class="p">}</span></pre>
+</figure>
+
+<aside class="hint"><p>
+<strong>Note</strong>: The <code>readIDParam()</code> method doesn&rsquo;t use any dependencies from our <code>application</code> struct so it <em>could</em> just be a regular function, rather than a method on <code>application</code>. But in general, I suggest setting up <em>all</em> your application-specific handlers and helpers so that they are methods on <code>application</code>. It helps maintain consistency in your code structure, and also future-proofs your code for when those handlers and helpers change later and they <em>do</em> need access to a dependency.
+</p></aside>
+
+<p>With this helper method in place, the code in our <code>showMovieHandler</code> can now be made a lot simpler:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/movies.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;fmt&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+<span class="p">)</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">showMovieHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">id</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readIDParam</span><span class="p">(</span><span class="nx">r</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">http</span><span class="p">.</span><span class="nf">NotFound</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Fprintf</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="s">&#34;show the details of movie %d\n&#34;</span><span class="p">,</span> <span class="nx">id</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="conflicting-routes">Conflicting routes</h4>
+
+<p>It&rsquo;s important to be aware that <code>httprouter</code> doesn&rsquo;t allow <em>conflicting routes</em> which potentially match the same request. So, for example, you cannot register a route like <code>GET /foo/new</code> <em>and</em> another route with a parameter segment that conflicts with it &mdash; like <code>GET /foo/:id</code>.</p>
+
+<p>If you&rsquo;re using a standard REST structure for your API endpoints &mdash; like we will be in this book &mdash; then this restriction is unlikely to cause you many problems.</p>
+
+<p>In fact, it&rsquo;s arguably a positive thing. Because conflicting routes aren&rsquo;t allowed, there are no routing-priority rules that you need to worry about, and it reduces the risk of bugs and unintended behavior in your application.</p>
+
+<p>But if you do need to support conflicting routes (for example, you might need to replicate the endpoints of an existing API exactly for backwards-compatibility), then I would recommend taking a look at <a href="https://github.com/go-chi/chi"><code>chi</code></a>, Gorilla <a href="https://github.com/gorilla/mux"><code>mux</code></a> or <a href="https://github.com/alexedwards/flow"><code>flow</code></a> instead. All of these are good routers which <em>do</em> permit conflicting routes.</p>
+
+<h4 id="customizing-httprouter-behavior">Customizing httprouter behavior</h4>
+
+<p>The <code>httprouter</code> package provides a few configuration options that you can use to customize the behavior of your application further, including enabling <em>trailing slash redirects</em> and enabling <em>automatic URL path cleaning</em>.</p>
+
+<p>More information about the available settings can be found <a href="https://pkg.go.dev/github.com/julienschmidt/httprouter?tab=doc#Router">here</a>.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="02.02-a-basic-http-server.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="03.00-sending-json-responses.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "02.02-a-basic-http-server.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "03.00-sending-json-responses.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

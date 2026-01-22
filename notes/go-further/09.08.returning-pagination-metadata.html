@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Returning pagination metadata &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="09.00-filtering-sorting-and-pagination.html">Filtering, sorting, and pagination</a> &rsaquo; Returning pagination metadata</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="09.07-paginating-lists.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="10.00-rate-limiting.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 9.8.</div>
+			<h2 id="returning-pagination-metadata">Returning pagination metadata</h2>
+
+<p>At this point, the pagination on our <code>GET /v1/movies</code> endpoint is working nicely, but it would be even better if we could include some additional metadata along with the response. Information like the <em>current</em> and <em>last</em> page numbers, and the <em>total number of available records</em> would help give the client context about the response and make navigating through the pages easier.</p>
+
+<p>In this chapter we&rsquo;ll improve the response so that it includes additional pagination metadata, similar to this:</p>
+
+<figure class="code plain">
+<pre>{
+    &#34;metadata&#34;: {
+        &#34;current_page&#34;: 1,
+        &#34;page_size&#34;: 20,
+        &#34;first_page&#34;: 1,
+        &#34;last_page&#34;: 42,
+        &#34;total_records&#34;: 832
+    },
+    &#34;movies&#34;: [
+        {
+            &#34;id&#34;: 1,
+            &#34;title&#34;: &#34;Moana&#34;,
+            &#34;year&#34;: 2015,
+            &#34;runtime&#34;: &#34;107 mins&#34;,
+            &#34;genres&#34;: [
+                &#34;animation&#34;,
+                &#34;adventure&#34;
+            ],
+            &#34;version&#34;: 1
+        },
+        ...
+    ]
+}</pre>
+</figure>
+
+<h3 id="calculating-the-total-records">Calculating the total records</h3>
+
+<p>The challenging part of doing this is generating the <code>total_records</code> figure. We want this to reflect the total number of available records <em>given the <code>title</code> and <code>genres</code> filters that are applied</em> &mdash; not the absolute total of records in the <code>movies</code> table.</p>
+
+<p>A neat way to do this is to adapt our existing SQL query to include a <a href="https://www.postgresql.org/docs/current/tutorial-window.html">window function</a> which counts the total number of filtered rows, like so:</p>
+
+<figure class="code plain">
+<pre>SELECT count(*) OVER(), id, created_at, title, year, runtime, genres, version
+FROM movies
+WHERE (to_tsvector(&#39;simple&#39;, title) @@ plainto_tsquery(&#39;simple&#39;, $1) OR $1 = &#39;&#39;) 
+AND (genres @&gt; $2 OR $2 = &#39;{}&#39;)     
+ORDER BY %s %s, id ASC
+LIMIT $3 OFFSET $4</pre>
+</figure>
+
+<p>The inclusion of the <code>count(*) OVER()</code> expression at the start of the query will result in the filtered record count being included as the first value in each row. A bit like this:</p>
+
+<figure class="code plain">
+<pre> count | id |       created_at       |       title        | year | runtime |          genres           | version 
+-------+----+------------------------+--------------------+------+---------+---------------------------+---------
+     3 |  1 | 2020-11-27 17:17:25+01 | Moana              | 2015 |     107 | {animation,adventure}     |       1
+     3 |  2 | 2020-11-27 18:01:45+01 | Black Panther      | 2018 |     134 | {sci-fi,action,adventure} |       2
+     3 |  4 | 2020-11-27 18:02:20+01 | The Breakfast Club | 1985 |      97 | {comedy,drama}            |       6</pre>
+</figure>
+
+<p>When PostgreSQL executes this SQL query, the (very simplified) sequence of events runs broadly like this:</p>
+
+<ol>
+<li>The <code>WHERE</code> clause is used to filter the data in the <code>movies</code> table and get the <em>qualifying rows</em>.</li>
+<li>The window function <code>count(*) OVER()</code> is applied, which counts all the qualifying rows.</li>
+<li>The <code>ORDER BY</code> rules are applied and the qualifying rows are sorted.</li>
+<li>The <code>LIMIT</code> and <code>OFFSET</code> rules are applied and the appropriate sub-set of sorted qualifying rows is returned.</li>
+</ol>
+
+<h3 id="updating-the-code">Updating the code</h3>
+
+<p>With that brief explanation out of the way, let&rsquo;s get this up and running. We&rsquo;ll begin by updating the <code>internal/data/filters.go</code> file to define a new <code>Metadata</code> struct to hold the pagination metadata, along with a helper to calculate the values. Like so:</p>
+
+<figure class="code go">
+<figcaption>File: internal/data/filters.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">data</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;math&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;strings&#34;</span>
+
+    <span class="s">&#34;greenlight.alexedwards.net/internal/validator&#34;</span>
+<span class="p">)</span>
+
+<span class="o">...</span>
+
+<span class="c1">// Define a new Metadata struct for holding the pagination metadata.
+</span><span class="c1"></span><span class="kd">type</span> <span class="nx">Metadata</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">CurrentPage</span>  <span class="kt">int</span> <span class="s">`</span><span class="s">json:&#34;current_page,omitzero&#34;</span><span class="s">`</span>
+    <span class="nx">PageSize</span>     <span class="kt">int</span> <span class="s">`</span><span class="s">json:&#34;page_size,omitzero&#34;</span><span class="s">`</span>
+    <span class="nx">FirstPage</span>    <span class="kt">int</span> <span class="s">`</span><span class="s">json:&#34;first_page,omitzero&#34;</span><span class="s">`</span>
+    <span class="nx">LastPage</span>     <span class="kt">int</span> <span class="s">`</span><span class="s">json:&#34;last_page,omitzero&#34;</span><span class="s">`</span>
+    <span class="nx">TotalRecords</span> <span class="kt">int</span> <span class="s">`</span><span class="s">json:&#34;total_records,omitzero&#34;</span><span class="s">`</span>
+<span class="p">}</span>
+
+<span class="c1">// The calculateMetadata() function calculates the appropriate pagination metadata 
+</span><span class="c1"></span><span class="c1">// values given the total number of records, current page, and page size values. Note 
+</span><span class="c1"></span><span class="c1">// that when the last page value is calculated we are dividing two int values, and 
+</span><span class="c1"></span><span class="c1">// when dividing integer types in Go the result will also be an integer type, with 
+</span><span class="c1"></span><span class="c1">// the modulus (or remainder) dropped. So, for example, if there were 12 records in total 
+</span><span class="c1"></span><span class="c1">// and a page size of 5, the last page value would be (12+5-1)/5 = 3.2, which is then
+</span><span class="c1"></span><span class="c1">// truncated to 3 by Go. 
+</span><span class="c1"></span><span class="kd">func</span> <span class="nf">calculateMetadata</span><span class="p">(</span><span class="nx">totalRecords</span><span class="p">,</span> <span class="nx">page</span><span class="p">,</span> <span class="nx">pageSize</span> <span class="kt">int</span><span class="p">)</span> <span class="nx">Metadata</span> <span class="p">{</span>
+    <span class="k">if</span> <span class="nx">totalRecords</span> <span class="o">==</span> <span class="mi">0</span> <span class="p">{</span>
+        <span class="c1">// Note that we return an empty Metadata struct if there are no records.
+</span><span class="c1"></span>        <span class="k">return</span> <span class="nx">Metadata</span><span class="p">{</span><span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="nx">Metadata</span><span class="p">{</span>
+        <span class="nx">CurrentPage</span><span class="p">:</span>  <span class="nx">page</span><span class="p">,</span>
+        <span class="nx">PageSize</span><span class="p">:</span>     <span class="nx">pageSize</span><span class="p">,</span>
+        <span class="nx">FirstPage</span><span class="p">:</span>    <span class="mi">1</span><span class="p">,</span>
+        <span class="nx">LastPage</span><span class="p">:</span>     <span class="p">(</span><span class="nx">totalRecords</span> <span class="o">+</span> <span class="nx">pageSize</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="nx">pageSize</span><span class="p">,</span>
+        <span class="nx">TotalRecords</span><span class="p">:</span> <span class="nx">totalRecords</span><span class="p">,</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Then we need to head back to our <code>GetAll()</code> method and update it to use our new SQL query (with the window function) to get the total records count. Then, if everything works successfully, we&rsquo;ll use the <code>calculateMetadata()</code> function to generate the pagination metadata and return it along with the movie data.</p>
+
+<p>Go ahead and update the <code>GetAll()</code> function like so:</p>
+
+<figure class="code go">
+<figcaption>File: internal/data/movies.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">data</span>
+
+<span class="o">...</span>
+
+<span class="c1">// Update the function signature to return a Metadata struct.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="nx">MovieModel</span><span class="p">)</span> <span class="nf">GetAll</span><span class="p">(</span><span class="nx">title</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">genres</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span><span class="p">,</span> <span class="nx">filters</span> <span class="nx">Filters</span><span class="p">)</span> <span class="p">(</span><span class="p">[</span><span class="p">]</span><span class="o">*</span><span class="nx">Movie</span><span class="p">,</span> <span class="nx">Metadata</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Update the SQL query to include the window function which counts the total 
+</span><span class="c1"></span>    <span class="c1">// (filtered) records.
+</span><span class="c1"></span>    <span class="nx">query</span> <span class="o">:=</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">`</span><span class="s">
+</span><span class="s">        SELECT count(*) OVER(), id, created_at, title, year, runtime, genres, version
+</span><span class="s">        FROM movies
+</span><span class="s">        WHERE (to_tsvector(&#39;simple&#39;, title) @@ plainto_tsquery(&#39;simple&#39;, $1) OR $1 = &#39;&#39;) 
+</span><span class="s">        AND (genres @&gt; $2 OR $2 = &#39;</span><span class="s">{</span><span class="s">}&#39;)     
+</span><span class="s">        ORDER BY %s %s, id ASC
+</span><span class="s">        LIMIT $3 OFFSET $4</span><span class="s">`</span><span class="p">,</span> <span class="nx">filters</span><span class="p">.</span><span class="nf">sortColumn</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="nx">filters</span><span class="p">.</span><span class="nf">sortDirection</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+
+    <span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="mi">3</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">)</span>
+    <span class="k">defer</span> <span class="nf">cancel</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">args</span> <span class="o">:=</span> <span class="p">[</span><span class="p">]</span><span class="nx">any</span><span class="p">{</span><span class="nx">title</span><span class="p">,</span> <span class="nx">pq</span><span class="p">.</span><span class="nf">Array</span><span class="p">(</span><span class="nx">genres</span><span class="p">)</span><span class="p">,</span> <span class="nx">filters</span><span class="p">.</span><span class="nf">limit</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="nx">filters</span><span class="p">.</span><span class="nf">offset</span><span class="p">(</span><span class="p">)</span><span class="p">}</span>
+
+    <span class="nx">rows</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">m</span><span class="p">.</span><span class="nx">DB</span><span class="p">.</span><span class="nf">QueryContext</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">query</span><span class="p">,</span> <span class="nx">args</span><span class="o">...</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">Metadata</span><span class="p">{</span><span class="p">}</span><span class="p">,</span> <span class="nx">err</span> <span class="c1">// Update this to return an empty Metadata struct.
+</span><span class="c1"></span>    <span class="p">}</span>
+
+    <span class="k">defer</span> <span class="nx">rows</span><span class="p">.</span><span class="nf">Close</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="c1">// Declare a totalRecords variable.
+</span><span class="c1"></span>    <span class="nx">totalRecords</span> <span class="o">:=</span> <span class="mi">0</span>
+    <span class="nx">movies</span> <span class="o">:=</span> <span class="p">[</span><span class="p">]</span><span class="o">*</span><span class="nx">Movie</span><span class="p">{</span><span class="p">}</span>
+
+    <span class="k">for</span> <span class="nx">rows</span><span class="p">.</span><span class="nf">Next</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="kd">var</span> <span class="nx">movie</span> <span class="nx">Movie</span>
+
+        <span class="nx">err</span> <span class="o">:=</span> <span class="nx">rows</span><span class="p">.</span><span class="nf">Scan</span><span class="p">(</span>
+            <span class="o">&amp;</span><span class="nx">totalRecords</span><span class="p">,</span> <span class="c1">// Scan the count from the window function into totalRecords.
+</span><span class="c1"></span>            <span class="o">&amp;</span><span class="nx">movie</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span>
+            <span class="o">&amp;</span><span class="nx">movie</span><span class="p">.</span><span class="nx">CreatedAt</span><span class="p">,</span>
+            <span class="o">&amp;</span><span class="nx">movie</span><span class="p">.</span><span class="nx">Title</span><span class="p">,</span>
+            <span class="o">&amp;</span><span class="nx">movie</span><span class="p">.</span><span class="nx">Year</span><span class="p">,</span>
+            <span class="o">&amp;</span><span class="nx">movie</span><span class="p">.</span><span class="nx">Runtime</span><span class="p">,</span>
+            <span class="nx">pq</span><span class="p">.</span><span class="nf">Array</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">movie</span><span class="p">.</span><span class="nx">Genres</span><span class="p">)</span><span class="p">,</span>
+            <span class="o">&amp;</span><span class="nx">movie</span><span class="p">.</span><span class="nx">Version</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">Metadata</span><span class="p">{</span><span class="p">}</span><span class="p">,</span> <span class="nx">err</span> <span class="c1">// Update this to return an empty Metadata struct.
+</span><span class="c1"></span>        <span class="p">}</span>
+
+        <span class="nx">movies</span> <span class="p">=</span> <span class="nb">append</span><span class="p">(</span><span class="nx">movies</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">movie</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="k">if</span> <span class="nx">err</span> <span class="p">=</span> <span class="nx">rows</span><span class="p">.</span><span class="nf">Err</span><span class="p">(</span><span class="p">)</span><span class="p">;</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">Metadata</span><span class="p">{</span><span class="p">}</span><span class="p">,</span> <span class="nx">err</span> <span class="c1">// Update this to return an empty Metadata struct.
+</span><span class="c1"></span>    <span class="p">}</span>
+
+    <span class="c1">// Generate a Metadata struct, passing in the total record count and pagination
+</span><span class="c1"></span>    <span class="c1">// parameters from the client.
+</span><span class="c1"></span>    <span class="nx">metadata</span> <span class="o">:=</span> <span class="nf">calculateMetadata</span><span class="p">(</span><span class="nx">totalRecords</span><span class="p">,</span> <span class="nx">filters</span><span class="p">.</span><span class="nx">Page</span><span class="p">,</span> <span class="nx">filters</span><span class="p">.</span><span class="nx">PageSize</span><span class="p">)</span>
+
+    <span class="c1">// Include the metadata struct when returning.
+</span><span class="c1"></span>    <span class="k">return</span> <span class="nx">movies</span><span class="p">,</span> <span class="nx">metadata</span><span class="p">,</span> <span class="kc">nil</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Finally, we need to update our <code>listMoviesHandler</code> handler to receive the <code>Metadata</code> struct returned by <code>GetAll()</code> and include the information in the JSON response. Like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/movies.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">listMoviesHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">input</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">Title</span>  <span class="kt">string</span>
+        <span class="nx">Genres</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span>
+        <span class="nx">data</span><span class="p">.</span><span class="nx">Filters</span>
+    <span class="p">}</span>
+
+    <span class="nx">v</span> <span class="o">:=</span> <span class="nx">validator</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">qs</span> <span class="o">:=</span> <span class="nx">r</span><span class="p">.</span><span class="nx">URL</span><span class="p">.</span><span class="nf">Query</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">input</span><span class="p">.</span><span class="nx">Title</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readString</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;title&#34;</span><span class="p">,</span> <span class="s">&#34;&#34;</span><span class="p">)</span>
+    <span class="nx">input</span><span class="p">.</span><span class="nx">Genres</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readCSV</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;genres&#34;</span><span class="p">,</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span><span class="p">{</span><span class="p">}</span><span class="p">)</span>
+
+    <span class="nx">input</span><span class="p">.</span><span class="nx">Filters</span><span class="p">.</span><span class="nx">Page</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readInt</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;page&#34;</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="nx">v</span><span class="p">)</span>
+    <span class="nx">input</span><span class="p">.</span><span class="nx">Filters</span><span class="p">.</span><span class="nx">PageSize</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readInt</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;page_size&#34;</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="nx">v</span><span class="p">)</span>
+
+    <span class="nx">input</span><span class="p">.</span><span class="nx">Filters</span><span class="p">.</span><span class="nx">Sort</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readString</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;sort&#34;</span><span class="p">,</span> <span class="s">&#34;id&#34;</span><span class="p">)</span>
+    <span class="nx">input</span><span class="p">.</span><span class="nx">Filters</span><span class="p">.</span><span class="nx">SortSafelist</span> <span class="p">=</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span><span class="p">{</span><span class="s">&#34;id&#34;</span><span class="p">,</span> <span class="s">&#34;title&#34;</span><span class="p">,</span> <span class="s">&#34;year&#34;</span><span class="p">,</span> <span class="s">&#34;runtime&#34;</span><span class="p">,</span> <span class="s">&#34;-id&#34;</span><span class="p">,</span> <span class="s">&#34;-title&#34;</span><span class="p">,</span> <span class="s">&#34;-year&#34;</span><span class="p">,</span> <span class="s">&#34;-runtime&#34;</span><span class="p">}</span>
+
+    <span class="k">if</span> <span class="nx">data</span><span class="p">.</span><span class="nf">ValidateFilters</span><span class="p">(</span><span class="nx">v</span><span class="p">,</span> <span class="nx">input</span><span class="p">.</span><span class="nx">Filters</span><span class="p">)</span><span class="p">;</span> <span class="p">!</span><span class="nx">v</span><span class="p">.</span><span class="nf">Valid</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">failedValidationResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nx">Errors</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Accept the metadata struct as a return value.
+</span><span class="c1"></span>    <span class="nx">movies</span><span class="p">,</span> <span class="nx">metadata</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Movies</span><span class="p">.</span><span class="nf">GetAll</span><span class="p">(</span><span class="nx">input</span><span class="p">.</span><span class="nx">Title</span><span class="p">,</span> <span class="nx">input</span><span class="p">.</span><span class="nx">Genres</span><span class="p">,</span> <span class="nx">input</span><span class="p">.</span><span class="nx">Filters</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Include the metadata in the response envelope.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">writeJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusOK</span><span class="p">,</span> <span class="nx">envelope</span><span class="p">{</span><span class="s">&#34;movies&#34;</span><span class="p">:</span> <span class="nx">movies</span><span class="p">,</span> <span class="s">&#34;metadata&#34;</span><span class="p">:</span> <span class="nx">metadata</span><span class="p">}</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Feel free to restart the API and try out this new functionality by making some different requests to the <code>GET /v1/movies</code> endpoint. You should find that the correct pagination metadata is now included in the response. For example:</p>
+
+<figure class="code bash">
+<pre>$ curl &#34;localhost:4000/v1/movies?page=1&amp;page_size=2&#34;
+<samp>{
+    &#34;metadata&#34;: {
+        &#34;current_page&#34;: 1,
+        &#34;page_size&#34;: 2,
+        &#34;first_page&#34;: 1,
+        &#34;last_page&#34;: 2,
+        &#34;total_records&#34;: 3
+    },
+    &#34;movies&#34;: [
+        {
+            &#34;id&#34;: 1,
+            &#34;title&#34;: &#34;Moana&#34;,
+            &#34;year&#34;: 2015,
+            &#34;runtime&#34;: &#34;107 mins&#34;,
+            &#34;genres&#34;: [
+                &#34;animation&#34;,
+                &#34;adventure&#34;
+            ],
+            &#34;version&#34;: 1
+        },
+        {
+            &#34;id&#34;: 2,
+            &#34;title&#34;: &#34;Black Panther&#34;,
+            &#34;year&#34;: 2018,
+            &#34;runtime&#34;: &#34;134 mins&#34;,
+            &#34;genres&#34;: [
+                &#34;sci-fi&#34;,
+                &#34;action&#34;,
+                &#34;adventure&#34;
+            ],
+            &#34;version&#34;: 2
+        }
+    ]
+}</samp></pre>
+</figure>
+
+<p>And if you try making a request with a filter applied, you should see that the <code>last_page</code> value and <code>total_records</code> count changes to reflect the applied filters. For example, by requesting only movies with the genre &ldquo;adventure&rdquo; we can see that the <code>total_records</code> count drops down to <code>2</code>:</p>
+
+<figure class="code bash">
+<pre>$ curl &#34;localhost:4000/v1/movies?genres=adventure&#34;
+<samp>{
+    &#34;metadata&#34;: {
+        &#34;current_page&#34;: 1,
+        &#34;page_size&#34;: 20,
+        &#34;first_page&#34;: 1,
+        &#34;last_page&#34;: 1,
+        &#34;total_records&#34;: 2
+    },
+    &#34;movies&#34;: [
+        {
+            &#34;id&#34;: 1,
+            &#34;title&#34;: &#34;Moana&#34;,
+            &#34;year&#34;: 2015,
+            &#34;runtime&#34;: &#34;107 mins&#34;,
+            &#34;genres&#34;: [
+                &#34;animation&#34;,
+                &#34;adventure&#34;
+            ],
+            &#34;version&#34;: 1
+        },
+        {
+            &#34;id&#34;: 2,
+            &#34;title&#34;: &#34;Black Panther&#34;,
+            &#34;year&#34;: 2018,
+            &#34;runtime&#34;: &#34;134 mins&#34;,
+            &#34;genres&#34;: [
+                &#34;sci-fi&#34;,
+                &#34;action&#34;,
+                &#34;adventure&#34;
+            ],
+            &#34;version&#34;: 2
+        }
+    ]
+}</samp></pre>
+</figure>
+
+<p>Lastly, if you make a request with a too-high page value, you should get a response with an empty metadata object and an empty movies array, like this:</p>
+
+<figure class="code bash">
+<pre>$ curl &#34;localhost:4000/v1/movies?page=100&#34;
+<samp>{
+    &#34;metadata&#34;: {},
+    &#34;movies&#34;: []
+}</samp></pre>
+</figure>
+
+<p>Over the last few chapters, we&rsquo;ve had to put in a lot of work on the <code>GET /v1/movies</code> endpoint. But the end result is really powerful. The client now has a lot of control over what their response contains, with filtering, pagination and sorting all supported.</p>
+
+<p>With the <code>Filters</code> struct that we&rsquo;ve created, we&rsquo;ve also got something that we can easily drop into any other endpoints that need pagination and sorting functionality in the future. And if you take a step back and look at the final code we&rsquo;ve written in the <code>listMoviesHandler</code> and our database model&rsquo;s <code>GetAll()</code> method, there isn&rsquo;t <em>so much</em> more code than there was in the earlier iterations of the endpoint.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="09.07-paginating-lists.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="10.00-rate-limiting.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "09.07-paginating-lists.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "10.00-rate-limiting.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

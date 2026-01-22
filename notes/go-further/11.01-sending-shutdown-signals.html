@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Sending shutdown signals &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="11.00-graceful-shutdown.html">Graceful shutdown</a> &rsaquo; Sending shutdown signals</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="11.00-graceful-shutdown.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="11.02-intercepting-shutdown-signals.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 11.1.</div>
+			<h2 id="sending-shutdown-signals">Sending shutdown signals</h2>
+
+<p>When our application is running, we can terminate it at any time by sending it a specific <a href="https://en.wikipedia.org/wiki/Signal_(IPC)#POSIX_signals">signal</a>. A common way to do this, which you&rsquo;ve probably been using, is by pressing <code>Ctrl+C</code> on your keyboard to send an <em>interrupt</em> signal &mdash; also known as a <code>SIGINT</code>.</p>
+
+<p>But this isn&rsquo;t the only type of signal that can stop our application. Some of the other common ones are:</p>
+
+<table>
+<thead>
+<tr>
+<th>Signal</th>
+<th>Description</th>
+<th>Keyboard shortcut</th>
+<th>Catchable</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td><code>SIGINT</code></td>
+<td>Interrupt from keyboard</td>
+<td><code>Ctrl+C</code></td>
+<td>Yes</td>
+</tr>
+
+<tr>
+<td><code>SIGQUIT</code></td>
+<td>Quit from keyboard</td>
+<td><code>Ctrl+\</code></td>
+<td>Yes</td>
+</tr>
+
+<tr>
+<td><code>SIGKILL</code></td>
+<td>Kill process (terminate immediately)</td>
+<td>-</td>
+<td>No</td>
+</tr>
+
+<tr>
+<td><code>SIGTERM</code></td>
+<td>Terminate process in an orderly manner</td>
+<td>-</td>
+<td>Yes</td>
+</tr>
+</tbody>
+</table>
+<p>It&rsquo;s important to explain upfront that some signals are <em>catchable</em> and others are not. Catchable signals can be intercepted by our application and either ignored, or used to trigger a certain action (such as a graceful shutdown). Other signals, like <code>SIGKILL</code>, are not catchable and cannot be intercepted.</p>
+
+<p>Let&rsquo;s take a quick look at these signals in action. If you&rsquo;re following along, go ahead and start the API application with the same <code>go run ./cmd/api</code> command as normal:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development</samp></pre>
+</figure>
+
+<p>Doing this should start a process with the name <code>api</code> on your machine. You can use the <code>pgrep</code> command to verify that this process exists, like so:</p>
+
+<figure class="code bash">
+<pre>$ pgrep -l api
+<samp>4414 api</samp></pre>
+</figure>
+
+<p>In my case, I can see that the <code>api</code> process is running and has the <em>process ID</em> <code>4414</code> (your process ID will most likely be different).</p>
+
+<p>Once that&rsquo;s confirmed, try sending a <code>SIGKILL</code> signal to the <code>api</code> process using the <a href="https://linuxize.com/post/pkill-command-in-linux/"><code>pkill</code></a> command like so:</p>
+
+<figure class="code bash">
+<pre>$ pkill -SIGKILL api</pre>
+</figure>
+
+<p>If you go back to the terminal window that is running the API application, you should see that it has been terminated and the final line in the output stream is <code>signal: killed</code>. Similar to this:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development
+signal: killed</samp></pre>
+</figure>
+
+<p>Feel free to repeat the same process, but sending a <code>SIGTERM</code> signal instead:</p>
+
+<figure class="code bash">
+<pre>$ pkill -SIGTERM api</pre>
+</figure>
+
+<p>This time you should see the line <code>signal: terminated</code> at the end of the output, like so:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development
+signal: terminated</samp></pre>
+</figure>
+
+<p>You can also try sending a <code>SIGQUIT</code> signal &mdash; either by pressing <code>Ctrl+\</code> on your keyboard or running <code>pkill -SIGQUIT api</code>. This will cause the application to exit with a stack dump, similar to this:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development
+SIGQUIT: quit
+PC=0x46ebe1 m=0 sigcode=0
+
+goroutine 0 [idle]:
+runtime.futex(0x964870, 0x80, 0x0, 0x0, 0x0, 0x964720, 0x7ffd551034f8, 0x964420, 0x7ffd55103508, 0x40dcbf, ...)
+        /usr/local/go/src/runtime/sys_linux_amd64.s:579 +0x21
+runtime.futexsleep(0x964870, 0x0, 0xffffffffffffffff)
+        /usr/local/go/src/runtime/os_linux.go:44 +0x46
+runtime.notesleep(0x964870)
+        /usr/local/go/src/runtime/lock_futex.go:159 +0x9f
+runtime.mPark()
+        /usr/local/go/src/runtime/proc.go:1340 +0x39
+runtime.stopm()
+        /usr/local/go/src/runtime/proc.go:2257 +0x92
+runtime.findrunnable(0xc00002c000, 0x0)
+        /usr/local/go/src/runtime/proc.go:2916 +0x72e
+runtime.schedule()
+        /usr/local/go/src/runtime/proc.go:3125 +0x2d7
+runtime.park_m(0xc000000180)
+        /usr/local/go/src/runtime/proc.go:3274 +0x9d
+runtime.mcall(0x0)
+        /usr/local/go/src/runtime/asm_amd64.s:327 +0x5b
+...</samp></pre>
+</figure>
+
+<p>We can see that these signals are effective in terminating our application &mdash; but the problem we have is that they all cause our application to exit <em>immediately</em>.</p>
+
+<p>Fortunately, Go provides tools in the <a href="https://golang.org/pkg/os/signal/"><code>os/signals</code></a> package that we can use to intercept catchable signals and trigger a graceful shutdown of our application. We&rsquo;ll look at how to do that in the next chapter.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="11.00-graceful-shutdown.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="11.02-intercepting-shutdown-signals.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "11.00-graceful-shutdown.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "11.02-intercepting-shutdown-signals.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

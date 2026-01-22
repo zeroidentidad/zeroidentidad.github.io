@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Executing the shutdown &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="11.00-graceful-shutdown.html">Graceful shutdown</a> &rsaquo; Executing the shutdown</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="11.02-intercepting-shutdown-signals.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="12.00-user-model-setup-and-registration.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 11.3.</div>
+			<h2 id="executing-the-shutdown">Executing the shutdown</h2>
+
+<p>Intercepting the signals is all well and good, but it&rsquo;s not very useful until we do something with them! In this chapter, we&rsquo;re going to update our application so that the <code>SIGINT</code> and <code>SIGTERM</code> signals we intercept trigger a graceful shutdown of our API.</p>
+
+<p>Specifically, after receiving one of these signals we will call the <a href="https://golang.org/pkg/net/http/#Server.Shutdown"><code>Shutdown()</code></a> method on our HTTP server. The official documentation describes this as follows:</p>
+
+<blockquote>
+<p>Shutdown gracefully shuts down the server without interrupting any active connections. Shutdown works by first closing all open listeners, then closing all idle connections, and then waiting indefinitely for connections to return to idle and then shut down.</p>
+</blockquote>
+
+<p>The pattern to implement this in practice is difficult to describe with words, so let&rsquo;s jump into the code and talk through the details as we go along.</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/server.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;context&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;errors&#34;</span>  <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;fmt&#34;</span>
+    <span class="s">&#34;log/slog&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+    <span class="s">&#34;os&#34;</span>
+    <span class="s">&#34;os/signal&#34;</span>
+    <span class="s">&#34;syscall&#34;</span>
+    <span class="s">&#34;time&#34;</span>
+<span class="p">)</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">serve</span><span class="p">(</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+    <span class="nx">srv</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">http</span><span class="p">.</span><span class="nx">Server</span><span class="p">{</span>
+        <span class="nx">Addr</span><span class="p">:</span>         <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;:%d&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">config</span><span class="p">.</span><span class="nx">port</span><span class="p">)</span><span class="p">,</span>
+        <span class="nx">Handler</span><span class="p">:</span>      <span class="nx">app</span><span class="p">.</span><span class="nf">routes</span><span class="p">(</span><span class="p">)</span><span class="p">,</span>
+        <span class="nx">IdleTimeout</span><span class="p">:</span>  <span class="nx">time</span><span class="p">.</span><span class="nx">Minute</span><span class="p">,</span>
+        <span class="nx">ReadTimeout</span><span class="p">:</span>  <span class="mi">5</span> <span class="o">*</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">,</span>
+        <span class="nx">WriteTimeout</span><span class="p">:</span> <span class="mi">10</span> <span class="o">*</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">,</span>
+        <span class="nx">ErrorLog</span><span class="p">:</span>     <span class="nx">slog</span><span class="p">.</span><span class="nf">NewLogLogger</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Handler</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="nx">slog</span><span class="p">.</span><span class="nx">LevelError</span><span class="p">)</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Create a shutdownError channel. We will use this to receive any errors returned
+</span><span class="c1"></span>    <span class="c1">// by the graceful Shutdown() function.
+</span><span class="c1"></span>    <span class="nx">shutdownError</span> <span class="o">:=</span> <span class="nb">make</span><span class="p">(</span><span class="kd">chan</span> <span class="kt">error</span><span class="p">)</span>
+
+    <span class="k">go</span> <span class="kd">func</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="c1">// Intercept the signals, as before.
+</span><span class="c1"></span>        <span class="nx">quit</span> <span class="o">:=</span> <span class="nb">make</span><span class="p">(</span><span class="kd">chan</span> <span class="nx">os</span><span class="p">.</span><span class="nx">Signal</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="nx">signal</span><span class="p">.</span><span class="nf">Notify</span><span class="p">(</span><span class="nx">quit</span><span class="p">,</span> <span class="nx">syscall</span><span class="p">.</span><span class="nx">SIGINT</span><span class="p">,</span> <span class="nx">syscall</span><span class="p">.</span><span class="nx">SIGTERM</span><span class="p">)</span>
+        <span class="nx">s</span> <span class="o">:=</span> <span class="o">&lt;-</span><span class="nx">quit</span>
+
+        <span class="c1">// Update the log entry to read &#34;shutting down server&#34; instead of &#34;caught signal&#34;.
+</span><span class="c1"></span>        <span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Info</span><span class="p">(</span><span class="s">&#34;shutting down server&#34;</span><span class="p">,</span> <span class="s">&#34;signal&#34;</span><span class="p">,</span> <span class="nx">s</span><span class="p">.</span><span class="nf">String</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+
+        <span class="c1">// Create a context with a 30-second timeout.
+</span><span class="c1"></span>        <span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="mi">30</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">)</span>
+        <span class="k">defer</span> <span class="nf">cancel</span><span class="p">(</span><span class="p">)</span>
+
+        <span class="c1">// Call Shutdown() on our server, passing in the context we just made.
+</span><span class="c1"></span>        <span class="c1">// Shutdown() will return nil if the graceful shutdown was successful, or an
+</span><span class="c1"></span>        <span class="c1">// error (which may happen because of a problem closing the listeners, or 
+</span><span class="c1"></span>        <span class="c1">// because the shutdown didn&#39;t complete before the 30-second context deadline is
+</span><span class="c1"></span>        <span class="c1">// hit). We relay this return value to the shutdownError channel.
+</span><span class="c1"></span>        <span class="nx">shutdownError</span> <span class="o">&lt;-</span> <span class="nx">srv</span><span class="p">.</span><span class="nf">Shutdown</span><span class="p">(</span><span class="nx">ctx</span><span class="p">)</span>
+    <span class="p">}</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Info</span><span class="p">(</span><span class="s">&#34;starting server&#34;</span><span class="p">,</span> <span class="s">&#34;addr&#34;</span><span class="p">,</span> <span class="nx">srv</span><span class="p">.</span><span class="nx">Addr</span><span class="p">,</span> <span class="s">&#34;env&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">config</span><span class="p">.</span><span class="nx">env</span><span class="p">)</span>
+
+    <span class="c1">// Calling Shutdown() on our server will cause ListenAndServe() to immediately 
+</span><span class="c1"></span>    <span class="c1">// return a http.ErrServerClosed error. So if we see this error, it is actually a
+</span><span class="c1"></span>    <span class="c1">// good thing and an indication that the graceful shutdown has started. So we check 
+</span><span class="c1"></span>    <span class="c1">// specifically for this, only returning the error if it is NOT http.ErrServerClosed. 
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">srv</span><span class="p">.</span><span class="nf">ListenAndServe</span><span class="p">(</span><span class="p">)</span>
+    <span class="k">if</span> <span class="p">!</span><span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ErrServerClosed</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">err</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Otherwise, we wait to receive the return value from Shutdown() on the  
+</span><span class="c1"></span>    <span class="c1">// shutdownError channel. If the return value is an error, we know that there was a
+</span><span class="c1"></span>    <span class="c1">// problem with the graceful shutdown and we return the error.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="o">&lt;-</span><span class="nx">shutdownError</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">err</span>
+    <span class="p">}</span>
+
+    <span class="c1">// At this point we know that the graceful shutdown completed successfully and we 
+</span><span class="c1"></span>    <span class="c1">// log a &#34;stopped server&#34; message.
+</span><span class="c1"></span>    <span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Info</span><span class="p">(</span><span class="s">&#34;stopped server&#34;</span><span class="p">,</span> <span class="s">&#34;addr&#34;</span><span class="p">,</span> <span class="nx">srv</span><span class="p">.</span><span class="nx">Addr</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="kc">nil</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>At first glance this code might seem a bit complex, but at a high level what it&rsquo;s doing can be summarized very simply: <em>when we receive a <code>SIGINT</code> or <code>SIGTERM</code> signal, we instruct our server to stop accepting any new HTTP requests, and give any in-flight requests a &lsquo;grace period&rsquo; of 30 seconds to complete before the application is terminated</em>.</p>
+
+<p>It&rsquo;s important to be aware that the <code>Shutdown()</code> method does not wait for any background tasks to complete, nor does it close hijacked long-lived connections like WebSockets. Instead, you will need to implement your own logic to coordinate a graceful shutdown of these things. We&rsquo;ll look at some techniques for doing this later in the book.</p>
+
+<p>But that aside, this should now be working nicely in our application.</p>
+
+<p>To help demonstrate the graceful shutdown functionality, you can add a 4 second sleep delay to the <code>healthcheckHandler</code> method, like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/healthcheck.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;net/http&#34;</span>
+    <span class="s">&#34;time&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span><span class="p">)</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">healthcheckHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">env</span> <span class="o">:=</span> <span class="nx">envelope</span><span class="p">{</span>
+        <span class="s">&#34;status&#34;</span><span class="p">:</span> <span class="s">&#34;available&#34;</span><span class="p">,</span>
+        <span class="s">&#34;system_info&#34;</span><span class="p">:</span> <span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="kt">string</span><span class="p">{</span>
+            <span class="s">&#34;environment&#34;</span><span class="p">:</span> <span class="nx">app</span><span class="p">.</span><span class="nx">config</span><span class="p">.</span><span class="nx">env</span><span class="p">,</span>
+            <span class="s">&#34;version&#34;</span><span class="p">:</span>     <span class="nx">version</span><span class="p">,</span>
+        <span class="p">}</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Add a 4 second delay.
+</span><span class="c1"></span>    <span class="nx">time</span><span class="p">.</span><span class="nf">Sleep</span><span class="p">(</span><span class="mi">4</span> <span class="o">*</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">)</span>
+
+    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">writeJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusOK</span><span class="p">,</span> <span class="nx">env</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Then start the API, and in another terminal window issue a request to the healthcheck endpoint followed by a <code>SIGTERM</code> signal.</p>
+
+<figure class="code bash">
+<pre>$ curl localhost:4000/v1/healthcheck &amp; pkill -SIGTERM api</pre>
+</figure>
+
+<p>In the logs for the server, you should immediately see a <code>&quot;shutting down server&quot;</code> message following the <code>SIGTERM</code> signal, similar to this:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development
+time=2023-09-10T10:59:14.722+02:00 level=INFO msg=&#34;shutting down server&#34; signal=terminated</samp></pre>
+</figure>
+
+<p>Then after a 4-second delay for the in-flight request to complete, our <code>healthcheckHandler</code> should return the JSON response as normal and you should see that our API has logged a final <code>&quot;stopped server&quot;</code> message before exiting cleanly:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development
+time=2023-09-10T10:59:14.722+02:00 level=INFO msg=&#34;shutting down server&#34; signal=terminated
+time=2023-09-10T10:59:18.722+02:00 level=INFO msg=&#34;stopped server&#34; addr=:4000</samp></pre>
+</figure>
+
+<p>Notice the 4 second delay between the <code>&quot;shutting down server&quot;</code> and <code>&quot;stopped server&quot;</code> messages in the timestamps above?</p>
+
+<p>So this is working really well now. Any time that we want to gracefully shut down our application, we can do so by sending a <code>SIGINT</code> (<code>Ctrl+C</code>) or <code>SIGTERM</code> signal. So long as no in-flight requests take more than 30 seconds to complete, our handlers will have time to complete their work and our clients will receive a proper HTTP response. And if we ever want to exit immediately, without a graceful shutdown, we can still do so by sending a <code>SIGQUIT</code> (<code>Ctrl+\</code>) or <code>SIGKILL</code> signal instead.</p>
+
+<p>Lastly, if you&rsquo;re following along, please revert <code>healthcheckHandler</code> to remove the 4 second sleep. Like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/healthcheck.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;net/http&#34;</span>
+<span class="p">)</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">healthcheckHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">env</span> <span class="o">:=</span> <span class="nx">envelope</span><span class="p">{</span>
+        <span class="s">&#34;status&#34;</span><span class="p">:</span> <span class="s">&#34;available&#34;</span><span class="p">,</span>
+        <span class="s">&#34;system_info&#34;</span><span class="p">:</span> <span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="kt">string</span><span class="p">{</span>
+            <span class="s">&#34;environment&#34;</span><span class="p">:</span> <span class="nx">app</span><span class="p">.</span><span class="nx">config</span><span class="p">.</span><span class="nx">env</span><span class="p">,</span>
+            <span class="s">&#34;version&#34;</span><span class="p">:</span>     <span class="nx">version</span><span class="p">,</span>
+        <span class="p">}</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">writeJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusOK</span><span class="p">,</span> <span class="nx">env</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre>
+</figure>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="11.02-intercepting-shutdown-signals.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="12.00-user-model-setup-and-registration.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "11.02-intercepting-shutdown-signals.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "12.00-user-model-setup-and-registration.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

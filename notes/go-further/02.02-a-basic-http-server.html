@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>A basic HTTP server &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="02.00-getting-started.html">Getting started</a> &rsaquo; A basic HTTP server</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="02.01-project-setup-and-skeleton-structure.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="02.03-api-endpoints-and-restful-routing.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 2.2.</div>
+			<h2 id="a-basic-http-server">A basic HTTP server</h2>
+
+<p>Now that the skeleton structure for our project is in place, let&rsquo;s focus our attention on getting an HTTP server up and running.</p>
+
+<p>To start with, we&rsquo;ll configure our server to have just one endpoint: <code>/v1/healthcheck</code>. This endpoint will return some basic information about our API, including its current version number and operating environment (development, staging, production, etc.).</p>
+
+<table>
+<thead>
+<tr>
+<th>URL Pattern</th>
+<th>Handler</th>
+<th>Action</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td>/v1/healthcheck</td>
+<td>healthcheckHandler</td>
+<td>Show application information</td>
+</tr>
+</tbody>
+</table>
+<p>If you&rsquo;re following along, open up the <code>cmd/api/main.go</code> file and replace the &lsquo;hello world&rsquo; application with the following code:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/main.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;flag&#34;</span>
+    <span class="s">&#34;fmt&#34;</span>
+    <span class="s">&#34;log/slog&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+    <span class="s">&#34;os&#34;</span>
+    <span class="s">&#34;time&#34;</span>
+<span class="p">)</span>
+
+<span class="c1">// Declare a string containing the application version number. Later in the book we&#39;ll 
+</span><span class="c1"></span><span class="c1">// generate this automatically at build time, but for now we&#39;ll just store the version
+</span><span class="c1"></span><span class="c1">// number as a hard-coded global constant.
+</span><span class="c1"></span><span class="kd">const</span> <span class="nx">version</span> <span class="p">=</span> <span class="s">&#34;1.0.0&#34;</span>
+
+<span class="c1">// Define a config struct to hold all the configuration settings for our application.
+</span><span class="c1"></span><span class="c1">// For now, the only configuration settings will be the network port that we want the 
+</span><span class="c1"></span><span class="c1">// server to listen on, and the name of the current operating environment for the
+</span><span class="c1"></span><span class="c1">// application (development, staging, production, etc.). We will read in these  
+</span><span class="c1"></span><span class="c1">// configuration settings from command-line flags when the application starts.
+</span><span class="c1"></span><span class="kd">type</span> <span class="nx">config</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">port</span> <span class="kt">int</span>
+    <span class="nx">env</span>  <span class="kt">string</span>
+<span class="p">}</span>
+
+<span class="c1">// Define an application struct to hold the dependencies for our HTTP handlers, helpers,
+</span><span class="c1"></span><span class="c1">// and middleware. At the moment this only contains a copy of the config struct and a 
+</span><span class="c1"></span><span class="c1">// logger, but it will grow to include a lot more as our build progresses.
+</span><span class="c1"></span><span class="kd">type</span> <span class="nx">application</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">config</span> <span class="nx">config</span>
+    <span class="nx">logger</span> <span class="o">*</span><span class="nx">slog</span><span class="p">.</span><span class="nx">Logger</span>
+<span class="p">}</span>
+
+<span class="kd">func</span> <span class="nf">main</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Declare an instance of the config struct.
+</span><span class="c1"></span>    <span class="kd">var</span> <span class="nx">cfg</span> <span class="nx">config</span>
+
+    <span class="c1">// Read the value of the port and env command-line flags into the config struct. We
+</span><span class="c1"></span>    <span class="c1">// default to using the port number 4000 and the environment &#34;development&#34; if no
+</span><span class="c1"></span>    <span class="c1">// corresponding flags are provided.
+</span><span class="c1"></span>    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">port</span><span class="p">,</span> <span class="s">&#34;port&#34;</span><span class="p">,</span> <span class="mi">4000</span><span class="p">,</span> <span class="s">&#34;API server port&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">env</span><span class="p">,</span> <span class="s">&#34;env&#34;</span><span class="p">,</span> <span class="s">&#34;development&#34;</span><span class="p">,</span> <span class="s">&#34;Environment (development|staging|production)&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">Parse</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="c1">// Initialize a new structured logger which writes log entries to the standard out 
+</span><span class="c1"></span>    <span class="c1">// stream.
+</span><span class="c1"></span>    <span class="nx">logger</span> <span class="o">:=</span> <span class="nx">slog</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="nx">slog</span><span class="p">.</span><span class="nf">NewTextHandler</span><span class="p">(</span><span class="nx">os</span><span class="p">.</span><span class="nx">Stdout</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span><span class="p">)</span>
+
+    <span class="c1">// Declare an instance of the application struct, containing the config struct and 
+</span><span class="c1"></span>    <span class="c1">// the logger.
+</span><span class="c1"></span>    <span class="nx">app</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">application</span><span class="p">{</span>
+        <span class="nx">config</span><span class="p">:</span> <span class="nx">cfg</span><span class="p">,</span>
+        <span class="nx">logger</span><span class="p">:</span> <span class="nx">logger</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Declare a new servemux and add a /v1/healthcheck route which dispatches requests
+</span><span class="c1"></span>    <span class="c1">// to the healthcheckHandler method (which we will create in a moment).
+</span><span class="c1"></span>    <span class="nx">mux</span> <span class="o">:=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">NewServeMux</span><span class="p">(</span><span class="p">)</span>
+    <span class="nx">mux</span><span class="p">.</span><span class="nf">HandleFunc</span><span class="p">(</span><span class="s">&#34;/v1/healthcheck&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">healthcheckHandler</span><span class="p">)</span>
+
+    <span class="c1">// Declare an HTTP server which listens on the port provided in the config struct,
+</span><span class="c1"></span>    <span class="c1">// uses the servemux we created above as the handler, has some sensible timeout
+</span><span class="c1"></span>    <span class="c1">// settings, and writes any log messages to the structured logger at Error level.
+</span><span class="c1"></span>    <span class="nx">srv</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">http</span><span class="p">.</span><span class="nx">Server</span><span class="p">{</span>
+        <span class="nx">Addr</span><span class="p">:</span>         <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;:%d&#34;</span><span class="p">,</span> <span class="nx">cfg</span><span class="p">.</span><span class="nx">port</span><span class="p">)</span><span class="p">,</span>
+        <span class="nx">Handler</span><span class="p">:</span>      <span class="nx">mux</span><span class="p">,</span>
+        <span class="nx">IdleTimeout</span><span class="p">:</span>  <span class="nx">time</span><span class="p">.</span><span class="nx">Minute</span><span class="p">,</span>
+        <span class="nx">ReadTimeout</span><span class="p">:</span>  <span class="mi">5</span> <span class="o">*</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">,</span>
+        <span class="nx">WriteTimeout</span><span class="p">:</span> <span class="mi">10</span> <span class="o">*</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">,</span>
+        <span class="nx">ErrorLog</span><span class="p">:</span>     <span class="nx">slog</span><span class="p">.</span><span class="nf">NewLogLogger</span><span class="p">(</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Handler</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="nx">slog</span><span class="p">.</span><span class="nx">LevelError</span><span class="p">)</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Start the HTTP server.
+</span><span class="c1"></span>    <span class="nx">logger</span><span class="p">.</span><span class="nf">Info</span><span class="p">(</span><span class="s">&#34;starting server&#34;</span><span class="p">,</span> <span class="s">&#34;addr&#34;</span><span class="p">,</span> <span class="nx">srv</span><span class="p">.</span><span class="nx">Addr</span><span class="p">,</span> <span class="s">&#34;env&#34;</span><span class="p">,</span> <span class="nx">cfg</span><span class="p">.</span><span class="nx">env</span><span class="p">)</span>
+    
+    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">srv</span><span class="p">.</span><span class="nf">ListenAndServe</span><span class="p">(</span><span class="p">)</span>
+    <span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">os</span><span class="p">.</span><span class="nf">Exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<aside class="important"><p>
+<strong>Important:</strong> If any of the terminology or patterns in the code above are unfamiliar to you, then I strongly recommend reading the first <a href="https://lets-go.alexedwards.net/"><em>Let&rsquo;s Go</em></a> book which explains them in detail.
+</p></aside>
+
+<h3 id="creating-the-healthcheck-handler">Creating the healthcheck handler</h3>
+
+<p>The next thing we need to do is create the <code>healthcheckHandler</code> method for responding to HTTP requests. For now, we&rsquo;ll keep the logic in this handler really simple and have it return a plain-text response containing three pieces of information:</p>
+
+<ul>
+<li>A fixed <code>&quot;status: available&quot;</code> string.</li>
+<li>The API version from the hard-coded <code>version</code> constant.</li>
+<li>The operating environment name from the <code>env</code> command-line flag.</li>
+</ul>
+
+<p>Go ahead and create a new <code>cmd/api/healthcheck.go</code> file:</p>
+
+<figure class="code bash">
+<pre>$ touch cmd/api/healthcheck.go</pre>
+</figure>
+
+<p>And then add the following code:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/healthcheck.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;fmt&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+<span class="p">)</span>
+
+<span class="c1">// Declare a handler which writes a plain-text response with information about the 
+</span><span class="c1"></span><span class="c1">// application status, operating environment and version.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">healthcheckHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Fprintln</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="s">&#34;status: available&#34;</span><span class="p">)</span>
+    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Fprintf</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="s">&#34;environment: %s\n&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">config</span><span class="p">.</span><span class="nx">env</span><span class="p">)</span>
+    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Fprintf</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="s">&#34;version: %s\n&#34;</span><span class="p">,</span> <span class="nx">version</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>The important thing to point out here is that <code>healthcheckHandler</code> is implemented as a <em>method</em> on our <code>application</code> struct.</p>
+
+<p>This is an effective and idiomatic way to make dependencies available to our handlers without resorting to global variables or closures &mdash; any dependency that the <code>healthcheckHandler</code> needs can simply be included as a field in the <code>application</code> struct when we initialize it in <code>main()</code>.</p>
+
+<p>We can see this pattern already being used in the code above, where the operating environment name is retrieved from the <code>application</code> struct by calling <code>app.config.env</code>.</p>
+
+<h3 id="demonstration">Demonstration</h3>
+
+<p>OK, let&rsquo;s try this out. Make sure that all your changes are saved, then use the <code>go run</code> command again to execute the  <code>cmd/api</code> package code. You should see a log message confirming that the HTTP server is running, similar to this:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development</samp></pre>
+</figure>
+
+<p>While the server is running, go ahead and try visiting <a href="http://localhost:4000/v1/healthcheck"><code>localhost:4000/v1/healthcheck</code></a> in your web browser. You should get a response from the <code>healthcheckHandler</code> which looks like this:</p>
+
+<figure class="img">
+<img src="assets/img/02.02-01.png" alt="02.02-01.png" />
+</figure>
+
+<p>Alternatively, you can use <code>curl</code> to make the request from your terminal:</p>
+
+<figure class="code bash">
+<pre>$ curl -i localhost:4000/v1/healthcheck
+<samp>HTTP/1.1 200 OK
+Date: Mon, 05 Apr 2021 17:46:14 GMT
+Content-Length: 58
+Content-Type: text/plain; charset=utf-8
+
+status: available
+environment: development
+version: 1.0.0</samp></pre>
+</figure>
+
+<aside class="hint"><p>
+<strong>Note</strong>: The <code>-i</code> flag in the command above instructs <code>curl</code> to display the HTTP response headers as well as the response body.
+</p></aside>
+
+<p>If you want, you can also verify that the command-line flags are working correctly by specifying alternative <code>port</code> and <code>env</code> values when starting the application. When you do this, you should see the contents of the log message change accordingly. For example:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api -port=3030 -env=production
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:3030 env=production</samp></pre>
+</figure>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="api-versioning">API versioning</h4>
+
+<p>APIs which support real-world businesses and users often need to change their functionality and endpoints over time &mdash; sometimes in a backward-incompatible way. So, to avoid problems and confusion for clients, it&rsquo;s a good idea to always implement some form of API <em>versioning</em>.</p>
+
+<p>There are <a href="https://stackoverflow.com/questions/389169/best-practices-for-api-versioning">two common approaches</a> to doing this:</p>
+
+<ol>
+<li>By prefixing all URLs with your API version, like <code>/v1/healthcheck</code> or <code>/v2/healthcheck</code>.</li>
+<li>By using custom <code>Accept</code> and <code>Content-Type</code> headers on requests and responses to convey the API version, like <code>Accept: application/vnd.greenlight-v1</code>.</li>
+</ol>
+
+<p>From an HTTP semantics point of view, using headers to convey the API version is the &lsquo;purer&rsquo; approach. But from a user-experience point of view, using a URL prefix is arguably better. It makes it possible for developers to see which version of the API is being used at a glance, and it also means that the API can still be explored using a regular web browser (which is harder if custom headers are required).</p>
+
+<p>Throughout this book we&rsquo;ll version our API by prefixing all the URL paths with <code>/v1/</code> &mdash; just like we did with the <code>/v1/healthcheck</code> endpoint in this chapter.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="02.01-project-setup-and-skeleton-structure.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="02.03-api-endpoints-and-restful-routing.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "02.01-project-setup-and-skeleton-structure.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "02.03-api-endpoints-and-restful-routing.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

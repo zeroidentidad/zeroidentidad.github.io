@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Validating query string parameters &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="09.00-filtering-sorting-and-pagination.html">Filtering, sorting, and pagination</a> &rsaquo; Validating query string parameters</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="09.01-parsing-query-string-parameters.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="09.03-listing-data.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 9.2.</div>
+			<h2 id="validating-query-string-parameters">Validating query string parameters</h2>
+
+<p>Thanks to the <code>readInt()</code> helper that we made in the previous chapter, our API should already be returning validation errors if the <code>page</code> and <code>page_size</code> query string parameters don&rsquo;t contain integer values. Go ahead and try it out if you like:</p>
+
+<figure class="code bash">
+<pre>$ curl &#34;localhost:4000/v1/movies?page=abc&amp;page_size=abc&#34;
+<samp>{
+    &#34;error&#34;: {
+        &#34;page&#34;: &#34;must be an integer value&#34;,
+        &#34;page_size&#34;: &#34;must be an integer value&#34;
+    }
+}</samp></pre>
+</figure>
+
+<p>But we still need to perform some additional sanity checks on the query string values provided by the client. In particular, we want to check that:</p>
+
+<ul>
+<li>The <code>page</code> value is between 1 and 10,000,000.</li>
+<li>The <code>page_size</code> value is between 1 and 100.</li>
+<li>The <code>sort</code> parameter contains a known and supported value for our movies table. Specifically, we&rsquo;ll allow <code>&quot;id&quot;</code>, <code>&quot;title&quot;</code>, <code>&quot;year&quot;</code>, <code>&quot;runtime&quot;</code>, <code>&quot;-id&quot;</code>, <code>&quot;-title&quot;</code>, <code>&quot;-year&quot;</code> or <code>&quot;-runtime&quot;</code>.</li>
+</ul>
+
+<p>To fix this, let&rsquo;s open up the <code>internal/data/filters.go</code> file and create a new <code>ValidateFilters()</code> function which conducts these checks on the values.</p>
+
+<p>We&rsquo;ll follow the same pattern that we used for the <code>ValidateMovie()</code> function earlier on to do this, like so:</p>
+
+<figure class="code go">
+<figcaption>File: internal/data/filters.go</figcaption>
+<pre>
+<span class="kn">package</span> <span class="nx">data</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;greenlight.alexedwards.net/internal/validator&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span><span class="p">)</span>
+
+<span class="c1">// Add a SortSafelist field to hold the supported sort values.
+</span><span class="c1"></span><span class="kd">type</span> <span class="nx">Filters</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">Page</span>         <span class="kt">int</span>
+    <span class="nx">PageSize</span>     <span class="kt">int</span>
+    <span class="nx">Sort</span>         <span class="kt">string</span>
+    <span class="nx">SortSafelist</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span>
+<span class="p">}</span>
+
+<span class="kd">func</span> <span class="nf">ValidateFilters</span><span class="p">(</span><span class="nx">v</span> <span class="o">*</span><span class="nx">validator</span><span class="p">.</span><span class="nx">Validator</span><span class="p">,</span> <span class="nx">f</span> <span class="nx">Filters</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Check that the page and page_size parameters contain sensible values.
+</span><span class="c1"></span>    <span class="nx">v</span><span class="p">.</span><span class="nf">Check</span><span class="p">(</span><span class="nx">f</span><span class="p">.</span><span class="nx">Page</span> <span class="p">&gt;</span> <span class="mi">0</span><span class="p">,</span> <span class="s">&#34;page&#34;</span><span class="p">,</span> <span class="s">&#34;must be greater than zero&#34;</span><span class="p">)</span>
+    <span class="nx">v</span><span class="p">.</span><span class="nf">Check</span><span class="p">(</span><span class="nx">f</span><span class="p">.</span><span class="nx">Page</span> <span class="o">&lt;=</span> <span class="mi">10</span><span class="nx">_000_000</span><span class="p">,</span> <span class="s">&#34;page&#34;</span><span class="p">,</span> <span class="s">&#34;must be a maximum of 10 million&#34;</span><span class="p">)</span>
+    <span class="nx">v</span><span class="p">.</span><span class="nf">Check</span><span class="p">(</span><span class="nx">f</span><span class="p">.</span><span class="nx">PageSize</span> <span class="p">&gt;</span> <span class="mi">0</span><span class="p">,</span> <span class="s">&#34;page_size&#34;</span><span class="p">,</span> <span class="s">&#34;must be greater than zero&#34;</span><span class="p">)</span>
+    <span class="nx">v</span><span class="p">.</span><span class="nf">Check</span><span class="p">(</span><span class="nx">f</span><span class="p">.</span><span class="nx">PageSize</span> <span class="o">&lt;=</span> <span class="mi">100</span><span class="p">,</span> <span class="s">&#34;page_size&#34;</span><span class="p">,</span> <span class="s">&#34;must be a maximum of 100&#34;</span><span class="p">)</span>
+
+    <span class="c1">// Check that the sort parameter matches a value in the safelist.
+</span><span class="c1"></span>    <span class="nx">v</span><span class="p">.</span><span class="nf">Check</span><span class="p">(</span><span class="nx">validator</span><span class="p">.</span><span class="nf">PermittedValue</span><span class="p">(</span><span class="nx">f</span><span class="p">.</span><span class="nx">Sort</span><span class="p">,</span> <span class="nx">f</span><span class="p">.</span><span class="nx">SortSafelist</span><span class="o">...</span><span class="p">)</span><span class="p">,</span> <span class="s">&#34;sort&#34;</span><span class="p">,</span> <span class="s">&#34;invalid sort value&#34;</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Then we need to update our <code>listMoviesHandler</code> to set the supported values in the <code>SortSafelist</code> field, and subsequently call this new <code>ValidateFilters()</code> function.</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/movies.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">listMoviesHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">input</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">Title</span>  <span class="kt">string</span>
+        <span class="nx">Genres</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span>
+        <span class="nx">data</span><span class="p">.</span><span class="nx">Filters</span>
+    <span class="p">}</span>
+
+    <span class="nx">v</span> <span class="o">:=</span> <span class="nx">validator</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">qs</span> <span class="o">:=</span> <span class="nx">r</span><span class="p">.</span><span class="nx">URL</span><span class="p">.</span><span class="nf">Query</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">input</span><span class="p">.</span><span class="nx">Title</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readString</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;title&#34;</span><span class="p">,</span> <span class="s">&#34;&#34;</span><span class="p">)</span>
+    <span class="nx">input</span><span class="p">.</span><span class="nx">Genres</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readCSV</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;genres&#34;</span><span class="p">,</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span><span class="p">{</span><span class="p">}</span><span class="p">)</span>
+
+    <span class="nx">input</span><span class="p">.</span><span class="nx">Filters</span><span class="p">.</span><span class="nx">Page</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readInt</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;page&#34;</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="nx">v</span><span class="p">)</span>
+    <span class="nx">input</span><span class="p">.</span><span class="nx">Filters</span><span class="p">.</span><span class="nx">PageSize</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readInt</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;page_size&#34;</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="nx">v</span><span class="p">)</span>
+
+    <span class="nx">input</span><span class="p">.</span><span class="nx">Filters</span><span class="p">.</span><span class="nx">Sort</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readString</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;sort&#34;</span><span class="p">,</span> <span class="s">&#34;id&#34;</span><span class="p">)</span>
+    <span class="c1">// Add the supported sort values for this endpoint to the sort safelist.
+</span><span class="c1"></span>    <span class="nx">input</span><span class="p">.</span><span class="nx">Filters</span><span class="p">.</span><span class="nx">SortSafelist</span> <span class="p">=</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span><span class="p">{</span><span class="s">&#34;id&#34;</span><span class="p">,</span> <span class="s">&#34;title&#34;</span><span class="p">,</span> <span class="s">&#34;year&#34;</span><span class="p">,</span> <span class="s">&#34;runtime&#34;</span><span class="p">,</span> <span class="s">&#34;-id&#34;</span><span class="p">,</span> <span class="s">&#34;-title&#34;</span><span class="p">,</span> <span class="s">&#34;-year&#34;</span><span class="p">,</span> <span class="s">&#34;-runtime&#34;</span><span class="p">}</span>
+
+    <span class="c1">// Execute the validation checks on the Filters struct and send a response 
+</span><span class="c1"></span>    <span class="c1">// containing the errors if necessary.
+</span><span class="c1"></span>    <span class="k">if</span> <span class="nx">data</span><span class="p">.</span><span class="nf">ValidateFilters</span><span class="p">(</span><span class="nx">v</span><span class="p">,</span> <span class="nx">input</span><span class="p">.</span><span class="nx">Filters</span><span class="p">)</span><span class="p">;</span> <span class="p">!</span><span class="nx">v</span><span class="p">.</span><span class="nf">Valid</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">failedValidationResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nx">Errors</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Fprintf</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="s">&#34;%+v\n&#34;</span><span class="p">,</span> <span class="nx">input</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>If you restart the API and try making a request with some invalid <code>page</code>, <code>page_size</code> and <code>sort</code> parameters, you should now receive an error response containing the relevant validation failure messages. Similar to this:</p>
+
+<figure class="code bash">
+<pre>$ curl &#34;localhost:4000/v1/movies?page=-1&amp;page_size=-1&amp;sort=foo&#34;
+<samp>{
+    &#34;error&#34;: {
+        &#34;page&#34;: &#34;must be greater than zero&#34;,
+        &#34;page_size&#34;: &#34;must be greater than zero&#34;,
+        &#34;sort&#34;: &#34;invalid sort value&#34;
+    }
+}</samp></pre>
+</figure>
+
+<p>Feel free to test this out more if you like, and try sending different query string values until you&rsquo;re confident that the validation checks are all working correctly.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="09.01-parsing-query-string-parameters.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="09.03-listing-data.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "09.01-parsing-query-string-parameters.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "09.03-listing-data.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

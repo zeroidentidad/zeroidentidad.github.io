@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Graceful shutdown of background tasks &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="13.00-sending-emails.html">Sending emails</a> &rsaquo; Graceful shutdown of background tasks</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="13.04-sending-background-emails.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="14.00-user-activation.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 13.5.</div>
+			<h2 id="graceful-shutdown-of-background-tasks">Graceful shutdown of background tasks</h2>
+
+<p>Sending our welcome email in the background is working well, but there&rsquo;s still an issue we need to address.</p>
+
+<p>When we initiate a graceful shutdown of our application, it <em>won&rsquo;t wait for any background goroutines that we&rsquo;ve launched to complete</em>. So &mdash; if we happen to shut down our server at an unlucky moment &mdash; it&rsquo;s possible that a new client will be created on our system but they will never be sent their welcome email.</p>
+
+<p>Fortunately, we can prevent this by using Go&rsquo;s <a href="https://golang.org/pkg/sync/#WaitGroup"><code>sync.WaitGroup</code></a> functionality to coordinate the graceful shutdown and our background goroutines.</p>
+
+<h3 id="an-introduction-to-sync-waitgroup">An introduction to sync.WaitGroup</h3>
+
+<p>When you want to wait for a collection of goroutines to finish their work, the principal tool to help with this is the <code>sync.WaitGroup</code> type.</p>
+
+<p>The way that <code>sync.WaitGroup</code> works is conceptually a bit like a &lsquo;counter&rsquo;. Each time you launch a background goroutine using the <a href="https://pkg.go.dev/sync#WaitGroup.Go"><code>WaitGroup.Go()</code></a> method it increments a counter by 1, and when each goroutine finishes, it decrements the counter by 1. You can then use the <a href="https://pkg.go.dev/sync#WaitGroup.Wait"><code>WaitGroup.Wait()</code></a> method to block execution of your code and wait until the counter equals zero &mdash; at which point you know that all your background goroutines have finished.</p>
+
+<p>Let&rsquo;s take a quick look at a standalone example of how it works in practice.</p>
+
+<p>In the code below, we&rsquo;ll launch five goroutines that print out <code>&quot;hello from a goroutine&quot;</code>, and use <code>sync.WaitGroup</code> to wait for them all to complete before the program exits.</p>
+
+<figure class="code go">
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+	<span class="s">&#34;log&#34;</span>
+	<span class="s">&#34;sync&#34;</span>
+	<span class="s">&#34;time&#34;</span>
+<span class="p">)</span>
+
+<span class="kd">func</span> <span class="nf">main</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Declare a new WaitGroup.
+</span><span class="c1"></span>    <span class="kd">var</span> <span class="nx">wg</span> <span class="nx">sync</span><span class="p">.</span><span class="nx">WaitGroup</span>
+
+    <span class="c1">// Execute a loop 5 times.
+</span><span class="c1"></span>    <span class="k">for</span> <span class="k">range</span> <span class="mi">5</span> <span class="p">{</span>
+        <span class="c1">// Use the Go() method to launch a new goroutine, which sleeps for 1
+</span><span class="c1"></span>        <span class="c1">// second and then prints a log message.
+</span><span class="c1"></span>        <span class="nx">wg</span><span class="p">.</span><span class="nf">Go</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+            <span class="nx">time</span><span class="p">.</span><span class="nf">Sleep</span><span class="p">(</span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">)</span>
+            <span class="nx">log</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;hello from a goroutine &#34;</span><span class="p">)</span>
+        <span class="p">}</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="nx">log</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;all goroutines launched&#34;</span><span class="p">)</span>
+
+    <span class="c1">// Wait() blocks until the WaitGroup counter is zero --- essentially blocking until all
+</span><span class="c1"></span>    <span class="c1">// goroutines have completed.
+</span><span class="c1"></span>    <span class="nx">wg</span><span class="p">.</span><span class="nf">Wait</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">log</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;all goroutines finished&#34;</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>If you <a href="https://go.dev/play/p/fELBDEMsezw?v=gotip">run the above code</a>, you&rsquo;ll see that the output looks like this:</p>
+
+<figure class="code plain">
+<pre>2009/11/10 23:00:00 all goroutines launched
+2009/11/10 23:00:01 hello from a goroutine 
+2009/11/10 23:00:01 hello from a goroutine 
+2009/11/10 23:00:01 hello from a goroutine 
+2009/11/10 23:00:01 hello from a goroutine 
+2009/11/10 23:00:01 hello from a goroutine 
+2009/11/10 23:00:01 all goroutines finished</pre>
+</figure>
+
+<p>We can see from the log messages and timestamps that all the goroutines are launched, but the call to <code>wg.Wait()</code> blocks any further execution of our code until all the goroutines finish around 1 second later. Once they have all completed, the block is lifted and the final log message gets printed.</p>
+
+<h3 id="fixing-our-application">Fixing our application</h3>
+
+<p>Let&rsquo;s update our application to incorporate a <code>sync.WaitGroup</code> that coordinates our graceful shutdown and background goroutines.</p>
+
+<p>We&rsquo;ll begin in our <code>cmd/api/main.go</code> file, and edit the <code>application</code> struct to contain a new <code>sync.WaitGroup</code>. Like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/main.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;context&#34;</span>
+    <span class="s">&#34;database/sql&#34;</span>
+    <span class="s">&#34;flag&#34;</span>
+    <span class="s">&#34;log/slog&#34;</span>
+    <span class="s">&#34;os&#34;</span>
+    <span class="s">&#34;sync&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;time&#34;</span>
+
+    <span class="s">&#34;greenlight.alexedwards.net/internal/data&#34;</span>
+    <span class="s">&#34;greenlight.alexedwards.net/internal/mailer&#34;</span>
+
+    <span class="nx">_</span> <span class="s">&#34;github.com/lib/pq&#34;</span>
+<span class="p">)</span>
+
+<span class="o">...</span>
+
+<span class="c1">// Include a sync.WaitGroup in the application struct. The zero value for a
+</span><span class="c1"></span><span class="c1">// sync.WaitGroup type is a valid, usable, sync.WaitGroup with a &#39;counter&#39; value of 0,
+</span><span class="c1"></span><span class="c1">// so we don&#39;t need to do anything else to initialize it before we can use it.
+</span><span class="c1"></span><span class="kd">type</span> <span class="nx">application</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">config</span> <span class="nx">config</span>
+    <span class="nx">logger</span> <span class="o">*</span><span class="nx">slog</span><span class="p">.</span><span class="nx">Logger</span>
+    <span class="nx">models</span> <span class="nx">data</span><span class="p">.</span><span class="nx">Models</span>
+    <span class="nx">mailer</span> <span class="o">*</span><span class="nx">mailer</span><span class="p">.</span><span class="nx">Mailer</span>
+    <span class="nx">wg</span>     <span class="nx">sync</span><span class="p">.</span><span class="nx">WaitGroup</span>
+<span class="p">}</span>
+
+<span class="o">...</span></pre>
+</figure>
+
+<p>Next let&rsquo;s head to the <code>cmd/api/helpers.go</code> file and update the <code>app.background()</code> helper to launch goroutines using this <code>sync.WaitGroup</code>, like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/helpers.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">background</span><span class="p">(</span><span class="nx">fn</span> <span class="kd">func</span><span class="p">(</span><span class="p">)</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Use the Go() method to launch the background goroutine. The code inside 
+</span><span class="c1"></span>    <span class="c1">// this is exactly the same as in the previous chapter --- we&#39;re just now 
+</span><span class="c1"></span>    <span class="c1">// launching the goroutine using the WaitGroup&#39;s Go() method instead of the 
+</span><span class="c1"></span>    <span class="c1">// regular go() keyword.
+</span><span class="c1"></span>	<span class="nx">app</span><span class="p">.</span><span class="nx">wg</span><span class="p">.</span><span class="nf">Go</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+		<span class="k">defer</span> <span class="kd">func</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+			<span class="nx">pv</span> <span class="o">:=</span> <span class="nb">recover</span><span class="p">(</span><span class="p">)</span>
+			<span class="k">if</span> <span class="nx">pv</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+				<span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;%v&#34;</span><span class="p">,</span> <span class="nx">pv</span><span class="p">)</span><span class="p">)</span>
+			<span class="p">}</span>
+		<span class="p">}</span><span class="p">(</span><span class="p">)</span>
+
+		<span class="nf">fn</span><span class="p">(</span><span class="p">)</span>
+	<span class="p">}</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Then the final thing we need to do is update our graceful shutdown functionality so that it waits for any of these background goroutines to complete before terminating the application. We can do that by adapting our <code>app.serve()</code> method like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/server.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">serve</span><span class="p">(</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+    <span class="nx">srv</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">http</span><span class="p">.</span><span class="nx">Server</span><span class="p">{</span>
+        <span class="nx">Addr</span><span class="p">:</span>         <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;:%d&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">config</span><span class="p">.</span><span class="nx">port</span><span class="p">)</span><span class="p">,</span>
+        <span class="nx">Handler</span><span class="p">:</span>      <span class="nx">app</span><span class="p">.</span><span class="nf">routes</span><span class="p">(</span><span class="p">)</span><span class="p">,</span>
+        <span class="nx">IdleTimeout</span><span class="p">:</span>  <span class="nx">time</span><span class="p">.</span><span class="nx">Minute</span><span class="p">,</span>
+        <span class="nx">ReadTimeout</span><span class="p">:</span>  <span class="mi">5</span> <span class="o">*</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">,</span>
+        <span class="nx">WriteTimeout</span><span class="p">:</span> <span class="mi">10</span> <span class="o">*</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">,</span>
+        <span class="nx">ErrorLog</span><span class="p">:</span>     <span class="nx">slog</span><span class="p">.</span><span class="nf">NewLogLogger</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Handler</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="nx">slog</span><span class="p">.</span><span class="nx">LevelError</span><span class="p">)</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="nx">shutdownError</span> <span class="o">:=</span> <span class="nb">make</span><span class="p">(</span><span class="kd">chan</span> <span class="kt">error</span><span class="p">)</span>
+
+    <span class="k">go</span> <span class="kd">func</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">quit</span> <span class="o">:=</span> <span class="nb">make</span><span class="p">(</span><span class="kd">chan</span> <span class="nx">os</span><span class="p">.</span><span class="nx">Signal</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="nx">signal</span><span class="p">.</span><span class="nf">Notify</span><span class="p">(</span><span class="nx">quit</span><span class="p">,</span> <span class="nx">syscall</span><span class="p">.</span><span class="nx">SIGINT</span><span class="p">,</span> <span class="nx">syscall</span><span class="p">.</span><span class="nx">SIGTERM</span><span class="p">)</span>
+        <span class="nx">s</span> <span class="o">:=</span> <span class="o">&lt;-</span><span class="nx">quit</span>
+
+        <span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Info</span><span class="p">(</span><span class="s">&#34;shutting down server&#34;</span><span class="p">,</span> <span class="s">&#34;signal&#34;</span><span class="p">,</span> <span class="nx">s</span><span class="p">.</span><span class="nf">String</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+
+        <span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="mi">30</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">)</span>
+        <span class="k">defer</span> <span class="nf">cancel</span><span class="p">(</span><span class="p">)</span>
+
+        <span class="c1">// Call Shutdown() on the server like before, but now we only send on the
+</span><span class="c1"></span>        <span class="c1">// shutdownError channel if it returns an error.
+</span><span class="c1"></span>        <span class="nx">err</span> <span class="o">:=</span> <span class="nx">srv</span><span class="p">.</span><span class="nf">Shutdown</span><span class="p">(</span><span class="nx">ctx</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+            <span class="nx">shutdownError</span> <span class="o">&lt;-</span> <span class="nx">err</span>
+        <span class="p">}</span>
+
+        <span class="c1">// Log a message to say that we&#39;re waiting for any background goroutines to
+</span><span class="c1"></span>        <span class="c1">// complete their tasks.
+</span><span class="c1"></span>        <span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Info</span><span class="p">(</span><span class="s">&#34;completing background tasks&#34;</span><span class="p">,</span> <span class="s">&#34;addr&#34;</span><span class="p">,</span> <span class="nx">srv</span><span class="p">.</span><span class="nx">Addr</span><span class="p">)</span>
+
+        <span class="c1">// Call Wait() to block until our WaitGroup counter is zero --- essentially
+</span><span class="c1"></span>        <span class="c1">// blocking until the background goroutines have finished. Then we return nil on
+</span><span class="c1"></span>        <span class="c1">// the shutdownError channel, to indicate that the shutdown completed without
+</span><span class="c1"></span>        <span class="c1">// any issues.
+</span><span class="c1"></span>        <span class="nx">app</span><span class="p">.</span><span class="nx">wg</span><span class="p">.</span><span class="nf">Wait</span><span class="p">(</span><span class="p">)</span>
+        <span class="nx">shutdownError</span> <span class="o">&lt;-</span> <span class="kc">nil</span>
+    <span class="p">}</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Info</span><span class="p">(</span><span class="s">&#34;starting server&#34;</span><span class="p">,</span> <span class="s">&#34;addr&#34;</span><span class="p">,</span> <span class="nx">srv</span><span class="p">.</span><span class="nx">Addr</span><span class="p">,</span> <span class="s">&#34;env&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">config</span><span class="p">.</span><span class="nx">env</span><span class="p">)</span>
+
+    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">srv</span><span class="p">.</span><span class="nf">ListenAndServe</span><span class="p">(</span><span class="p">)</span>
+    <span class="k">if</span> <span class="p">!</span><span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ErrServerClosed</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">err</span>
+    <span class="p">}</span>
+
+    <span class="nx">err</span> <span class="p">=</span> <span class="o">&lt;-</span><span class="nx">shutdownError</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">err</span>
+    <span class="p">}</span>
+
+    <span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Info</span><span class="p">(</span><span class="s">&#34;stopped server&#34;</span><span class="p">,</span> <span class="s">&#34;addr&#34;</span><span class="p">,</span> <span class="nx">srv</span><span class="p">.</span><span class="nx">Addr</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="kc">nil</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>To try this out, go ahead and restart the API and then send a request to the <code>POST /v1/users</code> endpoint immediately followed by a <code>SIGTERM</code> signal. For example:</p>
+
+<figure class="code bash">
+<pre>$ BODY=&#39;{&#34;name&#34;: &#34;Edith Smith&#34;, &#34;email&#34;: &#34;edith@example.com&#34;, &#34;password&#34;: &#34;pa55word&#34;}&#39;
+$ curl -d &#34;$BODY&#34; localhost:4000/v1/users &amp; pkill -SIGTERM api &amp;</pre>
+</figure>
+
+<p>When you do this, your server logs should look similar to the output below:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api
+<samp>time=2023-09-10T10:58:12.124+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:58:12.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development
+...
+time=2023-09-10T10:59:14.494+02:00 level=INFO msg=&#34;shutting down server&#34; signal=terminated
+time=2023-09-10T10:59:14.569+02:00 level=INFO msg=&#34;completing background tasks&#34; addr=:4000
+time=2023-09-10T10:59:16.348+02:00 level=INFO msg=&#34;stopped server&#34; addr=:4000</samp></pre>
+</figure>
+
+<p>Notice that after <code>&quot;completing background tasks&quot;</code> is logged there is a pause of a couple of seconds, while the background email sending completes, finally followed by the <code>&quot;stopped server&quot;</code> message?</p>
+
+<p>This nicely illustrates how the graceful shutdown process waited for the welcome email to be sent (which took about two seconds in my case) before finally terminating the application.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="13.04-sending-background-emails.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="14.00-user-activation.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "13.04-sending-background-emails.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "14.00-user-activation.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Connecting to PostgreSQL &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="05.00-database-setup-and-configuration.html">Database setup and configuration</a> &rsaquo; Connecting to PostgreSQL</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="05.01-setting-up-postgresql.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="05.03-configuring-the-database-connection-pool.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 5.2.</div>
+			<h2 id="connecting-to-postgresql">Connecting to PostgreSQL</h2>
+
+<p>OK, now that our new <code>greenlight</code> database is set up, let&rsquo;s look at how to connect to it from our Go application.</p>
+
+<p>As you probably remember from <em>Let&rsquo;s Go</em>, to work with a SQL database we need to use a <em>database driver</em> to act as a &lsquo;middleman&rsquo; between Go and the database itself. You can find a list of available drivers for PostgreSQL in the <a href="https://github.com/golang/go/wiki/SQLDrivers">Go wiki</a>, but for our project we&rsquo;ll opt for the popular, reliable, and well-established <a href="https://github.com/lib/pq"><code>pq</code></a> package.</p>
+
+<p>If you&rsquo;re coding along with this book, then go ahead and use <code>go get</code> to download the latest <code>v1.N.N</code> release of <code>pq</code> like so:</p>
+
+<figure class="code bash">
+<pre>$ go get github.com/lib/pq@v1
+<samp>go: downloading github.com/lib/pq v1.10.9
+go get: added github.com/lib/pq v1.10.9</samp></pre>
+</figure>
+
+<p>To connect to the database we&rsquo;ll also need a <em>data source name</em> (DSN), which is basically a string that contains the necessary connection parameters. The exact format of the DSN will depend on which database driver you&rsquo;re using (and should be described in the driver documentation), but when using <code>pq</code> you should be able to connect to your local <code>greenlight</code> database as the <code>greenlight</code> user with the following DSN:</p>
+
+<figure class="code plain">
+<pre>postgres://greenlight:pa55word@localhost/greenlight</pre>
+</figure>
+
+<h3 id="establishing-a-connection-pool">Establishing a connection pool</h3>
+
+<p>The code that we&rsquo;ll use for connecting to the <code>greenlight</code> database from our Go application is almost exactly the same as in the first <em>Let&rsquo;s Go</em> book. So we won&rsquo;t dwell on the details, and hopefully this will all feel very familiar.</p>
+
+<p>At a high level:</p>
+
+<ul>
+<li><p>We want the DSN to be configurable at runtime, so we will pass it to the application using a command-line flag rather than hard-coding it. For simplicity during development, we&rsquo;ll use the DSN above as the default value for the flag.</p></li>
+
+<li><p>In our <code>cmd/api/main.go</code> file we&rsquo;ll create a new <code>openDB()</code> helper function. In this helper we&rsquo;ll use the <a href="https://golang.org/pkg/database/sql/#Open"><code>sql.Open()</code></a> function to establish a new <a href="https://golang.org/pkg/database/sql/#DB"><code>sql.DB</code></a> connection pool, then &mdash; because connections to the database are established lazily as and when needed for the first time &mdash; we also need to use the <a href="https://golang.org/pkg/database/sql/#DB.PingContext"><code>db.PingContext()</code></a> method to actually create a connection and verify that everything is set up correctly.</p></li>
+</ul>
+
+<p>Let&rsquo;s head back to our <code>cmd/api/main.go</code> file and update it like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/main.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;context&#34;</span>      <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;database/sql&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;flag&#34;</span>
+    <span class="s">&#34;fmt&#34;</span>
+    <span class="s">&#34;log/slog&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+    <span class="s">&#34;os&#34;</span>
+    <span class="s">&#34;time&#34;</span>
+
+    <span class="c1">// Import the pq driver so that it can register itself with the database/sql 
+</span><span class="c1"></span>    <span class="c1">// package. Note that we alias this import to the blank identifier, to stop the Go 
+</span><span class="c1"></span>    <span class="c1">// compiler complaining that the package isn&#39;t being used.
+</span><span class="c1"></span>    <span class="nx">_</span> <span class="s">&#34;github.com/lib/pq&#34;</span>
+<span class="p">)</span>
+
+<span class="kd">const</span> <span class="nx">version</span> <span class="p">=</span> <span class="s">&#34;1.0.0&#34;</span>
+
+<span class="c1">// Add a db struct field to hold the configuration settings for our database connection
+</span><span class="c1"></span><span class="c1">// pool. For now this only holds the DSN, which we will read in from a command-line flag.
+</span><span class="c1"></span><span class="kd">type</span> <span class="nx">config</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">port</span> <span class="kt">int</span>
+    <span class="nx">env</span>  <span class="kt">string</span>
+    <span class="nx">db</span>   <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">dsn</span> <span class="kt">string</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kd">type</span> <span class="nx">application</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">config</span> <span class="nx">config</span>
+    <span class="nx">logger</span> <span class="o">*</span><span class="nx">slog</span><span class="p">.</span><span class="nx">Logger</span>
+<span class="p">}</span>
+
+<span class="kd">func</span> <span class="nf">main</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">cfg</span> <span class="nx">config</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">port</span><span class="p">,</span> <span class="s">&#34;port&#34;</span><span class="p">,</span> <span class="mi">4000</span><span class="p">,</span> <span class="s">&#34;API server port&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">env</span><span class="p">,</span> <span class="s">&#34;env&#34;</span><span class="p">,</span> <span class="s">&#34;development&#34;</span><span class="p">,</span> <span class="s">&#34;Environment (development|staging|production)&#34;</span><span class="p">)</span>
+
+    <span class="c1">// Read the DSN value from the db-dsn command-line flag into the config struct. We
+</span><span class="c1"></span>    <span class="c1">// default to using our development DSN if no flag is provided.
+</span><span class="c1"></span>    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">dsn</span><span class="p">,</span> <span class="s">&#34;db-dsn&#34;</span><span class="p">,</span> <span class="s">&#34;postgres://greenlight:pa55word@localhost/greenlight&#34;</span><span class="p">,</span> <span class="s">&#34;PostgreSQL DSN&#34;</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">Parse</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">logger</span> <span class="o">:=</span> <span class="nx">slog</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="nx">slog</span><span class="p">.</span><span class="nf">NewTextHandler</span><span class="p">(</span><span class="nx">os</span><span class="p">.</span><span class="nx">Stdout</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span><span class="p">)</span>
+
+    <span class="c1">// Call the openDB() helper function (see below) to create the connection pool,
+</span><span class="c1"></span>    <span class="c1">// passing in the config struct as an argument. If this returns an error, we log 
+</span><span class="c1"></span>    <span class="c1">// it and exit the application immediately.
+</span><span class="c1"></span>    <span class="nx">db</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nf">openDB</span><span class="p">(</span><span class="nx">cfg</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="nx">os</span><span class="p">.</span><span class="nf">Exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Defer a call to db.Close() so that the connection pool is closed before the
+</span><span class="c1"></span>    <span class="c1">// main() function exits.
+</span><span class="c1"></span>    <span class="k">defer</span> <span class="nx">db</span><span class="p">.</span><span class="nf">Close</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="c1">// Also log a message to say that the connection pool has been successfully 
+</span><span class="c1"></span>    <span class="c1">// established.
+</span><span class="c1"></span>    <span class="nx">logger</span><span class="p">.</span><span class="nf">Info</span><span class="p">(</span><span class="s">&#34;database connection pool established&#34;</span><span class="p">)</span>
+
+    <span class="nx">app</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">application</span><span class="p">{</span>
+        <span class="nx">config</span><span class="p">:</span> <span class="nx">cfg</span><span class="p">,</span>
+        <span class="nx">logger</span><span class="p">:</span> <span class="nx">logger</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="nx">srv</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">http</span><span class="p">.</span><span class="nx">Server</span><span class="p">{</span>
+        <span class="nx">Addr</span><span class="p">:</span>         <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;:%d&#34;</span><span class="p">,</span> <span class="nx">cfg</span><span class="p">.</span><span class="nx">port</span><span class="p">)</span><span class="p">,</span>
+        <span class="nx">Handler</span><span class="p">:</span>      <span class="nx">app</span><span class="p">.</span><span class="nf">routes</span><span class="p">(</span><span class="p">)</span><span class="p">,</span>
+        <span class="nx">IdleTimeout</span><span class="p">:</span>  <span class="nx">time</span><span class="p">.</span><span class="nx">Minute</span><span class="p">,</span>
+        <span class="nx">ReadTimeout</span><span class="p">:</span>  <span class="mi">5</span> <span class="o">*</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">,</span>
+        <span class="nx">WriteTimeout</span><span class="p">:</span> <span class="mi">10</span> <span class="o">*</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">,</span>
+        <span class="nx">ErrorLog</span><span class="p">:</span>     <span class="nx">slog</span><span class="p">.</span><span class="nf">NewLogLogger</span><span class="p">(</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Handler</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="nx">slog</span><span class="p">.</span><span class="nx">LevelError</span><span class="p">)</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="nx">logger</span><span class="p">.</span><span class="nf">Info</span><span class="p">(</span><span class="s">&#34;starting server&#34;</span><span class="p">,</span> <span class="s">&#34;addr&#34;</span><span class="p">,</span> <span class="nx">srv</span><span class="p">.</span><span class="nx">Addr</span><span class="p">,</span> <span class="s">&#34;env&#34;</span><span class="p">,</span> <span class="nx">cfg</span><span class="p">.</span><span class="nx">env</span><span class="p">)</span>
+    
+    <span class="c1">// Because the err variable is now already declared in the code above, we need
+</span><span class="c1"></span>    <span class="c1">// to use the = operator here, instead of the := operator.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="nx">srv</span><span class="p">.</span><span class="nf">ListenAndServe</span><span class="p">(</span><span class="p">)</span>
+    <span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">os</span><span class="p">.</span><span class="nf">Exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="c1">// The openDB() function returns a sql.DB connection pool.
+</span><span class="c1"></span><span class="kd">func</span> <span class="nf">openDB</span><span class="p">(</span><span class="nx">cfg</span> <span class="nx">config</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">sql</span><span class="p">.</span><span class="nx">DB</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Use sql.Open() to create an empty connection pool, using the DSN from the config
+</span><span class="c1"></span>    <span class="c1">// struct.
+</span><span class="c1"></span>    <span class="nx">db</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">sql</span><span class="p">.</span><span class="nf">Open</span><span class="p">(</span><span class="s">&#34;postgres&#34;</span><span class="p">,</span> <span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">dsn</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">err</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Create a context with a 5-second timeout deadline.
+</span><span class="c1"></span>    <span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="mi">5</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">)</span>
+    <span class="k">defer</span> <span class="nf">cancel</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="c1">// Use PingContext() to establish a new connection to the database, passing in the
+</span><span class="c1"></span>    <span class="c1">// context we created above as a parameter. If the connection couldn&#39;t be
+</span><span class="c1"></span>    <span class="c1">// established successfully within the 5-second deadline, then this will return an
+</span><span class="c1"></span>    <span class="c1">// error. If we get this error, or any other, we close the connection pool and 
+</span><span class="c1"></span>    <span class="c1">// return the error.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="nx">db</span><span class="p">.</span><span class="nf">PingContext</span><span class="p">(</span><span class="nx">ctx</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">db</span><span class="p">.</span><span class="nf">Close</span><span class="p">(</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">err</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Return the sql.DB connection pool.
+</span><span class="c1"></span>    <span class="k">return</span> <span class="nx">db</span><span class="p">,</span> <span class="kc">nil</span>
+<span class="p">}</span></pre>
+</figure>
+
+<aside class="important"><p>
+<strong>Important:</strong> We&rsquo;ll talk about using <code>context</code> to manage timeouts properly later in the book, so don&rsquo;t worry about this too much at the moment. For now, it&rsquo;s sufficient to know that if the <code>PingContext()</code> call could not complete successfully in 5 seconds, then it will return an error.
+</p></aside>
+
+<p>Once the <code>cmd/api/main.go</code> file is updated, go ahead and run the application again. You should now see a log message on startup confirming that the connection pool has been successfully established. Similar to this:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development</samp></pre>
+</figure>
+
+<aside class="note"><p>
+<strong>Note:</strong> If you receive the error message <code>pq: SSL is not enabled on the server</code> you should set your DSN to: <code>postgres://greenlight:pa55word@localhost/greenlight?sslmode=disable</code>.
+</p></aside>
+
+<h3 id="decoupling-the-dsn">Decoupling the DSN</h3>
+
+<p>At the moment the default command-line flag value for our DSN is explicitly included as a string in the <code>cmd/api/main.go</code> file.</p>
+
+<p>Even though the username and password in the DSN are just for the development database on your local machine, it would be preferable to not have this information hard-coded into our project files (which could be shared or distributed in the future).</p>
+
+<p>So let&rsquo;s take some steps to decouple the DSN from our project code and instead store it as an environment variable on your local machine.</p>
+
+<p>If you&rsquo;re following along, create a new <code>GREENLIGHT_DB_DSN</code> environment variable by adding the following line to either your <code>$HOME/.profile</code> or <code>$HOME/.bashrc</code> files:</p>
+
+<figure class="code plain">
+<figcaption>File: $HOME/.profile</figcaption>
+<pre>...
+
+export GREENLIGHT_DB_DSN=&#39;postgres://greenlight:pa55word@localhost/greenlight&#39;</pre>
+</figure>
+
+<p>Once that&rsquo;s done you&rsquo;ll need to reboot your computer, or &mdash; if that&rsquo;s not convenient right now &mdash; run the <code>source</code> command on the file that you&rsquo;ve just edited to effect the change. For example:</p>
+
+<figure class="code bash">
+<pre>$ source $HOME/.profile</pre>
+</figure>
+
+<aside class="hint"><p>
+<strong>Note:</strong> Running <code>source</code> will affect <em>the current terminal window only</em>. So, if you switch to a different terminal window, you&rsquo;ll need to run it again for it to take effect.
+</p></aside>
+
+<p>Either way, once you&rsquo;ve rebooted or run <code>source</code> you should be able to see the value for the <code>GREENLIGHT_DB_DSN</code> environment variable in your terminal by running the <code>echo</code> command. Like so:</p>
+
+<figure class="code bash">
+<pre>$ echo $GREENLIGHT_DB_DSN
+<samp>postgres://greenlight:pa55word@localhost/greenlight</samp></pre>
+</figure>
+
+<p>Now let&rsquo;s update our <code>cmd/api/main.go</code> file to access the environment variable using the <a href="https://golang.org/pkg/os/#Getenv"><code>os.Getenv()</code></a> function, and set this as the default value for our DSN command-line flag.</p>
+
+<p>It&rsquo;s fairly straightforward in practice:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/main.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="nf">main</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">cfg</span> <span class="nx">config</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">port</span><span class="p">,</span> <span class="s">&#34;port&#34;</span><span class="p">,</span> <span class="mi">4000</span><span class="p">,</span> <span class="s">&#34;API server port&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">env</span><span class="p">,</span> <span class="s">&#34;env&#34;</span><span class="p">,</span> <span class="s">&#34;development&#34;</span><span class="p">,</span> <span class="s">&#34;Environment (development|staging|production)&#34;</span><span class="p">)</span>
+
+    <span class="c1">// Use the value of the GREENLIGHT_DB_DSN environment variable as the default value
+</span><span class="c1"></span>    <span class="c1">// for our db-dsn command-line flag.
+</span><span class="c1"></span>    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">dsn</span><span class="p">,</span> <span class="s">&#34;db-dsn&#34;</span><span class="p">,</span> <span class="nx">os</span><span class="p">.</span><span class="nf">Getenv</span><span class="p">(</span><span class="s">&#34;GREENLIGHT_DB_DSN&#34;</span><span class="p">)</span><span class="p">,</span> <span class="s">&#34;PostgreSQL DSN&#34;</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">Parse</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="o">...</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>If you restart the application again now, you should find that it compiles correctly and works just like before.</p>
+
+<p>You can also try specifying the <code>-help</code> flag when running the application. This should output the descriptive text and default values for our three command-line flags, including the DSN value pulled through from the environment variable. Similar to this:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api -help
+<samp>Usage of /tmp/go-build417842398/b001/exe/api:
+  -db-dsn string
+        PostgreSQL DSN (default &#34;postgres://greenlight:pa55word@localhost/greenlight&#34;)
+  -env string
+        Environment (development|staging|production) (default &#34;development&#34;)
+  -port int
+        API server port (default 4000)</samp></pre>
+</figure>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="using-the-dsn-with-psql">Using the DSN with psql</h4>
+
+<p>A nice side effect of storing the DSN in an environment variable is that you can use it to easily connect to the <code>greenlight</code> database as the <code>greenlight</code> user, rather than specifying all the connection options manually when running <code>psql</code>. Like so:</p>
+
+<figure class="code bash">
+<pre>$ psql $GREENLIGHT_DB_DSN 
+<samp>psql (15.4 (Ubuntu 15.4-1.pgdg22.04+1))
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+Type &#34;help&#34; for help.
+
+greenlight=&gt; </samp></pre>
+</figure>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="05.01-setting-up-postgresql.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="05.03-configuring-the-database-connection-pool.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "05.01-setting-up-postgresql.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "05.03-configuring-the-database-connection-pool.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

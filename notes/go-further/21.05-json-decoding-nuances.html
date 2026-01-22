@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>JSON decoding nuances &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="21.00-appendices.html">Appendices</a> &rsaquo; JSON decoding nuances</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="21.04-json-encoding-nuances.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="21.06-request-context-timeouts.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 21.5.</div>
+			<h2 id="json-decoding-nuances">JSON decoding nuances</h2>
+
+<h4 id="decoding-into-go-arrays">Decoding into Go arrays</h4>
+
+<p>When you&rsquo;re decoding a JSON array into a Go array (not a slice) there are a couple of important behaviors to be aware of:</p>
+
+<ul>
+<li>If the Go array is smaller than the JSON array, then the additional JSON array elements are silently discarded.</li>
+<li>If the Go array is larger than the JSON array, then the additional Go array elements are set to their zero values.</li>
+</ul>
+
+<p>As an example:</p>
+
+<figure class="code go">
+<pre><span class="nx">js</span> <span class="o">:=</span> <span class="s">`</span><span class="s">[1, 2, 3]</span><span class="s">`</span>
+
+<span class="kd">var</span> <span class="nx">tooShortArray</span> <span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="kt">int</span>
+<span class="nx">err</span> <span class="o">:=</span> <span class="nx">json</span><span class="p">.</span><span class="nf">NewDecoder</span><span class="p">(</span><span class="nx">strings</span><span class="p">.</span><span class="nf">NewReader</span><span class="p">(</span><span class="nx">js</span><span class="p">)</span><span class="p">)</span><span class="p">.</span><span class="nf">Decode</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">tooShortArray</span><span class="p">)</span>
+<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+    <span class="nx">log</span><span class="p">.</span><span class="nf">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="kd">var</span> <span class="nx">tooLongArray</span> <span class="p">[</span><span class="mi">4</span><span class="p">]</span><span class="kt">int</span>
+<span class="nx">err</span> <span class="p">=</span> <span class="nx">json</span><span class="p">.</span><span class="nf">NewDecoder</span><span class="p">(</span><span class="nx">strings</span><span class="p">.</span><span class="nf">NewReader</span><span class="p">(</span><span class="nx">js</span><span class="p">)</span><span class="p">)</span><span class="p">.</span><span class="nf">Decode</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">tooLongArray</span><span class="p">)</span>
+<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+    <span class="nx">log</span><span class="p">.</span><span class="nf">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;tooShortArray: %v\n&#34;</span><span class="p">,</span> <span class="nx">tooShortArray</span><span class="p">)</span>
+<span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;tooLongArray: %v\n&#34;</span><span class="p">,</span> <span class="nx">tooLongArray</span><span class="p">)</span></pre>
+</figure>
+
+<p>Will print out:</p>
+
+<figure class="code plain">
+<pre>tooShortArray: [1 2]
+tooLongArray: [1 2 3 0]</pre>
+</figure>
+
+<h4 id="partial-json-decoding">Partial JSON decoding</h4>
+
+<p>If you have a lot of JSON input to process and only need a small part of it, it&rsquo;s often possible to leverage the <code>json.RawMessage</code> type to help deal with this. For example:</p>
+
+<figure class="code go">
+<pre><span class="c1">// Let&#39;s say that the only thing we&#39;re interested in is processing the &#34;genres&#34; array in
+</span><span class="c1"></span><span class="c1">// the following JSON object
+</span><span class="c1"></span><span class="nx">js</span> <span class="o">:=</span> <span class="s">`</span><span class="s">{</span><span class="s">&#34;title&#34;: &#34;Top Gun&#34;, &#34;genres&#34;: [&#34;action&#34;, &#34;romance&#34;], &#34;year&#34;: 1986}</span><span class="s">`</span>
+
+<span class="c1">// Decode the JSON object to a map[string]json.RawMessage type. The json.RawMessage 
+</span><span class="c1"></span><span class="c1">// values in the map will retain their original, undecoded, JSON values.
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">m</span> <span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="nx">json</span><span class="p">.</span><span class="nx">RawMessage</span>
+
+<span class="nx">err</span> <span class="o">:=</span> <span class="nx">json</span><span class="p">.</span><span class="nf">NewDecoder</span><span class="p">(</span><span class="nx">strings</span><span class="p">.</span><span class="nf">NewReader</span><span class="p">(</span><span class="nx">js</span><span class="p">)</span><span class="p">)</span><span class="p">.</span><span class="nf">Decode</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">m</span><span class="p">)</span>
+<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+    <span class="nx">log</span><span class="p">.</span><span class="nf">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="c1">// We can then access the JSON &#34;genres&#34; value from the map and decode it as normal using
+</span><span class="c1"></span><span class="c1">// the json.Unmarshal() function.
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">genres</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span>
+
+<span class="nx">err</span> <span class="p">=</span> <span class="nx">json</span><span class="p">.</span><span class="nf">Unmarshal</span><span class="p">(</span><span class="nx">m</span><span class="p">[</span><span class="s">&#34;genres&#34;</span><span class="p">]</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">genres</span><span class="p">)</span>
+<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+    <span class="nx">log</span><span class="p">.</span><span class="nf">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;genres: %v\n&#34;</span><span class="p">,</span> <span class="nx">genres</span><span class="p">)</span></pre>
+</figure>
+
+<p>This will print out:</p>
+
+<figure class="code plain">
+<pre>genres: [action romance]</pre>
+</figure>
+
+<p>In this toy example, using <code>json.RawMessage</code> doesn&rsquo;t save us much work. But if you need to process a JSON object with tens or hundreds of key-value pairs and only need a few of them, then taking this approach can save you a lot of typing.</p>
+
+<h4 id="decoding-into-the-any-type">Decoding into the any type</h4>
+
+<p>It&rsquo;s possible to decode JSON values into an <code>any</code> type. When you do this, the underlying value that the <code>any</code> type holds will depend on the type of the JSON value being decoded.</p>
+
+<table>
+<thead>
+<tr>
+<th>JSON type</th>
+<th>⇒</th>
+<th>Underlying Go type of any</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td>JSON boolean</td>
+<td>⇒</td>
+<td><code>bool</code></td>
+</tr>
+
+<tr>
+<td>JSON string</td>
+<td>⇒</td>
+<td><code>string</code></td>
+</tr>
+
+<tr>
+<td>JSON number</td>
+<td>⇒</td>
+<td><code>float64</code></td>
+</tr>
+
+<tr>
+<td>JSON array</td>
+<td>⇒</td>
+<td><code>[]any</code></td>
+</tr>
+
+<tr>
+<td>JSON object</td>
+<td>⇒</td>
+<td><code>map[string]any</code></td>
+</tr>
+
+<tr>
+<td>JSON null</td>
+<td>⇒</td>
+<td><code>nil</code></td>
+</tr>
+</tbody>
+</table>
+<p>Decoding into an <code>any</code> type can be useful in situations where:</p>
+
+<ul>
+<li>You don&rsquo;t know in advance exactly what you&rsquo;re decoding.</li>
+<li>You need to decode JSON arrays which contain items with different JSON types.</li>
+<li>The key-value pair in a JSON object doesn&rsquo;t always contain values with the same JSON type.</li>
+</ul>
+
+<p>As an example, consider the following code:</p>
+
+<figure class="code go">
+<pre><span class="c1">// This JSON array contains both JSON string and JSON boolean types.
+</span><span class="c1"></span><span class="nx">js</span> <span class="o">:=</span> <span class="s">`</span><span class="s">[&#34;foo&#34;, true]</span><span class="s">`</span>
+
+<span class="c1">// Decode the JSON into a []any slice.
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">s</span> <span class="p">[</span><span class="p">]</span><span class="nx">any</span>
+
+<span class="nx">err</span> <span class="o">:=</span> <span class="nx">json</span><span class="p">.</span><span class="nf">NewDecoder</span><span class="p">(</span><span class="nx">strings</span><span class="p">.</span><span class="nf">NewReader</span><span class="p">(</span><span class="nx">js</span><span class="p">)</span><span class="p">)</span><span class="p">.</span><span class="nf">Decode</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">s</span><span class="p">)</span>
+<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+    <span class="nx">log</span><span class="p">.</span><span class="nf">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="c1">// The first value in the slice will have the underlying Go type string, the second will
+</span><span class="c1"></span><span class="c1">// have the underlying Go type bool. We can then type assert them and print them out  
+</span><span class="c1"></span><span class="c1">// the values along with their underlying type.
+</span><span class="c1"></span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;item: 0; type: %T; value: %v\n&#34;</span><span class="p">,</span> <span class="nx">s</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="p">,</span> <span class="nx">s</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="p">.</span><span class="p">(</span><span class="kt">string</span><span class="p">)</span><span class="p">)</span>
+<span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;item: 1; type: %T; value: %v\n&#34;</span><span class="p">,</span> <span class="nx">s</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="p">,</span> <span class="nx">s</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="p">.</span><span class="p">(</span><span class="kt">bool</span><span class="p">)</span><span class="p">)</span></pre>
+</figure>
+
+<p>This will print out:</p>
+
+<figure class="code plain">
+<pre>item: 0; type: string; value: foo
+item: 1; type: bool; value: true</pre>
+</figure>
+
+<h4 id="decoding-a-json-number-into-an-any-type">Decoding a JSON number into an any type</h4>
+
+<p>As shown in the table above, when you decode a JSON number into an <code>any</code> type the value will have the underlying type <code>float64</code> &mdash; even if it is an integer in the original JSON. For example:</p>
+
+<figure class="code go">
+<pre><span class="nx">js</span> <span class="o">:=</span> <span class="s">`</span><span class="s">10</span><span class="s">`</span> <span class="c1">// This JSON number is an integer.
+</span><span class="c1"></span>
+<span class="kd">var</span> <span class="nx">n</span> <span class="nx">any</span>
+
+<span class="nx">err</span> <span class="o">:=</span> <span class="nx">json</span><span class="p">.</span><span class="nf">NewDecoder</span><span class="p">(</span><span class="nx">strings</span><span class="p">.</span><span class="nf">NewReader</span><span class="p">(</span><span class="nx">js</span><span class="p">)</span><span class="p">)</span><span class="p">.</span><span class="nf">Decode</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">n</span><span class="p">)</span>
+<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+    <span class="nx">log</span><span class="p">.</span><span class="nf">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;type: %T; value: %v\n&#34;</span><span class="p">,</span> <span class="nx">n</span><span class="p">,</span> <span class="nx">n</span><span class="p">)</span> </pre>
+</figure>
+
+<p>Will print:</p>
+
+<figure class="code plain">
+<pre>type: float64; value: 10</pre>
+</figure>
+
+<p>If you want to get the value as an integer (instead of a <code>float64</code>) you should call the <a href="https://golang.org/pkg/encoding/json/#Decoder.UseNumber"><code>UseNumber()</code></a> method on your <code>json.Decoder</code> instance before decoding. This will cause all JSON numbers to be decoded to the underlying type <a href="https://golang.org/pkg/encoding/json/#Number"><code>json.Number</code></a> instead of <code>float64</code>.</p>
+
+<p>The <code>json.Number</code> type then provides an <a href="https://golang.org/pkg/encoding/json/#Number.Int64"><code>Int64()</code></a> method that you can call to get the number as an <code>int64</code>, or the <a href="https://golang.org/pkg/encoding/json/#Number.String"><code>String()</code></a> method to get the number as a <code>string</code>. For example:</p>
+
+<figure class="code go">
+<pre><span class="nx">js</span> <span class="o">:=</span> <span class="s">`</span><span class="s">10</span><span class="s">`</span>
+
+<span class="kd">var</span> <span class="nx">n</span> <span class="nx">any</span>
+
+<span class="nx">dec</span> <span class="o">:=</span> <span class="nx">json</span><span class="p">.</span><span class="nf">NewDecoder</span><span class="p">(</span><span class="nx">strings</span><span class="p">.</span><span class="nf">NewReader</span><span class="p">(</span><span class="nx">js</span><span class="p">)</span><span class="p">)</span>
+<span class="nx">dec</span><span class="p">.</span><span class="nf">UseNumber</span><span class="p">(</span><span class="p">)</span> <span class="c1">// Before using the decoder, call the UseNumber() method on it.
+</span><span class="c1"></span><span class="nx">err</span> <span class="o">:=</span> <span class="nx">dec</span><span class="p">.</span><span class="nf">Decode</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">n</span><span class="p">)</span>
+<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+    <span class="nx">log</span><span class="p">.</span><span class="nf">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="c1">// Type assert the any value to a json.Number, and then call the Int64() method
+</span><span class="c1"></span><span class="c1">// to get the number as a Go int64.
+</span><span class="c1"></span><span class="nx">nInt64</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">n</span><span class="p">.</span><span class="p">(</span><span class="nx">json</span><span class="p">.</span><span class="nx">Number</span><span class="p">)</span><span class="p">.</span><span class="nf">Int64</span><span class="p">(</span><span class="p">)</span>
+<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+    <span class="nx">log</span><span class="p">.</span><span class="nf">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="c1">// Likewise, you can use the String() method to get the number as a Go string.
+</span><span class="c1"></span><span class="nx">nString</span> <span class="o">:=</span> <span class="nx">n</span><span class="p">.</span><span class="p">(</span><span class="nx">json</span><span class="p">.</span><span class="nx">Number</span><span class="p">)</span><span class="p">.</span><span class="nf">String</span><span class="p">(</span><span class="p">)</span>
+
+<span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;type: %T; value: %v\n&#34;</span><span class="p">,</span> <span class="nx">n</span><span class="p">,</span> <span class="nx">n</span><span class="p">)</span>
+<span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;type: %T; value: %v\n&#34;</span><span class="p">,</span> <span class="nx">nInt64</span><span class="p">,</span> <span class="nx">nInt64</span><span class="p">)</span>
+<span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;type: %T; value: %v\n&#34;</span><span class="p">,</span> <span class="nx">nString</span><span class="p">,</span> <span class="nx">nString</span><span class="p">)</span></pre>
+</figure>
+
+<p>This will print out:</p>
+
+<figure class="code plain">
+<pre>type: json.Number; value: 10
+type: int64; value: 10
+type: string; value: 10</pre>
+</figure>
+
+<h4 id="struct-tag-directives">Struct tag directives</h4>
+
+<p>Using the struct tag <code>json:&quot;-&quot;</code> on a struct field will cause it to be <em>ignored</em> when decoding JSON, even if the JSON input contains a corresponding key-value pair. For example:</p>
+
+<figure class="code go">
+<pre><span class="nx">js</span> <span class="o">:=</span> <span class="s">`</span><span class="s">{</span><span class="s">&#34;name&#34;: &#34;alice&#34;, &#34;age&#34;: 21}</span><span class="s">`</span>
+
+<span class="kd">var</span> <span class="nx">person</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">Name</span> <span class="kt">string</span> <span class="s">`</span><span class="s">json:&#34;name&#34;</span><span class="s">`</span>
+    <span class="nx">Age</span>  <span class="kt">int32</span> <span class="s">`</span><span class="s">json:&#34;-&#34;</span><span class="s">`</span>
+<span class="p">}</span>
+
+<span class="nx">err</span> <span class="o">:=</span> <span class="nx">json</span><span class="p">.</span><span class="nf">NewDecoder</span><span class="p">(</span><span class="nx">strings</span><span class="p">.</span><span class="nf">NewReader</span><span class="p">(</span><span class="nx">js</span><span class="p">)</span><span class="p">)</span><span class="p">.</span><span class="nf">Decode</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">person</span><span class="p">)</span>
+<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+    <span class="nx">log</span><span class="p">.</span><span class="nf">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;%+v&#34;</span><span class="p">,</span> <span class="nx">person</span><span class="p">)</span></pre>
+</figure>
+
+<p>Will print out:</p>
+
+<figure class="code plain">
+<pre>{Name:alice Age:0}</pre>
+</figure>
+
+<p>The <code>omitzero</code> and <code>omitempty</code> struct tag directives do not have any effect on JSON decoding behavior.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="21.04-json-encoding-nuances.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="21.06-request-context-timeouts.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "21.04-json-encoding-nuances.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "21.06-request-context-timeouts.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

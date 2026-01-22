@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Request context timeouts &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="21.00-appendices.html">Appendices</a> &rsaquo; Request context timeouts</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="21.05-json-decoding-nuances.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="22.00-feedback.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 21.6.</div>
+			<h2 id="request-context-timeouts">Request context timeouts</h2>
+
+<p>As an alternative to the pattern that we implemented in <a href="08.03-managing-sql-query-timeouts.html">chapter 8.3</a> for managing database timeouts, we could have created a context with a timeout <em>in our handlers</em> and then passed the context on to our database model.</p>
+
+<p>Very roughly, a pattern like this:</p>
+
+<figure class="code go">
+<pre><span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">exampleHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="o">...</span>
+
+    <span class="c1">// Create a context.Context with a one-second timeout deadline and which has 
+</span><span class="c1"></span>    <span class="c1">// context.Background() as the &#39;parent&#39;.
+</span><span class="c1"></span>    <span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">)</span>
+    <span class="k">defer</span> <span class="nf">cancel</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="c1">// Pass the context on to the Get() method.
+</span><span class="c1"></span>    <span class="nx">example</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Example</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">id</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">switch</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">data</span><span class="p">.</span><span class="nx">ErrNotFound</span><span class="p">)</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">notFoundResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+        <span class="k">default</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="p">}</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="o">...</span>
+<span class="p">}</span></pre>
+</figure>
+
+<figure class="code go">
+<pre><span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="nx">ExampleModel</span><span class="p">)</span> <span class="nf">Get</span><span class="p">(</span><span class="nx">ctx</span> <span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span> <span class="nx">id</span> <span class="kt">int64</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">Example</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">query</span> <span class="o">:=</span> <span class="s">`</span><span class="s">SELECT ... FROM examples WHERE id = $1</span><span class="s">`</span>
+
+    <span class="kd">var</span> <span class="nx">example</span> <span class="nx">Example</span>
+
+    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">m</span><span class="p">.</span><span class="nx">DB</span><span class="p">.</span><span class="nf">QueryRowContext</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">query</span><span class="p">,</span> <span class="nx">id</span><span class="p">)</span><span class="p">.</span><span class="nf">Scan</span><span class="p">(</span><span class="o">...</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">switch</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">sql</span><span class="p">.</span><span class="nx">ErrNoRows</span><span class="p">)</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">ErrNotFound</span>
+        <span class="k">default</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">err</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="o">&amp;</span><span class="nx">example</span><span class="p">,</span> <span class="kc">nil</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>The key advantage of this pattern is the extra flexibility; whatever is calling the database model can easily control the timeout duration rather than it always being a fixed duration set by the database model.</p>
+
+<h3 id="using-request-context-as-the-parent">Using request context as the parent</h3>
+
+<p>As another option, you could use this pattern with the <em>request context</em> as the context parent (instead of <code>context.Background()</code>). Like so:</p>
+
+<figure class="code go">
+<pre><span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">exampleHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="o">...</span>
+
+    <span class="c1">// Use the request context as the parent.
+</span><span class="c1"></span>    <span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">r</span><span class="p">.</span><span class="nf">Context</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">)</span>
+    <span class="k">defer</span> <span class="nf">cancel</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">example</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Example</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">id</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">switch</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">data</span><span class="p">.</span><span class="nx">ErrNotFound</span><span class="p">)</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">notFoundResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+        <span class="k">default</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="p">}</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="o">...</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>In many ways, doing this would be considered good practice &mdash; allowing context to &lsquo;flow&rsquo; through your application is generally a good idea.</p>
+
+<p>But using the request context as the parent introduces a lot of additional complexity.</p>
+
+<p>The key thing to be aware of is that the <em>request context will be canceled</em> if the client closes their HTTP connection. From the <code>net/http</code> docs:</p>
+
+<blockquote>
+<p>For incoming server requests, the [request] context is canceled when the client&rsquo;s connection closes, the request is canceled (with HTTP/2), or when the ServeHTTP method returns.</p>
+</blockquote>
+
+<p>If we use the request context as the parent, then this cancellation signal will bubble down to our database driver <code>pq</code> and the running SQL query will be terminated in exactly the same way that it is when a context timeout is reached. Importantly, it means we would receive the same <code style="white-space: normal;">pq: canceling statement due to user request</code> error message that we do when a database query times out.</p>
+
+<p>On one hand this is a positive thing &mdash; if there is no client left to return a response to, we may as well cancel the SQL query and free up resources.</p>
+
+<p>On the other hand, we will receive the same error message in two very different scenarios:</p>
+
+<ul>
+<li>When a database query takes too long to complete, in which case we would want to log it as an error.</li>
+<li>When a client closes the connection &mdash; which can happen for many innocuous reasons, such as a user closing a browser tab or terminating a process. It&rsquo;s not <em>really</em> an error from our application&rsquo;s point of view, and we would probably want to either ignore it or perhaps log it as a warning.</li>
+</ul>
+
+<p>Fortunately, it <em>is</em> possible to tell these two scenarios apart by calling the <code>ctx.Err()</code> method on the context. If the context was canceled (due to a client closing the connection), then <code>ctx.Err()</code> will return the error <a href="https://golang.org/pkg/context/#pkg-variables"><code>context.Canceled</code></a>. If the timeout was reached, then it will return <a href="https://golang.org/pkg/context/#pkg-variables"><code>context.DeadlineExceeded</code></a> instead. If both the deadline is reached and the context is canceled, then <code>ctx.Err()</code> will surface whichever happened first.</p>
+
+<p>It&rsquo;s also important to be aware that you may receive a <code>context.Canceled</code> error if the client closes the connection while the query is queued by <code>sql.DB</code>, and likewise <code>Scan()</code> may return a <code>context.Canceled</code> error too.</p>
+
+<p>Putting all that together, a sensible way to manage this is to check for the error <code style="white-space: normal;">pq: canceling statement due to user request</code> in our database model and wrap it together with the error from <code>ctx.Err()</code> before returning. For example:</p>
+
+<figure class="code go">
+<pre><span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="nx">ExampleModel</span><span class="p">)</span> <span class="nf">Get</span><span class="p">(</span><span class="nx">ctx</span> <span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span> <span class="nx">id</span> <span class="kt">int64</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">Example</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">query</span> <span class="o">:=</span> <span class="s">`</span><span class="s">SELECT ... FROM examples WHERE id = $1</span><span class="s">`</span>
+
+    <span class="kd">var</span> <span class="nx">example</span> <span class="nx">Example</span>
+
+    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">m</span><span class="p">.</span><span class="nx">DB</span><span class="p">.</span><span class="nf">QueryRowContext</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">query</span><span class="p">,</span> <span class="nx">id</span><span class="p">)</span><span class="p">.</span><span class="nf">Scan</span><span class="p">(</span><span class="o">...</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">switch</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span> <span class="o">==</span> <span class="s">&#34;pq: canceling statement due to user request&#34;</span><span class="p">:</span>
+            <span class="c1">// Wrap the error with ctx.Err().
+</span><span class="c1"></span>            <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Errorf</span><span class="p">(</span><span class="s">&#34;%w: %w&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">,</span> <span class="nx">ctx</span><span class="p">.</span><span class="nf">Err</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">sql</span><span class="p">.</span><span class="nx">ErrNoRows</span><span class="p">)</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">ErrNotFound</span>
+        <span class="k">default</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">err</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="o">&amp;</span><span class="nx">example</span><span class="p">,</span> <span class="kc">nil</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Then in your handlers you can use <code>errors.Is()</code> to check if the error returned by the database model is equal to (or wraps) <code>context.Canceled</code>, and manage it accordingly.</p>
+
+<figure class="code go">
+<pre><span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">exampleHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="o">...</span>
+
+    <span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">r</span><span class="p">.</span><span class="nf">Context</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="mi">3</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">)</span>
+    <span class="k">defer</span> <span class="nf">cancel</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">example</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Example</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">id</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">switch</span> <span class="p">{</span>
+        <span class="c1">// If the error is equal to or wraps context.Canceled, then it&#39;s not 
+</span><span class="c1"></span>        <span class="c1">// really an error and we return without taking any further action.
+</span><span class="c1"></span>        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">context</span><span class="p">.</span><span class="nx">Canceled</span><span class="p">)</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">data</span><span class="p">.</span><span class="nx">ErrNotFound</span><span class="p">)</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">notFoundResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+        <span class="k">default</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="p">}</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="o">...</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>As well as this additional error handling, you also need to be aware of the implications when using background goroutines. Bear in mind what I quoted earlier about request context cancellation:</p>
+
+<blockquote>
+<p>For incoming server requests, the [request] context is canceled &hellip; when the ServeHTTP method returns.</p>
+</blockquote>
+
+<p>This means that if you derive your context from the request context, any SQL queries using the context in a long-running background goroutine will be canceled when the HTTP response is sent for the request! If you don&rsquo;t want that to be the case (and you probably don&rsquo;t), then you would need to create a brand-new context for the background goroutine using <code>context.Background()</code> anyway.</p>
+
+<p>So, to summarize, using the request context as the parent context for database timeouts adds quite a lot of behavioral complexity and introduces nuances that you and anyone else working on the codebase needs to be aware of. You have to ask: <em>is it worth it?</em></p>
+
+<p>For most applications, on most endpoints, it&rsquo;s probably not. The exceptions are probably applications which frequently run close to saturation point of their resources, or for specific endpoints which execute slow running or very computationally expensive SQL queries. In those cases, canceling queries aggressively when a client disappears may have a meaningful positive impact and make it worth the trade-off.</p>
+
+<h3 id="the-context-withoutcancel-function">The context.WithoutCancel function</h3>
+
+<p>Since Go 1.21, there is another option. You can use the request context as the parent context but wrap it with the <a href="https://pkg.go.dev/context#WithoutCancel"><code>context.WithoutCancel()</code></a> function, like so:</p>
+
+<figure class="code go">
+<pre><span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">exampleHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="o">...</span>
+
+    <span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">WithoutCancel</span><span class="p">(</span><span class="nx">r</span><span class="p">.</span><span class="nf">Context</span><span class="p">(</span><span class="p">)</span><span class="p">)</span><span class="p">,</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">)</span>
+    <span class="k">defer</span> <span class="nf">cancel</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">example</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Example</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">id</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">switch</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">data</span><span class="p">.</span><span class="nx">ErrNotFound</span><span class="p">)</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">notFoundResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+        <span class="k">default</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="p">}</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="o">...</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>The <code>context.WithoutCancel()</code> function returns a copy of the parent context that is <em>not</em> canceled when parent context is canceled. But otherwise, it is identical to the parent &mdash; and importantly it <em>retains the same context values as the parent</em>.</p>
+
+<p>So, when we use this like the example above, the context containing the database timeout <em>will not be cancelled if the client closes the HTTP connection, or when the ServeHTTP method returns</em>. That means we avoid all the complexity and extra error handling described above. A <code>pq: canceling statement due to user request</code> error will only be returned when there is a timeout.</p>
+
+<p>And the advantage of using this over <code>context.Background()</code> as the parent is that the context will retain any values that the request context has.</p>
+
+<p>So, if you want to control the timeout duration from your handlers (instead of having a fixed timeout in the database model), this pattern provides a nice balance of minimizing complexity while still allowing context values to &lsquo;flow&rsquo; through your application.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="21.05-json-decoding-nuances.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="22.00-feedback.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "21.05-json-decoding-nuances.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "22.00-feedback.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

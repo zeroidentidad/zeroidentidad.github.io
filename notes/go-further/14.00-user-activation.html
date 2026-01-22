@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>User activation &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; User activation</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="13.05-graceful-shutdown-of-background-tasks.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="14.01-setting-up-the-tokens-database-table.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 14.</div>
+			<h1 id="user-activation">User activation</h1>
+
+<p>At the moment, a user can register for an account with our <em>Greenlight</em> API, but we don&rsquo;t know for sure that the email address they provided during registration <em>actually belongs to them</em>.</p>
+
+<p>So, in this section of the book, we&rsquo;re going to confirm that a user used their own, real, email address by including &lsquo;account activation&rsquo; instructions in their welcome email.</p>
+
+<p>There are <a href="https://ux.stackexchange.com/a/111023">several reasons</a> for having an account activation step, but the main benefits are that it adds an additional hoop for bots to jump through, and helps prevent abuse by people who register with a fake email address or one that doesn&rsquo;t belong to them.</p>
+
+<p>To give you an overview upfront, the account activation process will work like this:</p>
+
+<ol>
+<li>As part of the registration process for a new user we will create a cryptographically-secure random <em>activation token</em> that is impossible to guess.</li>
+<li>We will then store a hash of this activation token in a new <code>tokens</code> table, alongside the new user&rsquo;s ID and an expiry time for the token.</li>
+<li>We will send the original (unhashed) activation token to the user in their welcome email.</li>
+<li>The user subsequently submits their token to a new <code>PUT /v1/users/activated</code> endpoint.</li>
+<li>If the hash of the token exists in the <code>tokens</code> table and hasn&rsquo;t expired, then we&rsquo;ll set the <code>activated</code> status for the relevant user to <code>true</code>.</li>
+<li>Lastly, we&rsquo;ll delete the activation token from our <code>tokens</code> table so that it cannot be used again.</li>
+</ol>
+
+<p>In this section of the book, you&rsquo;ll learn how to:</p>
+
+<ul>
+<li><p>Implement a secure &lsquo;account activation&rsquo; workflow which verifies a new user&rsquo;s email address.</p></li>
+
+<li><p>Generate cryptographically-secure random tokens using Go&rsquo;s <code>crypto/rand</code> package.</p></li>
+
+<li><p>Generate fast hashes of data using the <code>crypto/sha256</code> package.</p></li>
+
+<li><p>Implement patterns for working with cross-table relationships in your database, including setting up foreign keys and retrieving related data via SQL <code>JOIN</code> queries.</p></li>
+</ul>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="13.05-graceful-shutdown-of-background-tasks.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="14.01-setting-up-the-tokens-database-table.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "13.05-graceful-shutdown-of-background-tasks.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "14.01-setting-up-the-tokens-database-table.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

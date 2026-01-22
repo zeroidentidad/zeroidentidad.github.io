@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Full-text search &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="09.00-filtering-sorting-and-pagination.html">Filtering, sorting, and pagination</a> &rsaquo; Full-text search</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="09.04-filtering-lists.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="09.06.sorting-lists.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 9.5.</div>
+			<h2 id="full-text-search">Full-text search</h2>
+
+<p>In this chapter we&rsquo;re going to make our movie title filter easier to use by adapting it to support <em>partial matches</em>, rather than requiring a match on the full title. So, for example, if a client wants to find <em>The Breakfast Club</em> they will be able to find it with just the query string <code>title=breakfast</code>.</p>
+
+<p>There are a few different ways we could implement this feature in our codebase, but an effective and intuitive method (from a client point of view)
+is to leverage PostgreSQL&rsquo;s <em>full-text search</em> functionality, which allows you to perform natural language searches on text fields in your database.</p>
+
+<p>PostgreSQL full-text search is a powerful and highly configurable tool, and explaining how it works and the available options in full could easily take up a whole book in itself. So we&rsquo;ll keep the explanations in this chapter high level, and focus on the practical implementation.</p>
+
+<p>To implement a basic full-text search on our <code>title</code> field, we&rsquo;re going to update our SQL query to look like this:</p>
+
+<figure class="code plain">
+<pre>SELECT id, created_at, title, year, runtime, genres, version
+FROM movies
+WHERE (to_tsvector(&#39;simple&#39;, title) @@ plainto_tsquery(&#39;simple&#39;, $1) OR $1 = &#39;&#39;) 
+AND (genres @&gt; $2 OR $2 = &#39;{}&#39;)     
+ORDER BY id</pre>
+</figure>
+
+<p>That looks pretty complicated at first glance, so let&rsquo;s break it down and explain what&rsquo;s going on.</p>
+
+<p>The <code>to_tsvector('simple', title)</code> function takes a movie title and splits it into <em>lexemes</em>. We specify the <code>simple</code> configuration, which means that the lexemes are just lowercase versions of the words in the title<sup>†</sup>. For example, the movie title <code>&quot;The Breakfast Club&quot;</code> would be split into the lexemes <code>'breakfast' 'club' 'the'</code>.</p>
+
+<aside class="hint"><p>
+† Other &lsquo;non-simple&rsquo; configurations may apply additional rules to the lexemes, such as the removal of common words or applying language-specific stemming.
+</p></aside>
+
+<p>The <code>plainto_tsquery('simple', $1)</code> function takes a search value and turns it into a formatted <em>query term</em> that PostgreSQL full-text search can understand. It normalizes the search value (again using the <code>simple</code> configuration), strips any special characters, and inserts the <em>and operator</em> <code>&amp;</code> between the words. As an example, the search value <code>&quot;The Club&quot;</code> would result in the query term <code>'the' &amp; 'club'</code>.</p>
+
+<p>The <code>@@</code> operator is the matches operator. In our statement we are using it to check whether the generated <em>query term matches the lexemes in the title</em>. To continue the example, the query term <code>'the' &amp; 'club'</code> will match rows which contain <em>both</em> lexemes <code>'the'</code> and <code>'club'</code>.</p>
+
+<p>There are a lot of specialist words in the paragraphs above, but if we illustrate it with a couple of examples it&rsquo;s actually very intuitive:</p>
+
+<figure class="code js">
+<pre><span class="c1">// Return all movies where the title includes the case-insensitive word &#39;panther&#39;.
+</span><span class="c1"></span><span class="err">/</span><span class="err">v</span><span class="err">1</span><span class="err">/</span><span class="err">m</span><span class="err">o</span><span class="err">v</span><span class="err">i</span><span class="err">e</span><span class="err">s</span><span class="err">?</span><span class="err">t</span><span class="err">i</span><span class="err">t</span><span class="err">l</span><span class="err">e</span><span class="err">=</span><span class="err">p</span><span class="err">a</span><span class="err">n</span><span class="err">t</span><span class="err">h</span><span class="err">e</span><span class="err">r</span>
+
+<span class="c1">// Return all movies where the title includes the case-insensitive words &#39;the&#39; and 
+</span><span class="c1"></span><span class="c1">// &#39;club&#39;.
+</span><span class="c1"></span><span class="err">/</span><span class="err">v</span><span class="err">1</span><span class="err">/</span><span class="err">m</span><span class="err">o</span><span class="err">v</span><span class="err">i</span><span class="err">e</span><span class="err">s</span><span class="err">?</span><span class="err">t</span><span class="err">i</span><span class="err">t</span><span class="err">l</span><span class="err">e</span><span class="err">=</span><span class="err">t</span><span class="err">h</span><span class="err">e</span><span class="err">+</span><span class="err">c</span><span class="err">l</span><span class="err">u</span><span class="err">b</span></pre>
+</figure>
+
+<p>Let&rsquo;s go ahead and put this into action. Open up your <code>internal/data/movies.go</code> file and update the <code>GetAll()</code> method to use the new SQL query like so:</p>
+
+<figure class="code go">
+<figcaption>File: internal/data/movies.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">data</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="nx">MovieModel</span><span class="p">)</span> <span class="nf">GetAll</span><span class="p">(</span><span class="nx">title</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">genres</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span><span class="p">,</span> <span class="nx">filters</span> <span class="nx">Filters</span><span class="p">)</span> <span class="p">(</span><span class="p">[</span><span class="p">]</span><span class="o">*</span><span class="nx">Movie</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Use full-text search for the title filter.
+</span><span class="c1"></span>    <span class="nx">query</span> <span class="o">:=</span> <span class="s">`</span><span class="s">
+</span><span class="s">        SELECT id, created_at, title, year, runtime, genres, version
+</span><span class="s">        FROM movies
+</span><span class="s">        WHERE (to_tsvector(&#39;simple&#39;, title) @@ plainto_tsquery(&#39;simple&#39;, $1) OR $1 = &#39;&#39;) 
+</span><span class="s">        AND (genres @&gt; $2 OR $2 = &#39;</span><span class="s">{</span><span class="s">}&#39;)     
+</span><span class="s">        ORDER BY id</span><span class="s">`</span>
+
+    <span class="c1">// Nothing else below needs to change.
+</span><span class="c1"></span>    <span class="o">...</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>If you&rsquo;re following along, restart the application and try making some requests with different values for the movie title. You should find that partial searches now work as we described above.</p>
+
+<p>For example:</p>
+
+<figure class="code bash">
+<pre>$ curl &#34;localhost:4000/v1/movies?title=panther&#34;
+<samp>{
+    &#34;movies&#34;: [
+        {
+            &#34;id&#34;: 2,
+            &#34;title&#34;: &#34;Black Panther&#34;,
+            &#34;year&#34;: 2018,
+            &#34;runtime&#34;: &#34;134 mins&#34;,
+            &#34;genres&#34;: [
+                &#34;sci-fi&#34;,
+                &#34;action&#34;,
+                &#34;adventure&#34;
+            ],
+            &#34;version&#34;: 2
+        }
+    ]
+}</samp>
+
+$ curl &#34;localhost:4000/v1/movies?title=the+club&#34;
+<samp>{
+    &#34;movies&#34;: [
+        {
+            &#34;id&#34;: 4,
+            &#34;title&#34;: &#34;The Breakfast Club&#34;,
+            &#34;year&#34;: 1985,
+            &#34;runtime&#34;: &#34;97 mins&#34;,
+            &#34;genres&#34;: [
+                &#34;comedy&#34;
+            ],
+            &#34;version&#34;: 5
+        }
+    ]
+}</samp></pre>
+</figure>
+
+<h3 id="adding-indexes">Adding indexes</h3>
+
+<p>To keep our SQL query performing quickly as the dataset grows, it&rsquo;s sensible to use indexes to help avoid full table scans and avoid generating the lexemes for the <code>title</code> field every time the query is run.</p>
+
+<aside class="hint"><p>
+<strong>Note:</strong> If you are not familiar with the concept of indexes in SQL databases, the official PostgreSQL documentation provides a <a href="https://www.postgresql.org/docs/current/indexes-intro.html">good introduction</a> and a summary of different <a href="https://www.postgresql.org/docs/current/indexes-types.html">index types</a>. I recommend reading these quickly to give you an overview before continuing.
+</p></aside>
+
+<p>In our case it makes sense to create <a href="https://www.postgresql.org/docs/current/textsearch-indexes.html">GIN indexes</a> on both the <code>genres</code> field and the lexemes generated by <code>to_tsvector()</code>, both of which are used in the <code>WHERE</code> clause of our SQL query.</p>
+
+<p>If you&rsquo;re following along, go ahead and create a new pair of migration files:</p>
+
+<figure class="code bash">
+<pre>$ migrate create -seq -ext .sql -dir ./migrations add_movies_indexes</pre>
+</figure>
+
+<p>Then add the following statements to the &lsquo;up&rsquo; and &lsquo;down&rsquo; migration files to create and drop the necessary indexes:</p>
+
+<figure class="code sql">
+<figcaption>File: migrations/000003_add_movies_indexes.up.sql</figcaption>
+<pre><span class="k">CREATE</span> <span class="k">INDEX</span> <span class="k">IF</span> <span class="k">NOT</span> <span class="k">EXISTS</span> <span class="n">movies_title_idx</span> <span class="k">ON</span> <span class="n">movies</span> <span class="k">USING</span> <span class="n">GIN</span> <span class="p">(</span><span class="n">to_tsvector</span><span class="p">(</span><span class="s1">&#39;</span><span class="s1">simple</span><span class="s1">&#39;</span><span class="p">,</span> <span class="n">title</span><span class="p">)</span><span class="p">)</span><span class="p">;</span>
+<span class="k">CREATE</span> <span class="k">INDEX</span> <span class="k">IF</span> <span class="k">NOT</span> <span class="k">EXISTS</span> <span class="n">movies_genres_idx</span> <span class="k">ON</span> <span class="n">movies</span> <span class="k">USING</span> <span class="n">GIN</span> <span class="p">(</span><span class="n">genres</span><span class="p">)</span><span class="p">;</span></pre>
+</figure>
+
+<figure class="code sql">
+<figcaption>File: migrations/000003_add_movies_indexes.down.sql</figcaption>
+<pre><span class="k">DROP</span> <span class="k">INDEX</span> <span class="k">IF</span> <span class="k">EXISTS</span> <span class="n">movies_title_idx</span><span class="p">;</span>
+<span class="k">DROP</span> <span class="k">INDEX</span> <span class="k">IF</span> <span class="k">EXISTS</span> <span class="n">movies_genres_idx</span><span class="p">;</span></pre>
+</figure>
+
+<p>Once that&rsquo;s done, you should be able to execute the &lsquo;up&rsquo; migration to add the indexes to your database:</p>
+
+<figure class="code bash">
+<pre>$ migrate -path ./migrations -database $GREENLIGHT_DB_DSN up
+<samp>3/u add_movies_indexes (38.638777ms)</samp></pre>
+</figure>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="non-simple-configuration-and-more-information">Non-simple configuration and more information</h4>
+
+<p>As mentioned above, you can also use a language-specific configuration for full-text searches instead of the <code>simple</code> configuration that we&rsquo;re currently using. When you create lexemes or query terms using a language-specific configuration, it will strip out common words for the language and perform word <a href="https://en.wikipedia.org/wiki/Stemming">stemming</a>.</p>
+
+<p>So, for example, if you use the <code>english</code> configuration, then the lexemes generated for <code>&quot;One Flew Over the Cuckoo's Nest&quot;</code> would be <code>'cuckoo' 'flew' 'nest' 'one'</code>. Or with the <code>spanish</code> configuration, the lexemes for <code>&quot;Los lunes al sol&quot;</code> would be <code>'lun' 'sol'</code>.</p>
+
+<p>You can retrieve a list of all available configurations by running the <code>\dF</code> meta-command in PostgreSQL:</p>
+
+<figure class="code bash">
+<pre>postgres=# \dF
+<samp>              List of text search configurations
+   Schema   |    Name    |              Description              
+------------+------------+---------------------------------------
+ pg_catalog | arabic     | configuration for arabic language
+ pg_catalog | danish     | configuration for danish language
+ pg_catalog | dutch      | configuration for dutch language
+ pg_catalog | english    | configuration for english language
+ ...</samp></pre>
+</figure>
+
+<p>And if you wanted to use the <code>english</code> configuration to search our movies, you could update the SQL query like so:</p>
+
+<figure class="code plain">
+<pre>SELECT id, created_at, title, year, runtime, genres, version
+FROM movies
+WHERE (to_tsvector(&#39;english&#39;, title) @@ plainto_tsquery(&#39;english&#39;, $1) OR $1 = &#39;&#39;) 
+AND (genres @&gt; $2 OR $2 = &#39;{}&#39;)     
+ORDER BY id</pre>
+</figure>
+
+<p>If you&rsquo;d like to learn more about PostgreSQL full-text search, the <a href="https://www.postgresql.org/docs/current/textsearch.html">official documentation</a> is an excellent source of information and examples.</p>
+
+<h4 id="using-strpos-and-ilike">Using STRPOS and ILIKE</h4>
+
+<p>If you don&rsquo;t want to use full-text search for the partial movie title lookup, some alternatives are the PostgreSQL <code>STRPOS()</code> function and <code>ILIKE</code> operator.</p>
+
+<p>The PostgreSQL <a href="https://www.postgresql.org/docs/current/functions-string.html"><code>STRPOS()</code></a> function allows you to check for the existence of a substring in a particular database field. We could use it in our SQL query like this:</p>
+
+<figure class="code plain">
+<pre>SELECT id, created_at, title, year, runtime, genres, version
+FROM movies
+WHERE (STRPOS(LOWER(title), LOWER($1)) &gt; 0 OR $1 = &#39;&#39;) 
+AND (genres @&gt; $2 OR $2 = &#39;{}&#39;)     
+ORDER BY id</pre>
+</figure>
+
+<p>From a client perspective, the downside of this is that it may return some unintuitive results. For example, searching for <code>title=the</code> would return both <em><u>The</u> Breakfast Club</em> and <em>Black Pan<u>the</u>r</em> in our dataset.</p>
+
+<p>From a server perspective it&rsquo;s also not ideal for large datasets. Because there&rsquo;s no effective way to index the <code>title</code> field to see if the <code>STRPOS()</code> condition is met, it means the query could potentially require a full-table scan each time it is run.</p>
+
+<p>Another option is the <a href="https://www.postgresql.org/docs/current/functions-matching.html"><code>ILIKE</code></a> operator, which allows you to find rows which match a specific (case-insensitive) pattern. We could use it in our SQL query like so:</p>
+
+<figure class="code plain">
+<pre>SELECT id, created_at, title, year, runtime, genres, version
+FROM movies
+WHERE (title ILIKE $1 OR $1 = &#39;&#39;) 
+AND (genres @&gt; $2 OR $2 = &#39;{}&#39;)     
+ORDER BY id</pre>
+</figure>
+
+<p>This approach would be better from a server point of view because it&rsquo;s possible to create an index on the <code>title</code> field using the <code>pg_trgm</code> extension and a GIN index (for details please see <a href="https://niallburkley.com/blog/index-columns-for-like-in-postgres/">this post</a>).</p>
+
+<p>From the client side it&rsquo;s arguably better that the <code>STRPOS()</code> approach too, as they can control the matching behavior by prefixing/suffixing the search term with a <code>%</code> wildcard character (which will need to be escaped to <code>%25</code> in the URL query string). For example, to search for movies with a title that starts with &ldquo;the&rdquo;, a client could send the query string parameter <code>title=the%25</code>.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="09.04-filtering-lists.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="09.06.sorting-lists.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "09.04-filtering-lists.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "09.06.sorting-lists.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

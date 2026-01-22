@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Restricting Inputs &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="04.00-parsing-json-requests.html">Parsing JSON requests</a> &rsaquo; Restricting Inputs</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="04.02-managing-bad-requests.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="04.04-custom-json-decoding.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 4.3.</div>
+			<h2 id="restricting-inputs">Restricting Inputs</h2>
+
+<p>The changes that we made in the previous chapter to deal with invalid JSON and other bad requests were a big step in the right direction. But there are still a few things we can do to make our JSON processing even more robust.</p>
+
+<p>One such thing is dealing with <em>unknown fields</em>. For example, you can try sending a request containing the unknown field <code>rating</code> to our <code>createMovieHandler</code>, like so:</p>
+
+<figure class="code bash">
+<pre>$ curl -i -d &#39;{&#34;title&#34;: &#34;Moana&#34;, &#34;rating&#34;:&#34;PG&#34;}&#39; localhost:4000/v1/movies
+<samp>HTTP/1.1 200 OK
+Date: Tue, 06 Apr 2021 18:51:50 GMT
+Content-Length: 41
+Content-Type: text/plain; charset=utf-8
+
+{Title:Moana Year:0 Runtime:0 Genres:[]}</samp></pre>
+</figure>
+
+<p>Notice how this request works without any problems &mdash; there&rsquo;s no error to inform the client that the <code>rating</code> field is not recognized by our application. In certain scenarios, silently ignoring unknown fields may be exactly the behavior you want, but in our case it would be better if we could alert the client to the issue.</p>
+
+<p>Fortunately, Go&rsquo;s <code>json.Decoder</code> provides a <a href="https://golang.org/pkg/encoding/json/#Decoder.DisallowUnknownFields"><code>DisallowUnknownFields()</code></a> setting that we can use to generate an error when this happens.</p>
+
+<p>Another problem we have is the fact that <code>json.Decoder</code> is designed to support <em>streams</em> of JSON data. When we call <code>Decode()</code> on our request body, it actually reads the <em>first JSON value only</em> from the body and decodes it. If we made a second call to <code>Decode()</code>, it would read and decode the second value and so on.</p>
+
+<p>But because we call <code>Decode()</code> once &mdash; and only once &mdash; in our <code>readJSON()</code> helper, anything after the first JSON value in the request body is ignored. This means you could send a request body containing multiple JSON values, or garbage content after the first JSON value, and our API handlers would not raise an error. For example:</p>
+
+<figure class="code bash">
+<pre><samp># Body contains multiple JSON values</samp>
+$ curl -i -d &#39;{&#34;title&#34;: &#34;Moana&#34;}{&#34;title&#34;: &#34;Top Gun&#34;}&#39; localhost:4000/v1/movies
+<samp>HTTP/1.1 200 OK
+Date: Tue, 06 Apr 2021 18:53:57 GMT
+Content-Length: 41
+Content-Type: text/plain; charset=utf-8
+
+{Title:Moana Year:0 Runtime:0 Genres:[]}</samp>
+
+<samp># Body contains garbage content after the first JSON value</samp>
+$ curl -i -d &#39;{&#34;title&#34;: &#34;Moana&#34;} :~()&#39; localhost:4000/v1/movies
+<samp>HTTP/1.1 200 OK
+Date: Tue, 06 Apr 2021 18:54:15 GMT
+Content-Length: 41
+Content-Type: text/plain; charset=utf-8
+
+{Title:Moana Year:0 Runtime:0 Genres:[]}</samp></pre>
+</figure>
+
+<p>Again, this behavior can be very useful, but it&rsquo;s not the right fit for our use case. We want requests to our <code>createMovieHandler</code> handler to contain only a single JSON object in the request body, with information about the movie to be created in our system.</p>
+
+<p>To ensure that there are no additional JSON values (or any other content) in the request body, we will need to call <code>Decode()</code> a second time in our <code>readJSON()</code> helper and check that it returns an <code>io.EOF</code> (end of file) error.</p>
+
+<p>Finally, there&rsquo;s currently no upper limit on the maximum size of the request body. This means that our <code>createMovieHandler</code> would be a good target for any malicious clients that wish to perform a denial-of-service attack on our API. We can address this by using the <a href="https://golang.org/pkg/net/http/#MaxBytesReader"><code>http.MaxBytesReader()</code></a> function to limit the maximum size of the request body.</p>
+
+<p>Let&rsquo;s update our <code>readJSON()</code> helper to fix these three things:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/helpers.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;encoding/json&#34;</span>
+    <span class="s">&#34;errors&#34;</span>
+    <span class="s">&#34;fmt&#34;</span>
+    <span class="s">&#34;io&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+    <span class="s">&#34;strconv&#34;</span>
+    <span class="s">&#34;strings&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>
+    <span class="s">&#34;github.com/julienschmidt/httprouter&#34;</span>
+<span class="p">)</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">readJSON</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">,</span> <span class="nx">dst</span> <span class="nx">any</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+    <span class="c1">// Use http.MaxBytesReader() to limit the size of the request body to 1,048,576 
+</span><span class="c1"></span>    <span class="c1">// bytes (1MB).
+</span><span class="c1"></span>    <span class="nx">r</span><span class="p">.</span><span class="nx">Body</span> <span class="p">=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">MaxBytesReader</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">.</span><span class="nx">Body</span><span class="p">,</span> <span class="mi">1</span><span class="nx">_048_576</span><span class="p">)</span>
+
+    <span class="c1">// Initialize the json.Decoder, and call the DisallowUnknownFields() method on it
+</span><span class="c1"></span>    <span class="c1">// before decoding. This means that if the JSON from the client now includes any
+</span><span class="c1"></span>    <span class="c1">// field that cannot be mapped to the target destination, the decoder will return
+</span><span class="c1"></span>    <span class="c1">// an error instead of just ignoring the field.
+</span><span class="c1"></span>    <span class="nx">dec</span> <span class="o">:=</span> <span class="nx">json</span><span class="p">.</span><span class="nf">NewDecoder</span><span class="p">(</span><span class="nx">r</span><span class="p">.</span><span class="nx">Body</span><span class="p">)</span>
+    <span class="nx">dec</span><span class="p">.</span><span class="nf">DisallowUnknownFields</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="c1">// Decode the request body to the destination.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">dec</span><span class="p">.</span><span class="nf">Decode</span><span class="p">(</span><span class="nx">dst</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="kd">var</span> <span class="nx">syntaxError</span> <span class="o">*</span><span class="nx">json</span><span class="p">.</span><span class="nx">SyntaxError</span>
+        <span class="kd">var</span> <span class="nx">unmarshalTypeError</span> <span class="o">*</span><span class="nx">json</span><span class="p">.</span><span class="nx">UnmarshalTypeError</span>
+        <span class="kd">var</span> <span class="nx">invalidUnmarshalError</span> <span class="o">*</span><span class="nx">json</span><span class="p">.</span><span class="nx">InvalidUnmarshalError</span>
+        <span class="c1">// Add a new maxBytesError variable.
+</span><span class="c1"></span>        <span class="kd">var</span> <span class="nx">maxBytesError</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">MaxBytesError</span>
+
+        <span class="k">switch</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">As</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">syntaxError</span><span class="p">)</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Errorf</span><span class="p">(</span><span class="s">&#34;body contains badly-formed JSON (at character %d)&#34;</span><span class="p">,</span> <span class="nx">syntaxError</span><span class="p">.</span><span class="nx">Offset</span><span class="p">)</span>
+
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">io</span><span class="p">.</span><span class="nx">ErrUnexpectedEOF</span><span class="p">)</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="s">&#34;body contains badly-formed JSON&#34;</span><span class="p">)</span>
+
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">As</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">unmarshalTypeError</span><span class="p">)</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nx">unmarshalTypeError</span><span class="p">.</span><span class="nx">Field</span> <span class="o">!=</span> <span class="s">&#34;&#34;</span> <span class="p">{</span>
+                 <span class="k">return</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Errorf</span><span class="p">(</span><span class="s">&#34;body contains incorrect JSON type for field %q&#34;</span><span class="p">,</span> <span class="nx">unmarshalTypeError</span><span class="p">.</span><span class="nx">Field</span><span class="p">)</span>
+            <span class="p">}</span>
+            <span class="k">return</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Errorf</span><span class="p">(</span><span class="s">&#34;body contains incorrect JSON type (at character %d)&#34;</span><span class="p">,</span> <span class="nx">unmarshalTypeError</span><span class="p">.</span><span class="nx">Offset</span><span class="p">)</span>
+
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">io</span><span class="p">.</span><span class="nx">EOF</span><span class="p">)</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="s">&#34;body must not be empty&#34;</span><span class="p">)</span>
+
+        <span class="c1">// If the JSON contains a field which cannot be mapped to the target destination
+</span><span class="c1"></span>        <span class="c1">// then Decode() will now return an error message in the format &#34;json: unknown
+</span><span class="c1"></span>        <span class="c1">// field &#34;&lt;name&gt;&#34;&#34;. We check for this, extract the field name from the error,
+</span><span class="c1"></span>        <span class="c1">// and interpolate it into our custom error message. Note that there&#39;s an open
+</span><span class="c1"></span>        <span class="c1">// issue at https://github.com/golang/go/issues/29035 regarding turning this
+</span><span class="c1"></span>        <span class="c1">// into a distinct error type in the future.
+</span><span class="c1"></span>        <span class="k">case</span> <span class="nx">strings</span><span class="p">.</span><span class="nf">HasPrefix</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="s">&#34;json: unknown field &#34;</span><span class="p">)</span><span class="p">:</span>
+            <span class="nx">fieldName</span> <span class="o">:=</span> <span class="nx">strings</span><span class="p">.</span><span class="nf">TrimPrefix</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="s">&#34;json: unknown field &#34;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Errorf</span><span class="p">(</span><span class="s">&#34;body contains unknown key %s&#34;</span><span class="p">,</span> <span class="nx">fieldName</span><span class="p">)</span>
+
+        <span class="c1">// Use the errors.As() function to check whether the error has the type 
+</span><span class="c1"></span>        <span class="c1">// *http.MaxBytesError. If it does, then it means the request body exceeded our 
+</span><span class="c1"></span>        <span class="c1">// size limit of 1MB and we return a clear error message.
+</span><span class="c1"></span>        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">As</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">maxBytesError</span><span class="p">)</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Errorf</span><span class="p">(</span><span class="s">&#34;body must not be larger than %d bytes&#34;</span><span class="p">,</span> <span class="nx">maxBytesError</span><span class="p">.</span><span class="nx">Limit</span><span class="p">)</span>
+
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">As</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">invalidUnmarshalError</span><span class="p">)</span><span class="p">:</span>
+            <span class="nb">panic</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+
+        <span class="k">default</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nx">err</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Call Decode() again, using a pointer to an empty anonymous struct as the
+</span><span class="c1"></span>    <span class="c1">// destination. If the request body only contained a single JSON value this will
+</span><span class="c1"></span>    <span class="c1">// return an io.EOF error. So if we get anything else, we know that there is
+</span><span class="c1"></span>    <span class="c1">// additional data in the request body and we return our own custom error message.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="nx">dec</span><span class="p">.</span><span class="nf">Decode</span><span class="p">(</span><span class="o">&amp;</span><span class="kd">struct</span><span class="p">{</span><span class="p">}</span><span class="p">{</span><span class="p">}</span><span class="p">)</span>
+    <span class="k">if</span> <span class="p">!</span><span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">io</span><span class="p">.</span><span class="nx">EOF</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="s">&#34;body must only contain a single JSON value&#34;</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="kc">nil</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Once you&rsquo;ve made those changes, let&rsquo;s try the requests from earlier in the chapter again:</p>
+
+<figure class="code bash">
+<pre>$ curl -d &#39;{&#34;title&#34;: &#34;Moana&#34;, &#34;rating&#34;:&#34;PG&#34;}&#39; localhost:4000/v1/movies
+<samp>{
+    &#34;error&#34;: &#34;body contains unknown key \&#34;rating\&#34;&#34;
+}</samp>
+
+$ curl -d &#39;{&#34;title&#34;: &#34;Moana&#34;}{&#34;title&#34;: &#34;Top Gun&#34;}&#39; localhost:4000/v1/movies
+<samp>{
+    &#34;error&#34;: &#34;body must only contain a single JSON value&#34;
+}</samp>
+
+$ curl -d &#39;{&#34;title&#34;: &#34;Moana&#34;} :~()&#39; localhost:4000/v1/movies
+<samp>{
+    &#34;error&#34;: &#34;body must only contain a single JSON value&#34;
+}</samp></pre>
+</figure>
+
+<p>Those are working much better now &mdash; processing of the request is terminated and the client receives a clear error message explaining exactly what the problem is.</p>
+
+<p>Lastly, let&rsquo;s try making a request with a very large JSON body.</p>
+
+<p>To demonstrate this, I&rsquo;ve created a 1.5MB JSON file that you can download into your <code>/tmp</code> directory by running the following command:</p>
+
+<figure class="code bash">
+<pre>$ wget -O /tmp/largefile.json https://www.alexedwards.net/static/largefile.json</pre>
+</figure>
+
+<p>If you try making a request to your <code>POST /v1/movies</code> endpoint with this file as the request body, the <code>http.MaxBytesReader()</code> check will kick in and you should get a response similar to this:</p>
+
+<figure class="code bash">
+<pre>$ curl -d @/tmp/largefile.json localhost:4000/v1/movies
+<samp>{
+    &#34;error&#34;: &#34;body must not be larger than 1048576 bytes&#34;
+}</samp></pre>
+</figure>
+
+<p>And with that, you&rsquo;ll be glad to know that we&rsquo;re finally finished with the <code>readJSON()</code> helper 😊</p>
+
+<p>I must admit that the code inside <code>readJSON()</code> isn&rsquo;t the most beautiful-looking&hellip; there&rsquo;s a lot of error handling and logic that we&rsquo;ve introduced for what is ultimately a one-line call to <code>Decode()</code>. But now it&rsquo;s written, it&rsquo;s done. You don&rsquo;t need to touch it again, and it&rsquo;s something that you can copy-and-paste into other projects easily.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="04.02-managing-bad-requests.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="04.04-custom-json-decoding.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "04.02-managing-bad-requests.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "04.04-custom-json-decoding.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

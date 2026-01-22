@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Deployment and hosting &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; Deployment and hosting</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="19.06-managing-and-automating-version-numbers.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="20.01-creating-a-digital-ocean-droplet.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 20.</div>
+			<h1 id="deployment-and-hosting">Deployment and hosting</h1>
+
+<p>In this final section of the book we&rsquo;ll look at how to deploy our API application to a production server and expose it on the internet.</p>
+
+<p>Every project and project team will have different technical and business needs in terms of hosting and deployment, so it&rsquo;s impossible to lay out a one-size-fits-all approach here.</p>
+
+<p>To make the content in this section as widely applicable and portable as possible, we&rsquo;ll focus on hosting the application on a self-managed Linux server (something provided by a myriad of hosting companies worldwide) and using standard Linux tooling to manage server configuration and deployment.</p>
+
+<p>We&rsquo;ll also be automating the server configuration and deployment process as much as possible, so that it&rsquo;s easy to make <em>continuous deployments</em> and possible to <em>replicate the server</em> in the future if you need to.</p>
+
+<p>If you&rsquo;re planning to follow along, we&rsquo;ll be using <a href="https://www.digitalocean.com/">DigitalOcean</a> as the hosting provider in this book. DigitalOcean isn&rsquo;t free, but it&rsquo;s good value and the cost of running a server starts at $4 USD per month. If you don&rsquo;t want to use DigitalOcean, you should be able to follow basically the same approach we outline here with any other Linux hosting provider.</p>
+
+<p>In terms of infrastructure and architecture, we&rsquo;ll run everything on a single Ubuntu Linux server. Our stack will consist of a PostgreSQL database and the executable binary for our Greenlight API, operating in much the same way that we&rsquo;ve seen so far in this book. But in addition to this, we&rsquo;ll also run <a href="https://caddyserver.com/">Caddy</a> as a <em>reverse proxy</em> in front of the Greenlight API.</p>
+
+<p>Using Caddy has a couple of benefits. It will automatically handle and terminate HTTPS connections for us &mdash; including automatically generating and managing TLS certificates via <a href="https://letsencrypt.org/">Let&rsquo;s Encrypt</a> and <a href="https://zerossl.com/">ZeroSSL</a> &mdash; and we can also use Caddy to easily restrict internet access to our metrics endpoint.</p>
+
+<p>In this section you&rsquo;ll learn how to:</p>
+
+<ul>
+<li><p>Commission an Ubuntu Linux server running on DigitalOcean to host your application.</p></li>
+
+<li><p>Automate the configuration of the server &mdash; including creating user accounts, configuring the firewall and installing necessary software.</p></li>
+
+<li><p>Automate the process of updating your application and deploying changes to the server.</p></li>
+
+<li><p>How to run your application as a background service using <a href="https://en.wikipedia.org/wiki/Systemd">systemd</a>, as a non-root user.</p></li>
+
+<li><p>Use Caddy as a reverse proxy in front of your application to automatically manage TLS certificates and handle HTTPS connections.</p></li>
+</ul>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="19.06-managing-and-automating-version-numbers.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="20.01-creating-a-digital-ocean-droplet.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "19.06-managing-and-automating-version-numbers.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "20.01-creating-a-digital-ocean-droplet.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

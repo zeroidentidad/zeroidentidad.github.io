@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Simple CORS requests &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="17.00-cross-origin-requests.html">Cross-origin requests</a> &rsaquo; Simple CORS requests</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="17.02-demonstrating-the-same-origin-policy.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="17.04-preflight-cors-requests.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 17.3.</div>
+			<h2 id="simple-cors-requests">Simple CORS requests</h2>
+
+<p>Let&rsquo;s now make some changes to our API to <em>relax the same-origin policy</em>, so that JavaScript can read the responses from our API endpoints.</p>
+
+<p>To start with, the simplest way to achieve this is by setting the following header on all our API responses:</p>
+
+<figure class="code plain">
+<pre>Access-Control-Allow-Origin: *</pre>
+</figure>
+
+<p>The <code>Access-Control-Allow-Origin</code> response header is used to indicate to a browser that it&rsquo;s OK to share a response with a different origin. In this case, the header value is the wildcard <code>*</code> character, which means that it&rsquo;s OK to share the response with <em>any other origin</em>.</p>
+
+<p>Let&rsquo;s go ahead and create a small <code>enableCORS()</code> middleware function in our API application which sets this header:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/middleware.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">enableCORS</span><span class="p">(</span><span class="nx">next</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">w</span><span class="p">.</span><span class="nf">Header</span><span class="p">(</span><span class="p">)</span><span class="p">.</span><span class="nf">Set</span><span class="p">(</span><span class="s">&#34;Access-Control-Allow-Origin&#34;</span><span class="p">,</span> <span class="s">&#34;*&#34;</span><span class="p">)</span>
+
+        <span class="nx">next</span><span class="p">.</span><span class="nf">ServeHTTP</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+    <span class="p">}</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>And then update your <code>cmd/api/routes.go</code> file so that this middleware is used on all the application routes. Like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/routes.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">routes</span><span class="p">(</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span> <span class="p">{</span>
+    <span class="nx">router</span> <span class="o">:=</span> <span class="nx">httprouter</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nx">NotFound</span> <span class="p">=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">notFoundResponse</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nx">MethodNotAllowed</span> <span class="p">=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">methodNotAllowedResponse</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/healthcheck&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">healthcheckHandler</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/movies&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nf">requirePermission</span><span class="p">(</span><span class="s">&#34;movies:read&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">listMoviesHandler</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span> <span class="s">&#34;/v1/movies&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nf">requirePermission</span><span class="p">(</span><span class="s">&#34;movies:write&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">createMovieHandler</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nf">requirePermission</span><span class="p">(</span><span class="s">&#34;movies:read&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">showMovieHandler</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPatch</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nf">requirePermission</span><span class="p">(</span><span class="s">&#34;movies:write&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">updateMovieHandler</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodDelete</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nf">requirePermission</span><span class="p">(</span><span class="s">&#34;movies:write&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">deleteMovieHandler</span><span class="p">)</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span> <span class="s">&#34;/v1/users&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">registerUserHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPut</span><span class="p">,</span> <span class="s">&#34;/v1/users/activated&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">activateUserHandler</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span> <span class="s">&#34;/v1/tokens/authentication&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">createAuthenticationTokenHandler</span><span class="p">)</span>
+
+    <span class="c1">// Add the enableCORS() middleware.
+</span><span class="c1"></span>    <span class="k">return</span> <span class="nx">app</span><span class="p">.</span><span class="nf">recoverPanic</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nf">enableCORS</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nf">rateLimit</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nf">authenticate</span><span class="p">(</span><span class="nx">router</span><span class="p">)</span><span class="p">)</span><span class="p">)</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>It&rsquo;s important to point out here that the <code>enableCORS()</code> middleware is deliberately positioned early in the middleware chain.</p>
+
+<p>If we positioned it after our rate limiter, for example, any cross-origin requests that exceed the rate limit would <em>not have the <code>Access-Control-Allow-Origin</code> header set</em>. This means that they would be blocked by the client&rsquo;s web browser due to the same-origin policy, rather than the client receiving a <code>429 Too Many Requests</code> response like they should.</p>
+
+<p>OK, let&rsquo;s try this out.</p>
+
+<p>Restart the API application and then try visiting <code>http://localhost:9000</code> in your browser again. This time the cross-origin request should complete successfully, and you should see the JSON from our healthcheck handler presented on the webpage. Like so:</p>
+
+<figure class="img">
+<img src="assets/img/17.03-01.png" alt="17.03-01.png" />
+</figure>
+
+<p>I also recommend taking a quick look at the request and response headers for the JavaScript <code>fetch()</code> request again. You should see that the <code>Access-Control-Allow-Origin: *</code> header has been set on the response, similar to this:</p>
+
+<figure class="img">
+<img src="assets/img/17.03-02.png" alt="17.03-02.png" />
+</figure>
+
+<h3 id="restricting-origins">Restricting origins</h3>
+
+<p>Using a wildcard to allow cross-origin requests, like we are in the code above, can be useful in certain circumstances (like when you have a completely public API with no access control checks). But more often you&rsquo;ll probably want to restrict CORS to a much smaller set of <em>trusted origins</em>.</p>
+
+<p>To do this, you need to explicitly include the trusted origins in the <code>Access-Control-Allow-Origin</code> header instead of using a wildcard. For example, if you only want to allow CORS from the origin <code>https://www.example.com</code> you could send the following header in your responses:</p>
+
+<figure class="code plain">
+<pre>Access-Control-Allow-Origin: https://www.example.com</pre>
+</figure>
+
+<p>If you only have one, fixed, origin that you want to allow requests from, then doing this is quite simple &mdash; you can just update your <code>enableCORS()</code> middleware to hard-code the necessary origin value.</p>
+
+<p>But if you need to support multiple trusted origins, or you want the value to be configurable at runtime, then things get a bit more complex.</p>
+
+<p>One of the problems is that &mdash; in practice &mdash; you can only specify <em>exactly one origin</em> in the <code>Access-Control-Allow-Origin</code> header. You can&rsquo;t include a list of multiple origin values, separated by spaces or commas like you might expect.</p>
+
+<p>To work around this limitation, you&rsquo;ll need to update your <code>enableCORS()</code> middleware to check if the value of the <code>Origin</code> header matches one of your trusted origins. If it does, then you can reflect (or <em>echo</em>) that value back in the <code>Access-Control-Allow-Origin</code> response header.</p>
+
+<aside class="hint"><p>
+<strong>Note:</strong> The <a href="https://tools.ietf.org/html/rfc6454#section-7.1">web origin specification</a>  does permit multiple <em>space-separated</em> values in the <code>Access-Control-Allow-Origin</code> header but, unfortunately, no web browsers actually support this.
+</p></aside>
+
+<h3 id="supporting-multiple-dynamic-origins">Supporting multiple dynamic origins</h3>
+
+<p>Let&rsquo;s update our API so that cross-origin requests are restricted to a list of trusted origins, configurable at runtime.</p>
+
+<p>The first thing we&rsquo;ll do is add a new <code>-cors-trusted-origins</code> command-line flag to our API application, which we can use to specify the list of trusted origins at runtime. We&rsquo;ll set this up so that the origins must be separated by a space character &mdash; like so:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api -cors-trusted-origins=&#34;https://www.example.com https://staging.example.com&#34;</pre>
+</figure>
+
+<p>In order to process this command-line flag, we can combine the <a href="https://golang.org/pkg/flag/#Func"><code>flags.Func()</code></a> and <a href="https://golang.org/pkg/strings/#Fields"><code>strings.Fields()</code></a> functions to split the origin values into a <code>[]string</code> slice ready for use.</p>
+
+<p>If you&rsquo;re following along, open your <code>cmd/api/main.go</code> file and add the following code:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/main.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;context&#34;</span>
+    <span class="s">&#34;database/sql&#34;</span>
+    <span class="s">&#34;flag&#34;</span>
+    <span class="s">&#34;log/slog&#34;</span>
+    <span class="s">&#34;os&#34;</span>
+    <span class="s">&#34;strings&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;sync&#34;</span>
+    <span class="s">&#34;time&#34;</span>
+
+    <span class="s">&#34;greenlight.alexedwards.net/internal/data&#34;</span>
+    <span class="s">&#34;greenlight.alexedwards.net/internal/mailer&#34;</span>
+
+    <span class="nx">_</span> <span class="s">&#34;github.com/lib/pq&#34;</span>
+<span class="p">)</span>
+
+<span class="kd">const</span> <span class="nx">version</span> <span class="p">=</span> <span class="s">&#34;1.0.0&#34;</span>
+
+<span class="kd">type</span> <span class="nx">config</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">port</span> <span class="kt">int</span>
+    <span class="nx">env</span>  <span class="kt">string</span>
+    <span class="nx">db</span>   <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">dsn</span>          <span class="kt">string</span>
+        <span class="nx">maxOpenConns</span> <span class="kt">int</span>
+        <span class="nx">maxIdleConns</span> <span class="kt">int</span>
+        <span class="nx">maxIdleTime</span>  <span class="nx">time</span><span class="p">.</span><span class="nx">Duration</span>
+    <span class="p">}</span>
+    <span class="nx">limiter</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">enabled</span> <span class="kt">bool</span>
+        <span class="nx">rps</span>     <span class="kt">float64</span>
+        <span class="nx">burst</span>   <span class="kt">int</span>
+    <span class="p">}</span>
+    <span class="nx">smtp</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">host</span>     <span class="kt">string</span>
+        <span class="nx">port</span>     <span class="kt">int</span>
+        <span class="nx">username</span> <span class="kt">string</span>
+        <span class="nx">password</span> <span class="kt">string</span>
+        <span class="nx">sender</span>   <span class="kt">string</span>
+    <span class="p">}</span>
+    <span class="c1">// Add a cors struct and trustedOrigins field with the type []string.
+</span><span class="c1"></span>    <span class="nx">cors</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">trustedOrigins</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="nf">main</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">cfg</span> <span class="nx">config</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">port</span><span class="p">,</span> <span class="s">&#34;port&#34;</span><span class="p">,</span> <span class="mi">4000</span><span class="p">,</span> <span class="s">&#34;API server port&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">env</span><span class="p">,</span> <span class="s">&#34;env&#34;</span><span class="p">,</span> <span class="s">&#34;development&#34;</span><span class="p">,</span> <span class="s">&#34;Environment (development|staging|production)&#34;</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">dsn</span><span class="p">,</span> <span class="s">&#34;db-dsn&#34;</span><span class="p">,</span> <span class="nx">os</span><span class="p">.</span><span class="nf">Getenv</span><span class="p">(</span><span class="s">&#34;GREENLIGHT_DB_DSN&#34;</span><span class="p">)</span><span class="p">,</span> <span class="s">&#34;PostgreSQL DSN&#34;</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">maxOpenConns</span><span class="p">,</span> <span class="s">&#34;db-max-open-conns&#34;</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="s">&#34;PostgreSQL max open connections&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">maxIdleConns</span><span class="p">,</span> <span class="s">&#34;db-max-idle-conns&#34;</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="s">&#34;PostgreSQL max idle connections&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">DurationVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">maxIdleTime</span><span class="p">,</span> <span class="s">&#34;db-max-idle-time&#34;</span><span class="p">,</span> <span class="mi">15</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Minute</span><span class="p">,</span> <span class="s">&#34;PostgreSQL max connection idle time&#34;</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">BoolVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">limiter</span><span class="p">.</span><span class="nx">enabled</span><span class="p">,</span> <span class="s">&#34;limiter-enabled&#34;</span><span class="p">,</span> <span class="kc">true</span><span class="p">,</span> <span class="s">&#34;Enable rate limiter&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">Float64Var</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">limiter</span><span class="p">.</span><span class="nx">rps</span><span class="p">,</span> <span class="s">&#34;limiter-rps&#34;</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="s">&#34;Rate limiter maximum requests per second&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">limiter</span><span class="p">.</span><span class="nx">burst</span><span class="p">,</span> <span class="s">&#34;limiter-burst&#34;</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="s">&#34;Rate limiter maximum burst&#34;</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">smtp</span><span class="p">.</span><span class="nx">host</span><span class="p">,</span> <span class="s">&#34;smtp-host&#34;</span><span class="p">,</span> <span class="s">&#34;sandbox.smtp.mailtrap.io&#34;</span><span class="p">,</span> <span class="s">&#34;SMTP host&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">smtp</span><span class="p">.</span><span class="nx">port</span><span class="p">,</span> <span class="s">&#34;smtp-port&#34;</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="s">&#34;SMTP port&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">smtp</span><span class="p">.</span><span class="nx">username</span><span class="p">,</span> <span class="s">&#34;smtp-username&#34;</span><span class="p">,</span> <span class="s">&#34;a7420fc0883489&#34;</span><span class="p">,</span> <span class="s">&#34;SMTP username&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">smtp</span><span class="p">.</span><span class="nx">password</span><span class="p">,</span> <span class="s">&#34;smtp-password&#34;</span><span class="p">,</span> <span class="s">&#34;e75ffd0a3aa5ec&#34;</span><span class="p">,</span> <span class="s">&#34;SMTP password&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">smtp</span><span class="p">.</span><span class="nx">sender</span><span class="p">,</span> <span class="s">&#34;smtp-sender&#34;</span><span class="p">,</span> <span class="s">&#34;Greenlight &lt;no-reply@greenlight.alexedwards.net&gt;&#34;</span><span class="p">,</span> <span class="s">&#34;SMTP sender&#34;</span><span class="p">)</span>
+
+    <span class="c1">// Use the flag.Func() function to process the -cors-trusted-origins command line
+</span><span class="c1"></span>    <span class="c1">// flag. In this we use the strings.Fields() function to split the flag value into a
+</span><span class="c1"></span>    <span class="c1">// slice based on whitespace characters and assign it to our config struct.
+</span><span class="c1"></span>    <span class="c1">// Importantly, if the -cors-trusted-origins flag is not present, contains the empty
+</span><span class="c1"></span>    <span class="c1">// string, or contains only whitespace, then strings.Fields() will return an empty
+</span><span class="c1"></span>    <span class="c1">// []string slice.
+</span><span class="c1"></span>    <span class="nx">flag</span><span class="p">.</span><span class="nf">Func</span><span class="p">(</span><span class="s">&#34;cors-trusted-origins&#34;</span><span class="p">,</span> <span class="s">&#34;Trusted CORS origins (space separated)&#34;</span><span class="p">,</span> <span class="kd">func</span><span class="p">(</span><span class="nx">val</span> <span class="kt">string</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+        <span class="nx">cfg</span><span class="p">.</span><span class="nx">cors</span><span class="p">.</span><span class="nx">trustedOrigins</span> <span class="p">=</span> <span class="nx">strings</span><span class="p">.</span><span class="nf">Fields</span><span class="p">(</span><span class="nx">val</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">nil</span>
+    <span class="p">}</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">Parse</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="o">...</span>
+<span class="p">}</span>
+
+<span class="o">...</span></pre>
+</figure>
+
+<aside class="hint"><p>
+<strong>Note:</strong> If you&rsquo;d like to find out more about the <code>flag.Func()</code> functionality and some of the ways in which you can use it, I&rsquo;ve written a much more detailed blog post about it <a href="https://www.alexedwards.net/blog/custom-command-line-flags">here</a>.
+</p></aside>
+
+<p>Once that&rsquo;s done, the next step is to update our <code>enableCORS()</code> middleware. Specifically, we want the middleware to check if the value of the request <code>Origin</code> header is an exact, case-sensitive, match for one of our trusted origins. If there is a match, then we should set an <code>Access-Control-Allow-Origin</code> response header which reflects (or echoes) back the value of the request’s <code>Origin</code> header.</p>
+
+<p>Otherwise, we should allow the request to proceed as normal <em>without</em> setting an <code>Access-Control-Allow-Origin</code> response header. In turn, that means that any cross-origin responses will be blocked by a web browser, just like they were originally.</p>
+
+<p>A side effect of this is that the <em>response will be different depending on the origin that the request is coming from</em>. Specifically, the value of the <code>Access-Control-Allow-Origin</code> header may be different in the response, or it may not even be included at all.</p>
+
+<p>So because of this we should make sure to always set a <code>Vary: Origin</code> response header to inform any caches that the response may be different. This is actually really important, and it can be the cause of subtle bugs <a href="https://textslashplain.com/2018/08/02/cors-and-vary/">like this one</a> if you forget to do it. As a rule of thumb:</p>
+
+<p><em>If your code makes a decision about what to return based on the content of a request header, you should include that header name in your <code>Vary</code> response header &mdash; even if the request didn&rsquo;t include that header.</em></p>
+
+<p>OK, let&rsquo;s update our <code>enableCORS()</code> middleware in line with the logic above, like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/middleware.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">enableCORS</span><span class="p">(</span><span class="nx">next</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+        <span class="c1">// Add the &#34;Vary: Origin&#34; header.
+</span><span class="c1"></span>        <span class="nx">w</span><span class="p">.</span><span class="nf">Header</span><span class="p">(</span><span class="p">)</span><span class="p">.</span><span class="nf">Add</span><span class="p">(</span><span class="s">&#34;Vary&#34;</span><span class="p">,</span> <span class="s">&#34;Origin&#34;</span><span class="p">)</span>
+
+        <span class="c1">// Get the value of the request&#39;s Origin header.
+</span><span class="c1"></span>        <span class="nx">origin</span> <span class="o">:=</span> <span class="nx">r</span><span class="p">.</span><span class="nx">Header</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="s">&#34;Origin&#34;</span><span class="p">)</span>
+
+        <span class="c1">// Only run this if there&#39;s an Origin request header present.
+</span><span class="c1"></span>        <span class="k">if</span> <span class="nx">origin</span> <span class="o">!=</span> <span class="s">&#34;&#34;</span> <span class="p">{</span>
+            <span class="c1">// Loop through the list of trusted origins, checking to see if the request
+</span><span class="c1"></span>            <span class="c1">// origin exactly matches one of them. If there are no trusted origins, then 
+</span><span class="c1"></span>            <span class="c1">// the loop won&#39;t be iterated.
+</span><span class="c1"></span>            <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">app</span><span class="p">.</span><span class="nx">config</span><span class="p">.</span><span class="nx">cors</span><span class="p">.</span><span class="nx">trustedOrigins</span> <span class="p">{</span>
+                <span class="k">if</span> <span class="nx">origin</span> <span class="o">==</span> <span class="nx">app</span><span class="p">.</span><span class="nx">config</span><span class="p">.</span><span class="nx">cors</span><span class="p">.</span><span class="nx">trustedOrigins</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="p">{</span>
+                    <span class="c1">// If there is a match, then set a &#34;Access-Control-Allow-Origin&#34;
+</span><span class="c1"></span>                    <span class="c1">// response header with the request origin as the value and break 
+</span><span class="c1"></span>                    <span class="c1">// out of the loop.
+</span><span class="c1"></span>                    <span class="nx">w</span><span class="p">.</span><span class="nf">Header</span><span class="p">(</span><span class="p">)</span><span class="p">.</span><span class="nf">Set</span><span class="p">(</span><span class="s">&#34;Access-Control-Allow-Origin&#34;</span><span class="p">,</span> <span class="nx">origin</span><span class="p">)</span>
+                    <span class="k">break</span>
+                <span class="p">}</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+
+        <span class="c1">// Call the next handler in the chain.
+</span><span class="c1"></span>        <span class="nx">next</span><span class="p">.</span><span class="nf">ServeHTTP</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+    <span class="p">}</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>And with those changes complete, we&rsquo;re now ready to try this out again.</p>
+
+<p>Restart your API, passing in <code>http://localhost:9000</code> and <code>http://localhost:9001</code> as trusted origins like so:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api -cors-trusted-origins=&#34;http://localhost:9000 http://localhost:9001&#34;
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development</samp></pre>
+</figure>
+
+<p>And when you refresh <a href="http://localhost:9000"><code>http://localhost:9000</code></a> in your browser, you should find that the cross-origin request still works successfully.</p>
+
+<figure class="img">
+<img src="assets/img/17.03-03.png" alt="17.03-03.png" />
+</figure>
+
+<p>If you want, you can also try running the <code>cmd/examples/cors/simple</code> application with <code>:9001</code> as the server address, and you should find that the cross-origin request works from that too.</p>
+
+<p>In contrast, try running the <code>cmd/examples/cors/simple</code> application with the address <code>:9002</code>.</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/examples/cors/simple --addr=&#34;:9002&#34;
+<samp>2021/04/17 18:24:22 starting server on :9002</samp></pre>
+</figure>
+
+<p>This will give the webpage an origin of <code>http://localhost:9002</code> &mdash; which isn&rsquo;t one of our trusted origins &mdash; so when you visit <a href="http://localhost:9002"><code>http://localhost:9002</code></a> in your browser you should find that the cross-origin request is blocked. Like so:</p>
+
+<figure class="img">
+<img src="assets/img/17.03-04.png" alt="17.03-04.png" />
+</figure>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="partial-origin-matches">Partial origin matches</h4>
+
+<p>If you have a lot of trusted origins that you want to support, then you might be tempted to check for a partial match on the origin to see if it &lsquo;starts with&rsquo; or &lsquo;ends with&rsquo; a specific value, or matches a regular expression. If you do this, you must be careful to avoid any unintentional matches.</p>
+
+<p>As a simple example, if <code>http://example.com</code> and <code>http://www.example.com</code> are your trusted origins, your first thought might check that the request <code>Origin</code> header ends with <code>example.com</code>. This would be a bad idea, as an attacker could register the domain name <code>attackerexample.com</code> and any requests from that origin would pass your check.</p>
+
+<p>This is just one simple example &mdash; and the following blog posts discuss some of the other vulnerabilities that can arise when using partial match or regular expression checks:</p>
+
+<ul>
+<li><a href="https://medium.com/@ehayushpathak/security-risks-of-cors-e3f4a25c04d7">Security Risks of CORS</a></li>
+<li><a href="https://portswigger.net/research/exploiting-cors-misconfigurations-for-bitcoins-and-bounties">Exploiting CORS misconfigurations for Bitcoins and bounties</a></li>
+</ul>
+
+<p>Generally, it&rsquo;s best to check the <code>Origin</code> request header against an explicit safelist of full-length trusted origins, like we have done in this chapter.</p>
+
+<h4 id="the-null-origin">The null origin</h4>
+
+<p>It&rsquo;s important to never include the value <code>&quot;null&quot;</code> as a trusted origin in your safelist. This is because the request header <code>Origin: null</code> can be forged by an attacker by sending a request from a <a href="https://stackoverflow.com/a/44765536">sandboxed iframe</a>.</p>
+
+<h4 id="authentication-and-cors">Authentication and CORS</h4>
+
+<p>If your API endpoint requires <em>credentials</em> (cookies or HTTP basic authentication) you should also set an <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Credentials"><code>Access-Control-Allow-Credentials: true</code></a> header in your responses. If you don&rsquo;t set this header, then the web browser will prevent any cross-origin responses with credentials from being read by JavaScript.</p>
+
+<p>Importantly, you must never use the wildcard <code>Access-Control-Allow-Origin: *</code> header in conjunction with <code>Access-Control-Allow-Credentials: true</code>, as this would allow any website to make a credentialed cross-origin request to your API.</p>
+
+<p>Also, importantly, if you want credentials to be sent with a cross-origin request then you&rsquo;ll need to explicitly specify this in your JavaScript. For example, with <code>fetch()</code> you should set the <code>credentials</code> value of the request to <code>'include'</code>. Like so:</p>
+
+<figure class="code js">
+<pre><span class="nx">fetch</span><span class="p">(</span><span class="s2">&#34;https://api.example.com&#34;</span><span class="p">,</span> <span class="p">{</span><span class="nx">credentials</span><span class="o">:</span> <span class="s1">&#39;include&#39;</span><span class="p">}</span><span class="p">)</span><span class="p">.</span><span class="nx">then</span><span class="p">(</span> <span class="p">...</span> <span class="p">)</span><span class="p">;</span></pre>
+</figure>
+
+<p>Or if using <a href="https://developer.mozilla.org/en-US/docs/Web/API/XMLHttpRequest"><code>XMLHTTPRequest</code></a> you should set the <a href="https://developer.mozilla.org/en-US/docs/Web/API/XMLHttpRequest/withCredentials"><code>withCredentials</code></a> property to <code>true</code>. For example:</p>
+
+<figure class="code js">
+<pre><span class="kd">var</span> <span class="nx">xhr</span> <span class="o">=</span> <span class="k">new</span> <span class="nx">XMLHttpRequest</span><span class="p">(</span><span class="p">)</span><span class="p">;</span>
+<span class="nx">xhr</span><span class="p">.</span><span class="nx">open</span><span class="p">(</span><span class="s1">&#39;GET&#39;</span><span class="p">,</span> <span class="s1">&#39;https://api.example.com&#39;</span><span class="p">)</span><span class="p">;</span>
+<span class="nx">xhr</span><span class="p">.</span><span class="nx">withCredentials</span> <span class="o">=</span> <span class="kc">true</span><span class="p">;</span>
+<span class="nx">xhr</span><span class="p">.</span><span class="nx">send</span><span class="p">(</span><span class="kc">null</span><span class="p">)</span><span class="p">;</span></pre>
+</figure>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="17.02-demonstrating-the-same-origin-policy.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="17.04-preflight-cors-requests.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "17.02-demonstrating-the-same-origin-policy.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "17.04-preflight-cors-requests.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

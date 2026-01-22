@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Setting up the permissions database table  &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="16.00-authorization.html">Permission-based authorization</a> &rsaquo; Setting up the permissions database table </span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="16.01-requiring-user-activation.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="16.03-setting-up-the-permissions-model.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 16.2.</div>
+			<h2 id="setting-up-the-permissions-database-table">Setting up the permissions database table</h2>
+
+<p>Restricting our API so that movie data can only be accessed and edited by activated users is useful, but sometimes you might need a more granular level of control. For example, in our case we might be happy for &lsquo;regular&rsquo; users of our API to <em>read</em> the movie data (so long as they are activated), but we want to restrict <em>write</em> access to a smaller subset of trusted users.</p>
+
+<p>In this chapter we&rsquo;re going to introduce the concept of <em>permissions</em> to our application, so that only users with a specific permission can perform specific operations. In our case, we&rsquo;ll create two permissions: a <code>movies:read</code> permission which will allow a user to fetch and filter movies, and a <code>movies:write</code> permission which will allow users to create, edit and delete movies.</p>
+
+<p>The required permissions will align with our API endpoints like so:</p>
+
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>URL Pattern</th>
+<th>Required permission</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td>GET</td>
+<td>/v1/healthcheck</td>
+<td>&mdash;</td>
+</tr>
+
+<tr>
+<td>GET</td>
+<td>/v1/movies</td>
+<td><code>movies:read</code></td>
+</tr>
+
+<tr>
+<td>POST</td>
+<td>/v1/movies</td>
+<td><code>movies:write</code></td>
+</tr>
+
+<tr>
+<td>GET</td>
+<td>/v1/movies/:id</td>
+<td><code>movies:read</code></td>
+</tr>
+
+<tr>
+<td>PATCH</td>
+<td>/v1/movies/:id</td>
+<td><code>movies:write</code></td>
+</tr>
+
+<tr>
+<td>DELETE</td>
+<td>/v1/movies/:id</td>
+<td><code>movies:write</code></td>
+</tr>
+
+<tr>
+<td>POST</td>
+<td>/v1/users</td>
+<td>&mdash;</td>
+</tr>
+
+<tr>
+<td>PUT</td>
+<td>/v1/users/activated</td>
+<td>&mdash;</td>
+</tr>
+
+<tr>
+<td>POST</td>
+<td>/v1/tokens/authentication</td>
+<td>&mdash;</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="relationship-between-permissions-and-users">Relationship between permissions and users</h3>
+
+<p>The relationship between permissions and users is a great example of a <em>many-to-many</em> relationship. One user may have <em>many permissions</em>, and the same permission may belong to <em>many users</em>.</p>
+
+<p>The classic way to manage a many-to-many relationship in a relational database like PostgreSQL is to create a <em>joining table</em> between the two entities. I&rsquo;ll quickly explain how this works.</p>
+
+<p>Let&rsquo;s say that we are storing our user data in a <code>users</code> table which looks like this:</p>
+
+<table>
+<thead>
+<tr>
+<th>id</th>
+<th>email</th>
+<th>&hellip;</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td>1</td>
+<td>alice@example.com</td>
+<td>&hellip;</td>
+</tr>
+
+<tr>
+<td>2</td>
+<td>bob@example.com</td>
+<td>&hellip;</td>
+</tr>
+</tbody>
+</table>
+<p>And our permissions data is stored in a <code>permissions</code> table like this:</p>
+
+<table>
+<thead>
+<tr>
+<th>id</th>
+<th>code</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td>1</td>
+<td>movies:read</td>
+</tr>
+
+<tr>
+<td>2</td>
+<td>movies:write</td>
+</tr>
+</tbody>
+</table>
+<p>Then we can create a joining table called <code>users_permissions</code> to store the information about <em>which users have which permissions</em>, similar to this:</p>
+
+<table>
+<thead>
+<tr>
+<th>user_id</th>
+<th>permission_id</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td>1</td>
+<td>1</td>
+</tr>
+
+<tr>
+<td>2</td>
+<td>1</td>
+</tr>
+
+<tr>
+<td>2</td>
+<td>2</td>
+</tr>
+</tbody>
+</table>
+<p>In the example above, the user <code>alice@example.com</code> (user ID <code>1</code>) has the <code>movies:read</code> (permission ID <code>1</code>) permission only, whereas <code>bob@example.com</code> (user ID <code>2</code>) has both the <code>movies:read</code> and <code>movies:write</code> permissions.</p>
+
+<p>Just like the one-to-many relationship that we looked at earlier in the book, you may want to query this relationship from both sides in your database models. For example, in your database models you might want to create the following methods:</p>
+
+<figure class="code plain">
+<pre>PermissionModel.GetAllForUser(user)       → Retrieve all permissions for a user
+UserModel.GetAllForPermission(permission) → Retrieve all users with a specific permission</pre>
+</figure>
+
+<h3 id="creating-the-sql-migrations">Creating the SQL migrations</h3>
+
+<p>Let&rsquo;s put this into practice and make a SQL migration which creates new <code>permissions</code> and <code>users_permissions</code> tables in our database, following the pattern that we&rsquo;ve just described above.</p>
+
+<p>Go ahead and run the following command to create the migration files:</p>
+
+<figure class="code bash">
+<pre>$ migrate create -seq -ext .sql -dir ./migrations add_permissions
+<samp>/home/alex/Projects/greenlight/migrations/000006_add_permissions.up.sql
+/home/alex/Projects/greenlight/migrations/000006_add_permissions.down.sql</samp></pre>
+</figure>
+
+<p>And then add the following SQL statements to the &lsquo;up&rsquo; migration file:</p>
+
+<figure class="code sql">
+<figcaption>File: migrations/000006_add_permissions.up.sql</figcaption>
+<pre><span class="k">CREATE</span> <span class="k">TABLE</span> <span class="k">IF</span> <span class="k">NOT</span> <span class="k">EXISTS</span> <span class="n">permissions</span> <span class="p">(</span>
+    <span class="n">id</span> <span class="n">bigserial</span> <span class="k">PRIMARY</span> <span class="k">KEY</span><span class="p">,</span>
+    <span class="n">code</span> <span class="nb">text</span> <span class="k">NOT</span> <span class="k">NULL</span>
+<span class="p">)</span><span class="p">;</span>
+
+<span class="k">CREATE</span> <span class="k">TABLE</span> <span class="k">IF</span> <span class="k">NOT</span> <span class="k">EXISTS</span> <span class="n">users_permissions</span> <span class="p">(</span>
+    <span class="n">user_id</span> <span class="nb">bigint</span> <span class="k">NOT</span> <span class="k">NULL</span> <span class="k">REFERENCES</span> <span class="n">users</span> <span class="k">ON</span> <span class="k">DELETE</span> <span class="k">CASCADE</span><span class="p">,</span>
+    <span class="n">permission_id</span> <span class="nb">bigint</span> <span class="k">NOT</span> <span class="k">NULL</span> <span class="k">REFERENCES</span> <span class="n">permissions</span> <span class="k">ON</span> <span class="k">DELETE</span> <span class="k">CASCADE</span><span class="p">,</span>
+    <span class="k">PRIMARY</span> <span class="k">KEY</span> <span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">permission_id</span><span class="p">)</span>
+<span class="p">)</span><span class="p">;</span>
+
+<span class="c1">-- Add the two permissions to the table.
+</span><span class="c1"></span><span class="k">INSERT</span> <span class="k">INTO</span> <span class="n">permissions</span> <span class="p">(</span><span class="n">code</span><span class="p">)</span>
+<span class="k">VALUES</span> 
+    <span class="p">(</span><span class="s1">&#39;</span><span class="s1">movies:read</span><span class="s1">&#39;</span><span class="p">)</span><span class="p">,</span>
+    <span class="p">(</span><span class="s1">&#39;</span><span class="s1">movies:write</span><span class="s1">&#39;</span><span class="p">)</span><span class="p">;</span></pre>
+</figure>
+
+<p>There are a couple of important things to point out here:</p>
+
+<ul>
+<li><p>The <code>PRIMARY KEY (user_id, permission_id)</code> line sets a <em>composite primary key</em> on our <code>users_permissions</code> table, where the primary key is made up of both the <code>user_id</code> and <code>permission_id</code> columns. Setting this as the primary key essentially means that the same user/permission combination can only appear once in the table and cannot be duplicated.</p></li>
+
+<li><p>When creating the <code>users_permissions</code> table we use the <code>REFERENCES users</code> syntax to create a foreign key constraint against the primary key of our <code>users</code> table, which ensures that any value in the <code>user_id</code> column has a corresponding entry in our <code>users</code> table. And likewise, we use the <code>REFERENCES permissions</code> syntax to ensure that the <code>permission_id</code> column has a corresponding entry in the <code>permissions</code> table.</p></li>
+</ul>
+
+<p>Let&rsquo;s also add the necessary <code>DROP TABLE</code> statements to the &lsquo;down&rsquo; migration file, like so:</p>
+
+<figure class="code sql">
+<figcaption>File: migrations/000006_add_permissions.down.sql</figcaption>
+<pre><span class="k">DROP</span> <span class="k">TABLE</span> <span class="k">IF</span> <span class="k">EXISTS</span> <span class="n">users_permissions</span><span class="p">;</span>
+<span class="k">DROP</span> <span class="k">TABLE</span> <span class="k">IF</span> <span class="k">EXISTS</span> <span class="n">permissions</span><span class="p">;</span></pre>
+</figure>
+
+<p>Now that&rsquo;s done, please go ahead and run the migration:</p>
+
+<figure class="code bash">
+<pre>$ migrate -path ./migrations -database $GREENLIGHT_DB_DSN up
+<samp>6/u add_permissions (22.74009ms)</samp></pre>
+</figure>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="16.01-requiring-user-activation.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="16.03-setting-up-the-permissions-model.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "16.01-requiring-user-activation.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "16.03-setting-up-the-permissions-model.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

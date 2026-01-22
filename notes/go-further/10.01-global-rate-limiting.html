@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Global rate limiting &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="10.00-rate-limiting.html">Rate limiting</a> &rsaquo; Global rate limiting</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="10.00-rate-limiting.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="10.02-ip-based-rate-limiting.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 10.1.</div>
+			<h2 id="global-rate-limiting">Global rate limiting</h2>
+
+<p>Let&rsquo;s build things up slowly and start by creating a single <em>global rate limiter</em> for our application. This will consider <em>all the requests</em> that our API receives (rather than having separate rate limiters for every individual client).</p>
+
+<p>Instead of writing our own rate-limiting logic from scratch, which would be quite complex and time-consuming, we can leverage the <a href="https://pkg.go.dev/golang.org/x/time/rate"><code>x/time/rate</code></a> package to help us here. This provides a tried-and-tested implementation of a <a href="https://en.wikipedia.org/wiki/Token_bucket#Algorithm"><em>token bucket</em></a> rate limiter.</p>
+
+<p>If you&rsquo;re following along, please go ahead and download the latest version of this package like so:</p>
+
+<figure class="code bash">
+<pre>$ go get golang.org/x/time/rate@latest
+<samp>go: downloading golang.org/x/time v0.12.0
+go: added golang.org/x/time v0.12.0</samp></pre>
+</figure>
+
+<p>Before we start writing any code, let&rsquo;s take a moment to explain how token-bucket rate limiters work. The official <code>x/time/rate</code> documentation says:</p>
+
+<blockquote>
+<p>A Limiter controls how frequently events are allowed to happen. It implements a &ldquo;token bucket&rdquo; of size <code>b</code>, initially full and refilled at rate <code>r</code> tokens per second.</p>
+</blockquote>
+
+<p>Putting that into the context of our API application&hellip;</p>
+
+<ul>
+<li>We will have a bucket that starts with <code>b</code> tokens in it.</li>
+<li>Each time we receive an HTTP request, we will remove one token from the bucket.</li>
+<li>Every <code>1/r</code> seconds, a token is added back to the bucket &mdash; up to a maximum of <code>b</code> total tokens.</li>
+<li>If we receive an HTTP request and the bucket is empty, then we should return a <code>429 Too Many Requests</code> response.</li>
+</ul>
+
+<p>In practice this means that our application would allow a maximum &lsquo;burst&rsquo; of <code>b</code> HTTP requests in quick succession, but over time it would allow an average of <code>r</code> requests per second.</p>
+
+<p>In order to create a token bucket rate limiter from <code>x/time/rate</code>, we will need to use the <a href="https://pkg.go.dev/golang.org/x/time/rate#NewLimiter"><code>NewLimiter()</code></a> function. This has a signature which looks like this:</p>
+
+<figure class="code go">
+<pre><span class="c1">// Note that the Limit type is an &#39;alias&#39; for float64.
+</span><span class="c1"></span><span class="kd">func</span> <span class="nf">NewLimiter</span><span class="p">(</span><span class="nx">r</span> <span class="nx">Limit</span><span class="p">,</span> <span class="nx">b</span> <span class="kt">int</span><span class="p">)</span> <span class="o">*</span><span class="nx">Limiter</span></pre>
+</figure>
+
+<p>So if we want to create a rate limiter which allows an average of 2 requests per second, with a maximum of 4 requests in a single &lsquo;burst&rsquo;, we could do so with the following code:</p>
+
+<figure class="code go">
+<pre><span class="c1">// Allow 2 requests per second, with a maximum of 4 requests in a burst. 
+</span><span class="c1"></span><span class="nx">limiter</span> <span class="o">:=</span> <span class="nx">rate</span><span class="p">.</span><span class="nf">NewLimiter</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span></pre>
+</figure>
+
+<h3 id="enforcing-a-global-rate-limit">Enforcing a global rate limit</h3>
+
+<p>OK, with that high-level explanation out of the way, let&rsquo;s jump into some code and see how this works in practice.</p>
+
+<p>One of the nice things about the middleware pattern that we are using is that it is straightforward to include &lsquo;initialization&rsquo; code which only runs once when we <em>wrap</em> something with the middleware, rather than running on every request that the middleware handles.</p>
+
+<figure class="code go">
+<pre><span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">exampleMiddleware</span><span class="p">(</span><span class="nx">next</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span> <span class="p">{</span>
+    
+    <span class="c1">// Any code here will run only once, when we wrap something with the middleware. 
+</span><span class="c1"></span>
+    <span class="k">return</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+        
+        <span class="c1">// Any code here will run for every request that the middleware handles.
+</span><span class="c1"></span>
+        <span class="nx">next</span><span class="p">.</span><span class="nf">ServeHTTP</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+    <span class="p">}</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>In our case, we&rsquo;ll make a new <code>rateLimit()</code> middleware method which creates a new rate limiter as part of the &lsquo;initialization&rsquo; code, and then uses this rate limiter for every request that it subsequently handles.</p>
+
+<p>If you&rsquo;re following along, open up the <code>cmd/api/middleware.go</code> file and create the middleware like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/middleware.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;fmt&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+
+    <span class="s">&#34;golang.org/x/time/rate&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span><span class="p">)</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">rateLimit</span><span class="p">(</span><span class="nx">next</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span> <span class="p">{</span>
+    <span class="c1">// Initialize a new rate limiter which allows an average of 2 requests per second, 
+</span><span class="c1"></span>    <span class="c1">// with a maximum of 4 requests in a single &#39;burst&#39;.
+</span><span class="c1"></span>    <span class="nx">limiter</span> <span class="o">:=</span> <span class="nx">rate</span><span class="p">.</span><span class="nf">NewLimiter</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+
+    <span class="c1">// The function we are returning is a closure, which &#39;closes over&#39; the limiter 
+</span><span class="c1"></span>    <span class="c1">// variable.
+</span><span class="c1"></span>    <span class="k">return</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+        <span class="c1">// Call limiter.Allow() to see if the request is permitted, and if it&#39;s not, 
+</span><span class="c1"></span>        <span class="c1">// then we call the rateLimitExceededResponse() helper to return a 429 Too Many
+</span><span class="c1"></span>        <span class="c1">// Requests response (we will create this helper in a minute).
+</span><span class="c1"></span>        <span class="k">if</span> <span class="p">!</span><span class="nx">limiter</span><span class="p">.</span><span class="nf">Allow</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">rateLimitExceededResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+            <span class="k">return</span>
+        <span class="p">}</span>
+
+        <span class="nx">next</span><span class="p">.</span><span class="nf">ServeHTTP</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+    <span class="p">}</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>In this code, whenever we call the <code>Allow()</code> method on the rate limiter exactly one token will be consumed from the bucket. If there are no tokens left in the bucket, then <code>Allow()</code> will return <code>false</code> and that acts as the trigger for us to send the client a <code>429 Too Many Requests</code> response.</p>
+
+<p>It&rsquo;s also important to note that the code behind the <code>Allow()</code> method is protected by a mutex and is safe for concurrent use.</p>
+
+<p>Let&rsquo;s now go to our <code>cmd/api/errors.go</code> file and create the <code>rateLimitExceededResponse()</code> helper. Like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/errors.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">rateLimitExceededResponse</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">message</span> <span class="o">:=</span> <span class="s">&#34;rate limit exceeded&#34;</span>
+    <span class="nx">app</span><span class="p">.</span><span class="nf">errorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusTooManyRequests</span><span class="p">,</span> <span class="nx">message</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Then, lastly, in the <code>cmd/api/routes.go</code> file we want to add the <code>rateLimit()</code> middleware to our middleware chain. This should come after our panic recovery middleware (so that any panics in <code>rateLimit()</code> are recovered), but otherwise we want it to be used as early as possible to prevent unnecessary work for our server.</p>
+
+<p>Go ahead and update the file accordingly:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/routes.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">routes</span><span class="p">(</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span> <span class="p">{</span>
+    <span class="nx">router</span> <span class="o">:=</span> <span class="nx">httprouter</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nx">NotFound</span> <span class="p">=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">notFoundResponse</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nx">MethodNotAllowed</span> <span class="p">=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">methodNotAllowedResponse</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/healthcheck&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">healthcheckHandler</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/movies&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">listMoviesHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span> <span class="s">&#34;/v1/movies&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">createMovieHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">showMovieHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPatch</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">updateMovieHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodDelete</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">deleteMovieHandler</span><span class="p">)</span>
+
+    <span class="c1">// Wrap the router with the rateLimit() middleware.
+</span><span class="c1"></span>    <span class="k">return</span> <span class="nx">app</span><span class="p">.</span><span class="nf">recoverPanic</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nf">rateLimit</span><span class="p">(</span><span class="nx">router</span><span class="p">)</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Now we should be ready to try this out!</p>
+
+<p>Restart the API, then in another terminal window execute the following command to issue a batch of 6 requests to our <code>GET /v1/healthcheck</code> endpoint in quick succession. You should get responses which look like this:</p>
+
+<figure class="code bash">
+<pre>$ for i in {1..6}; do curl http://localhost:4000/v1/healthcheck; done
+<samp>{
+    &#34;status&#34;: &#34;available&#34;,
+    &#34;system_info&#34;: {
+        &#34;environment&#34;: &#34;development&#34;,
+        &#34;version&#34;: &#34;1.0.0&#34;
+    }
+}
+{
+    &#34;status&#34;: &#34;available&#34;,
+    &#34;system_info&#34;: {
+        &#34;environment&#34;: &#34;development&#34;,
+        &#34;version&#34;: &#34;1.0.0&#34;
+    }
+}
+{
+    &#34;status&#34;: &#34;available&#34;,
+    &#34;system_info&#34;: {
+        &#34;environment&#34;: &#34;development&#34;,
+        &#34;version&#34;: &#34;1.0.0&#34;
+    }
+}
+{
+    &#34;status&#34;: &#34;available&#34;,
+    &#34;system_info&#34;: {
+        &#34;environment&#34;: &#34;development&#34;,
+        &#34;version&#34;: &#34;1.0.0&#34;
+    }
+}
+{
+    &#34;error&#34;: &#34;rate limit exceeded&#34;
+}
+{
+    &#34;error&#34;: &#34;rate limit exceeded&#34;
+}</samp></pre>
+</figure>
+
+<p>We can see from this that the first 4 requests succeed, due to our limiter being set up to permit a &lsquo;burst&rsquo; of 4 requests in quick succession. But once those 4 requests were used up, the tokens in the bucket ran out and our API began to return the <code>&quot;rate limit exceeded&quot;</code> error response instead.</p>
+
+<p>If you wait a second and rerun this command, you should find that some requests in the second batch succeed again, due to the token bucket being refilled at the rate of two tokens every second.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="10.00-rate-limiting.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="10.02-ip-based-rate-limiting.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "10.00-rate-limiting.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "10.02-ip-based-rate-limiting.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

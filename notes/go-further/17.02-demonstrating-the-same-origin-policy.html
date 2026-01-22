@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Demonstrating the same-origin policy &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="17.00-cross-origin-requests.html">Cross-origin requests</a> &rsaquo; Demonstrating the same-origin policy</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="17.01-an-overview-of-cors.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="17.03-simple-cors-requests.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 17.2.</div>
+			<h2 id="demonstrating-the-same-origin-policy">Demonstrating the same-origin policy</h2>
+
+<p>To demonstrate how the same-origin policy works and how to relax it for requests to our API, we need to simulate <em>a request to our API from a different origin</em>.</p>
+
+<p>As we&rsquo;re already using Go in this book, let&rsquo;s quickly make a second, very simple, Go application to make this cross-origin request. Essentially, we want this second application to serve a webpage containing some JavaScript, which in turn makes a request to our <code>GET /v1/healthcheck</code> endpoint.</p>
+
+<p>If you&rsquo;re following along, create a new <code>cmd/examples/cors/simple/main.go</code> file to hold the code for this second application:</p>
+
+<figure class="code bash">
+<pre>$ mkdir -p cmd/examples/cors/simple
+$ touch cmd/examples/cors/simple/main.go</pre>
+</figure>
+
+<p>And add the following content:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/examples/cors/simple/main.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;flag&#34;</span>
+    <span class="s">&#34;log&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+<span class="p">)</span>
+
+<span class="c1">// Define a string constant containing the HTML for the webpage. This consists of a &lt;h1&gt;
+</span><span class="c1"></span><span class="c1">// header tag, and some JavaScript which fetches the JSON from our GET /v1/healthcheck
+</span><span class="c1"></span><span class="c1">// endpoint and writes it inside the &lt;div id=&#34;output&#34;&gt;&lt;/div&gt; element.
+</span><span class="c1"></span><span class="kd">const</span> <span class="nx">html</span> <span class="p">=</span> <span class="s">`</span><span class="s">
+</span><span class="s">&lt;!DOCTYPE html&gt;
+</span><span class="s">&lt;html lang=&#34;en&#34;&gt;
+</span><span class="s">&lt;head&gt;
+</span><span class="s">    &lt;meta charset=&#34;UTF-8&#34;&gt;
+</span><span class="s">&lt;/head&gt;
+</span><span class="s">&lt;body&gt;
+</span><span class="s">    &lt;h1&gt;Simple CORS&lt;/h1&gt;
+</span><span class="s">    &lt;div id=&#34;output&#34;&gt;&lt;/div&gt;
+</span><span class="s">    &lt;script&gt;
+</span><span class="s">        document.addEventListener(&#39;DOMContentLoaded&#39;, function() </span><span class="s">{</span><span class="s">
+</span><span class="s">            fetch(&#34;http://localhost:4000/v1/healthcheck&#34;).then(
+</span><span class="s">                function (response) </span><span class="s">{</span><span class="s">
+</span><span class="s">                    response.text().then(function (text) </span><span class="s">{</span><span class="s">
+</span><span class="s">                        document.getElementById(&#34;output&#34;).innerHTML = text;
+</span><span class="s">                    });
+</span><span class="s">                }, 
+</span><span class="s">                function(err) </span><span class="s">{</span><span class="s">
+</span><span class="s">                    document.getElementById(&#34;output&#34;).innerHTML = err;
+</span><span class="s">                }
+</span><span class="s">            );
+</span><span class="s">        });
+</span><span class="s">    &lt;/script&gt;
+</span><span class="s">&lt;/body&gt;
+</span><span class="s">&lt;/html&gt;</span><span class="s">`</span>
+
+<span class="kd">func</span> <span class="nf">main</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Make the server address configurable at runtime via a command-line flag.
+</span><span class="c1"></span>    <span class="nx">addr</span> <span class="o">:=</span> <span class="nx">flag</span><span class="p">.</span><span class="nf">String</span><span class="p">(</span><span class="s">&#34;addr&#34;</span><span class="p">,</span> <span class="s">&#34;:9000&#34;</span><span class="p">,</span> <span class="s">&#34;Server address&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">Parse</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;starting server on %s&#34;</span><span class="p">,</span> <span class="o">*</span><span class="nx">addr</span><span class="p">)</span>
+
+    <span class="c1">// Start an HTTP server listening on the given address, which responds to all
+</span><span class="c1"></span>    <span class="c1">// requests with the webpage HTML above.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">ListenAndServe</span><span class="p">(</span><span class="o">*</span><span class="nx">addr</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">w</span><span class="p">.</span><span class="nf">Write</span><span class="p">(</span><span class="p">[</span><span class="p">]</span><span class="nb">byte</span><span class="p">(</span><span class="nx">html</span><span class="p">)</span><span class="p">)</span>
+    <span class="p">}</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">log</span><span class="p">.</span><span class="nf">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>The Go code here should be nice and familiar to you already, but let&rsquo;s take a closer look at the JavaScript code in the <code>&lt;script&gt;</code> tag and explain what it does.</p>
+
+<figure class="code html">
+<pre><span class="p">&lt;</span><span class="nt">script</span><span class="p"></span><span class="p">&gt;</span>
+    <span class="nb">document</span><span class="p">.</span><span class="nx">addEventListener</span><span class="p">(</span><span class="s1">&#39;DOMContentLoaded&#39;</span><span class="p">,</span> <span class="kd">function</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">fetch</span><span class="p">(</span><span class="s2">&#34;http://localhost:4000/v1/healthcheck&#34;</span><span class="p">)</span><span class="p">.</span><span class="nx">then</span><span class="p">(</span>
+            <span class="kd">function</span> <span class="p">(</span><span class="nx">response</span><span class="p">)</span> <span class="p">{</span>
+                <span class="nx">response</span><span class="p">.</span><span class="nx">text</span><span class="p">(</span><span class="p">)</span><span class="p">.</span><span class="nx">then</span><span class="p">(</span><span class="kd">function</span> <span class="p">(</span><span class="nx">text</span><span class="p">)</span> <span class="p">{</span>
+                    <span class="nb">document</span><span class="p">.</span><span class="nx">getElementById</span><span class="p">(</span><span class="s2">&#34;output&#34;</span><span class="p">)</span><span class="p">.</span><span class="nx">innerHTML</span> <span class="o">=</span> <span class="nx">text</span><span class="p">;</span>
+                <span class="p">}</span><span class="p">)</span><span class="p">;</span>
+            <span class="p">}</span><span class="p">,</span> 
+            <span class="kd">function</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span> <span class="p">{</span>
+                <span class="nb">document</span><span class="p">.</span><span class="nx">getElementById</span><span class="p">(</span><span class="s2">&#34;output&#34;</span><span class="p">)</span><span class="p">.</span><span class="nx">innerHTML</span> <span class="o">=</span> <span class="nx">err</span><span class="p">;</span>
+            <span class="p">}</span>
+        <span class="p">)</span><span class="p">;</span>
+    <span class="p">}</span><span class="p">)</span><span class="p">;</span>
+<span class="p">&lt;</span><span class="p">/</span><span class="nt">script</span><span class="p">&gt;</span></pre>
+</figure>
+
+<p>In this code:</p>
+
+<ul>
+<li>We use the <a href="https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API"><code>fetch()</code></a> function to make a request to our API healthcheck endpoint. By default this sends a <code>GET</code> request, but it&rsquo;s also possible to configure this to use different HTTP methods and add custom headers. We&rsquo;ll explain how to do that later.</li>
+<li>The <code>fetch()</code> method works <em>asynchronously</em> and returns a <a href="https://www.javascripttutorial.net/es6/javascript-promises/">promise</a>. We use the <code>then()</code> method on the promise to set up two callback functions: the first callback is executed if <code>fetch()</code> is successful, and the second is executed if there is a failure.</li>
+<li>In our &lsquo;successful&rsquo; callback we read the response body with <code>response.text()</code>, and use <code>document.getElementById(&quot;output&quot;).innerHTML</code> to replace the contents of the <code>&lt;div id=&quot;output&quot;&gt;&lt;/div&gt;</code> element with this response body.</li>
+<li>In the &lsquo;failure&rsquo; callback we replace the contents of the <code>&lt;div id=&quot;output&quot;&gt;&lt;/div&gt;</code> element with the error message.</li>
+<li>This logic is all wrapped up in <code style="white-space: normal;">document.addEventListener(&lsquo;DOMContentLoaded&rsquo;, function(){&hellip;})</code>, which essentially means that <code>fetch()</code> won&rsquo;t be called until the user&rsquo;s web browser has completely loaded the HTML document.</li>
+</ul>
+
+<aside class="hint"><p>
+<strong>Note:</strong> I&rsquo;ve explained the above because it&rsquo;s interesting, but this book isn&rsquo;t about JavaScript and you don&rsquo;t need to worry about the details here. All you really need to know is that <em>the JavaScript makes an HTTP request to our API&rsquo;s healthcheck endpoint, and then dumps the response into the <code>&lt;div id=&quot;output&quot;&gt;&lt;/div&gt;</code> element</em>.
+</p></aside>
+
+<h3 id="demonstration">Demonstration</h3>
+
+<p>OK, let&rsquo;s try this out. Go ahead and start up the new application:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/examples/cors/simple
+<samp>2021/04/17 17:23:14 starting server on :9000</samp></pre>
+</figure>
+
+<p>And then open a second terminal window and start our regular API application at the same time:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development</samp></pre>
+</figure>
+
+<p>At this point, you should now have the API running on the origin <code>http://localhost:4000</code> and the webpage with the JavaScript running on the origin <code>http://localhost:9000</code>. Because the ports are different, these are two different origins.</p>
+
+<p>So, when you visit <code>http://localhost:9000</code> in your web browser, the <code>fetch()</code> action to <code>http://localhost:4000/v1/healthcheck</code> should be forbidden by the same-origin policy. Specifically, our API should receive and process the request, but your web browser should block the response from being read by the JavaScript code.</p>
+
+<p>Let&rsquo;s take a look. If you open your web browser and visit <a href="http://localhost:9000"><code>http://localhost:9000</code></a>, you should see the <em>Simple CORS</em> header followed by an error message similar to this:</p>
+
+<figure class="img">
+<img src="assets/img/17.02-01.png" alt="17.02-01.png" />
+</figure>
+
+<aside class="hint"><p>
+<strong>Note:</strong> The error message you see here is defined by your web browser, so yours might be slightly different if you&rsquo;re not using Firefox.
+</p></aside>
+
+<p>It&rsquo;s also helpful here to open your browser&rsquo;s developer tools, refresh the page, and look at your console log. You should see a message stating that the response from our <code>GET /v1/healthcheck</code> endpoint was blocked from being read due to the same-origin policy, similar to this:</p>
+
+<blockquote>
+<p>Cross-Origin Request Blocked: The Same Origin Policy disallows reading the remote resource at http://localhost:4000/v1/healthcheck.</p>
+</blockquote>
+
+<figure class="img">
+<img src="assets/img/17.02-02.png" alt="17.02-02.png" />
+</figure>
+
+<p>You may also want to open the network activity tab in your developer tools and examine the HTTP headers associated with the blocked request.</p>
+
+<figure class="img">
+<img src="assets/img/17.02-03.png" alt="17.02-03.png" />
+</figure>
+
+<p>There are a couple of important things to point out here.</p>
+
+<p>The first thing is that the headers demonstrate that the request was sent to our API, which processed the request and returned a successful <code>200 OK</code> response to the web browser containing all our standard response headers. To reiterate: <em>the request itself was not prevented by the same-origin policy &mdash; it&rsquo;s just that the browser won&rsquo;t let JavaScript see the response</em>.</p>
+
+<p>The second thing is that the web browser automatically set an <code>Origin</code> header on the request to show where the request originates from (highlighted by the red arrow above). You&rsquo;ll see that the header looks like this:</p>
+
+<figure class="code plain">
+<pre>Origin: http://localhost:9000</pre>
+</figure>
+
+<p>We&rsquo;ll use this header in the next chapter to help us selectively relax the same-origin policy, depending on whether we trust the origin that a request is coming from.</p>
+
+<p>Finally, it&rsquo;s important to emphasize that the same-origin policy is <em>a web browser thing only</em>.</p>
+
+<p>Outside of a web browser, anyone can make a request to our API from anywhere, using <code>curl</code>, <code>wget</code> or any other means and read the response. That&rsquo;s completely unaffected and unchanged by the same-origin policy.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="17.01-an-overview-of-cors.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="17.03-simple-cors-requests.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "17.01-an-overview-of-cors.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "17.03-simple-cors-requests.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

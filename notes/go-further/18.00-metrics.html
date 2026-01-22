@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Metrics &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; Metrics</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="17.04-preflight-cors-requests.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="18.01-exposing-metrics-with-expvar.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 18.</div>
+			<h1 id="metrics">Metrics</h1>
+
+<p>When your application is running in production with real-world traffic &mdash; or if you&rsquo;re carrying out targeted load testing &mdash; you might want some up-close insight into how it&rsquo;s performing and what resources it&rsquo;s using.</p>
+
+<p>For example, you might want to answer questions like:</p>
+
+<ul>
+<li>How much memory is my application using? How is this changing over time?</li>
+<li>How many goroutines are currently in use? How is this changing over time?</li>
+<li>How many database connections are in use and how many are idle? Do I need to change the connection pool settings?</li>
+<li>What is the ratio of successful HTTP responses to both client and server errors? Are error rates elevated above normal?</li>
+</ul>
+
+<p>Having insight into these things can help inform your hardware and configuration choices, and act as an early warning sign of potential problems (such as memory leaks).</p>
+
+<p>To assist with this, Go&rsquo;s standard library includes the <a href="https://golang.org/pkg/expvar/"><code>expvar</code></a> package which makes it easy to collate and view different application metrics at runtime.</p>
+
+<p>In this section you&rsquo;ll learn:</p>
+
+<ul>
+<li><p>How to use the <code>expvar</code> package to view application metrics in JSON format via an HTTP handler.</p></li>
+
+<li><p>What default application metrics are available, and how to create your own custom application metrics for monitoring the number of active goroutines and the database connection pool.</p></li>
+
+<li><p>How to use middleware to monitor request-level application metrics, including the counts of different HTTP response status codes.</p></li>
+</ul>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="17.04-preflight-cors-requests.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="18.01-exposing-metrics-with-expvar.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "17.04-preflight-cors-requests.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "18.01-exposing-metrics-with-expvar.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

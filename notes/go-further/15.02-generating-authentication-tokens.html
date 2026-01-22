@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Generating authentication tokens &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="15.00-authentication.html">Authentication</a> &rsaquo; Generating authentication tokens</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="15.01-authentication-options.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="15.03-authenticating-requests.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 15.2.</div>
+			<h2 id="generating-authentication-tokens">Generating authentication tokens</h2>
+
+<p>In this chapter we&rsquo;re going to focus on building up the code for a new <code>POST/v1/tokens/authentication</code> endpoint, which will allow a client to exchange their credentials (email address and password) for a stateful authentication token.</p>
+
+<aside class="hint"><p>
+<strong>Note:</strong> For conciseness, rather than repeating the words &lsquo;stateful authentication token&rsquo; throughout the rest of this book, from now on we&rsquo;ll simply refer to this as the user&rsquo;s <em>authentication token</em>.
+</p></aside>
+
+<p>At a high level, the process for exchanging a user&rsquo;s credentials for an authentication token will work like this:</p>
+
+<ol>
+<li>The client sends a JSON request to a new <code>POST/v1/tokens/authentication</code> endpoint containing their credentials (email and password).</li>
+<li>We will look up the user record based on the email, and check if the password provided is the correct one for the user. If it&rsquo;s not, then we send an error response.</li>
+<li>If the password is correct, we&rsquo;ll use our <code>app.models.Tokens.New()</code> method to generate a token with an expiry time of 24 hours and the scope <code>&quot;authentication&quot;</code>.</li>
+<li>We send this authentication token back to the client in a JSON response body.</li>
+</ol>
+
+<p>Let&rsquo;s begin in our <code>internal/data/tokens.go</code> file.</p>
+
+<p>We need to update this file to define a new <code>&quot;authentication&quot;</code> scope, and add some struct tags to customize how the <code>Token</code> struct appears when it is encoded to JSON. Like so:</p>
+
+<figure class="code go">
+<figcaption>File: internal/data/tokens.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">data</span>
+
+<span class="o">...</span>
+
+<span class="kd">const</span> <span class="p">(</span>
+    <span class="nx">ScopeActivation</span>     <span class="p">=</span> <span class="s">&#34;activation&#34;</span>
+    <span class="nx">ScopeAuthentication</span> <span class="p">=</span> <span class="s">&#34;authentication&#34;</span> <span class="c1">// Include a new authentication scope.
+</span><span class="c1"></span><span class="p">)</span>
+
+<span class="c1">// Add struct tags to control how the struct appears when encoded to JSON.
+</span><span class="c1"></span><span class="kd">type</span> <span class="nx">Token</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">Plaintext</span> <span class="kt">string</span>    <span class="s">`</span><span class="s">json:&#34;token&#34;</span><span class="s">`</span>
+    <span class="nx">Hash</span>      <span class="p">[</span><span class="p">]</span><span class="kt">byte</span>    <span class="s">`</span><span class="s">json:&#34;-&#34;</span><span class="s">`</span>
+    <span class="nx">UserID</span>    <span class="kt">int64</span>     <span class="s">`</span><span class="s">json:&#34;-&#34;</span><span class="s">`</span>
+    <span class="nx">Expiry</span>    <span class="nx">time</span><span class="p">.</span><span class="nx">Time</span> <span class="s">`</span><span class="s">json:&#34;expiry&#34;</span><span class="s">`</span>
+    <span class="nx">Scope</span>     <span class="kt">string</span>    <span class="s">`</span><span class="s">json:&#34;-&#34;</span><span class="s">`</span>
+<span class="p">}</span>
+
+<span class="o">...</span></pre>
+</figure>
+
+<p>These new struct tags mean that only the <code>Plaintext</code> and <code>Expiry</code> fields will be included when encoding a <code>Token</code> struct &mdash; all the other fields will be omitted. We also rename the <code>Plaintext</code> field to <code>&quot;token&quot;</code>, just because it&rsquo;s a more meaningful name for clients than &lsquo;plaintext&rsquo; is.</p>
+
+<p>Altogether, this means that when we encode a <code>Token</code> struct to JSON the result will look similar to this:</p>
+
+<figure class="code plain">
+<pre>{
+    &#34;token&#34;: &#34;X3ASTT2CDAN66BACKSCI4SU7SI&#34;,
+    &#34;expiry&#34;: &#34;2021-01-18T13:00:25.648511827+01:00&#34;
+}</pre>
+</figure>
+
+<h3 id="building-the-endpoint">Building the endpoint</h3>
+
+<p>Now let&rsquo;s get into the meat of this chapter and set up all the code for the new <code>POST/v1/tokens/authentication</code> endpoint. By the time we&rsquo;re finished, our API routes will look like this:</p>
+
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>URL Pattern</th>
+<th>Handler</th>
+<th>Action</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td>GET</td>
+<td>/v1/healthcheck</td>
+<td>healthcheckHandler</td>
+<td>Show application information</td>
+</tr>
+
+<tr>
+<td>GET</td>
+<td>/v1/movies</td>
+<td>listMoviesHandler</td>
+<td>Show the details of all movies</td>
+</tr>
+
+<tr>
+<td>POST</td>
+<td>/v1/movies</td>
+<td>createMovieHandler</td>
+<td>Create a new movie</td>
+</tr>
+
+<tr>
+<td>GET</td>
+<td>/v1/movies/:id</td>
+<td>showMovieHandler</td>
+<td>Show the details of a specific movie</td>
+</tr>
+
+<tr>
+<td>PATCH</td>
+<td>/v1/movies/:id</td>
+<td>updateMovieHandler</td>
+<td>Update the details of a specific movie</td>
+</tr>
+
+<tr>
+<td>DELETE</td>
+<td>/v1/movies/:id</td>
+<td>deleteMovieHandler</td>
+<td>Delete a specific movie</td>
+</tr>
+
+<tr>
+<td>POST</td>
+<td>/v1/users</td>
+<td>registerUserHandler</td>
+<td>Register a new user</td>
+</tr>
+
+<tr>
+<td>PUT</td>
+<td>/v1/users/activated</td>
+<td>activateUserHandler</td>
+<td>Activate a specific user</td>
+</tr>
+
+<tr>
+<td><strong>POST</strong></td>
+<td><strong>/v1/tokens/authentication</strong></td>
+<td><strong>createAuthenticationTokenHandler</strong></td>
+<td><strong>Generate a new authentication token</strong></td>
+</tr>
+</tbody>
+</table>
+<p>If you&rsquo;re following along, go ahead and create a new <code>cmd/api/tokens.go</code> file:</p>
+
+<figure class="code bash">
+<pre>$ touch cmd/api/tokens.go</pre>
+</figure>
+
+<p>And in this new file we&rsquo;ll add the code for the <code>createAuthenticationTokenHandler</code>.</p>
+
+<p>Essentially, we want this handler to <em>exchange the user&rsquo;s email address and password for an authentication token</em>, like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/tokens.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;errors&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+    <span class="s">&#34;time&#34;</span>
+
+    <span class="s">&#34;greenlight.alexedwards.net/internal/data&#34;</span>
+    <span class="s">&#34;greenlight.alexedwards.net/internal/validator&#34;</span>
+<span class="p">)</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">createAuthenticationTokenHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Parse the email and password from the request body.
+</span><span class="c1"></span>    <span class="kd">var</span> <span class="nx">input</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">Email</span>    <span class="kt">string</span> <span class="s">`</span><span class="s">json:&#34;email&#34;</span><span class="s">`</span>
+        <span class="nx">Password</span> <span class="kt">string</span> <span class="s">`</span><span class="s">json:&#34;password&#34;</span><span class="s">`</span>
+    <span class="p">}</span>
+
+    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">input</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">badRequestResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Validate the email and password provided by the client.
+</span><span class="c1"></span>    <span class="nx">v</span> <span class="o">:=</span> <span class="nx">validator</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">data</span><span class="p">.</span><span class="nf">ValidateEmail</span><span class="p">(</span><span class="nx">v</span><span class="p">,</span> <span class="nx">input</span><span class="p">.</span><span class="nx">Email</span><span class="p">)</span>
+    <span class="nx">data</span><span class="p">.</span><span class="nf">ValidatePasswordPlaintext</span><span class="p">(</span><span class="nx">v</span><span class="p">,</span> <span class="nx">input</span><span class="p">.</span><span class="nx">Password</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="p">!</span><span class="nx">v</span><span class="p">.</span><span class="nf">Valid</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">failedValidationResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nx">Errors</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Lookup the user record based on the email address. If no matching user was
+</span><span class="c1"></span>    <span class="c1">// found, then we call the app.invalidCredentialsResponse() helper to send a 401
+</span><span class="c1"></span>    <span class="c1">// Unauthorized response to the client (we will create this helper in a moment).
+</span><span class="c1"></span>    <span class="nx">user</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Users</span><span class="p">.</span><span class="nf">GetByEmail</span><span class="p">(</span><span class="nx">input</span><span class="p">.</span><span class="nx">Email</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">switch</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">data</span><span class="p">.</span><span class="nx">ErrRecordNotFound</span><span class="p">)</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">invalidCredentialsResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+        <span class="k">default</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="p">}</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Check if the provided password matches the actual password for the user.
+</span><span class="c1"></span>    <span class="nx">match</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">user</span><span class="p">.</span><span class="nx">Password</span><span class="p">.</span><span class="nf">Matches</span><span class="p">(</span><span class="nx">input</span><span class="p">.</span><span class="nx">Password</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// If the passwords don&#39;t match, then we call the app.invalidCredentialsResponse()
+</span><span class="c1"></span>    <span class="c1">// helper again and return.
+</span><span class="c1"></span>    <span class="k">if</span> <span class="p">!</span><span class="nx">match</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">invalidCredentialsResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Otherwise, if the password is correct, we generate a new token with a 24-hour 
+</span><span class="c1"></span>    <span class="c1">// expiry time and the scope &#39;authentication&#39;.
+</span><span class="c1"></span>    <span class="nx">token</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Tokens</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="nx">user</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span> <span class="mi">24</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Hour</span><span class="p">,</span> <span class="nx">data</span><span class="p">.</span><span class="nx">ScopeAuthentication</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Encode the token to JSON and send it in the response along with a 201 Created
+</span><span class="c1"></span>    <span class="c1">// status code.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">writeJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusCreated</span><span class="p">,</span> <span class="nx">envelope</span><span class="p">{</span><span class="s">&#34;authentication_token&#34;</span><span class="p">:</span> <span class="nx">token</span><span class="p">}</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Let&rsquo;s quickly create the <code>invalidCredentialsResponse()</code> helper in our <code>cmd/api/errors.go</code> file too:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/errors.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">invalidCredentialsResponse</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">message</span> <span class="o">:=</span> <span class="s">&#34;invalid authentication credentials&#34;</span>
+    <span class="nx">app</span><span class="p">.</span><span class="nf">errorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusUnauthorized</span><span class="p">,</span> <span class="nx">message</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Then lastly, we need to include the <code>POST /v1/tokens/authentication</code> endpoint in our application routes.</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/routes.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">routes</span><span class="p">(</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span> <span class="p">{</span>
+    <span class="nx">router</span> <span class="o">:=</span> <span class="nx">httprouter</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nx">NotFound</span> <span class="p">=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">notFoundResponse</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nx">MethodNotAllowed</span> <span class="p">=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">methodNotAllowedResponse</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/healthcheck&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">healthcheckHandler</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/movies&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">listMoviesHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span> <span class="s">&#34;/v1/movies&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">createMovieHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">showMovieHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPatch</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">updateMovieHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodDelete</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">deleteMovieHandler</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span> <span class="s">&#34;/v1/users&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">registerUserHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPut</span><span class="p">,</span> <span class="s">&#34;/v1/users/activated&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">activateUserHandler</span><span class="p">)</span>
+
+    <span class="c1">// Add the route for the POST /v1/tokens/authentication endpoint.
+</span><span class="c1"></span>    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span> <span class="s">&#34;/v1/tokens/authentication&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">createAuthenticationTokenHandler</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="nx">app</span><span class="p">.</span><span class="nf">recoverPanic</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nf">rateLimit</span><span class="p">(</span><span class="nx">router</span><span class="p">)</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>With all that complete, we should now be able to generate an authentication token.</p>
+
+<p>Go ahead and make a request to the new <code>POST /v1/tokens/authentication</code> endpoint with a valid email address and password for one of the users that you&rsquo;ve previously created. You should get a <code>201 Created</code> response and a JSON body containing an authentication token, similar to this:</p>
+
+<figure class="code bash">
+<pre>$ BODY=&#39;{&#34;email&#34;: &#34;alice@example.com&#34;, &#34;password&#34;: &#34;pa55word&#34;}&#39;
+$ curl -i -d &#34;$BODY&#34; localhost:4000/v1/tokens/authentication
+<samp>HTTP/1.1 201 Created
+Content-Type: application/json
+Date: Fri, 16 Apr 2021 09:03:36 GMT
+Content-Length: 125
+
+{
+    &#34;authentication_token&#34;: {
+        &#34;token&#34;: &#34;IEYZQUBEMPPAKPOAWTPV6YJ6RM&#34;,
+        &#34;expiry&#34;: &#34;2021-04-17T11:03:36.767078518+02:00&#34;
+    }
+}</samp></pre>
+</figure>
+
+<p>In contrast, if you try making a request with a well-formed but unknown email address, or an incorrect password, you should get an error response. For example:</p>
+
+<figure class="code bash">
+<pre>$ BODY=&#39;{&#34;email&#34;: &#34;alice@example.com&#34;, &#34;password&#34;: &#34;wrong pa55word&#34;}&#39;
+$ curl -i -d &#34;$BODY&#34; localhost:4000/v1/tokens/authentication
+<samp>HTTP/1.1 401 Unauthorized
+Content-Type: application/json
+Date: Fri, 16 Apr 2021 09:54:01 GMT
+Content-Length: 51
+
+{
+    &#34;error&#34;: &#34;invalid authentication credentials&#34;
+}</samp></pre>
+</figure>
+
+<p>Before we continue, let&rsquo;s quickly have a look at the <code>tokens</code> table in our PostgreSQL database to check that the authentication token has been created.</p>
+
+<figure class="code bash">
+<pre>$ psql $GREENLIGHT_DB_DSN
+Password for user greenlight: 
+<samp>psql (15.4 (Ubuntu 15.4-1.pgdg22.04+1))
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+Type &#34;help&#34; for help.</samp>
+
+greenlight=&gt; SELECT * FROM tokens WHERE scope = &#39;authentication&#39;;
+<samp>\x4390d2ff4af7346dd4238ffccb8a5b18e8c3af9aa8cf57852895ad0f8ee2c50d |       1 | 2021-04-17 11:03:37+02 | authentication
+</samp></pre>
+</figure>
+
+<p>That&rsquo;s looking good. We can see that the token is associated with the user with ID <code>1</code> (which if you&rsquo;ve been following along will be the user <code>alice@example.com</code>) and has the correct scope and expiry time.</p>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="the-authorization-header">The Authorization header</h4>
+
+<p>Occasionally you might come across other APIs or tutorials where authentication tokens are sent back to the client in an <code>Authorization</code> header, rather than in the response body like we are in this chapter.</p>
+
+<p>You <em>can</em> do that, and in most cases it will probably work fine. But it&rsquo;s important to be conscious that you&rsquo;re making a <em>willful violation</em> of the HTTP specifications: <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Authorization"><code>Authorization</code></a> is a <em>request</em> header, not a response header.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="15.01-authentication-options.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="15.03-authenticating-requests.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "15.01-authentication-options.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "15.03-authenticating-requests.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

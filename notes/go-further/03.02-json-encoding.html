@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>JSON encoding &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="03.00-sending-json-responses.html">Sending JSON responses</a> &rsaquo; JSON encoding</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="03.01-fixed-format-json.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="03.03-encoding-structs.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 3.2.</div>
+			<h2 id="json-encoding">JSON encoding</h2>
+
+<p>Let&rsquo;s move on to something a bit more exciting and look at how to encode native Go types (like maps, structs and slices) to JSON.</p>
+
+<p>At a high level, Go&rsquo;s <a href="https://golang.org/pkg/encoding/json/"><code>encoding/json</code></a> package provides two options for encoding things to JSON. You can either call the <a href="https://golang.org/pkg/encoding/json/#Marshal"><code>json.Marshal()</code></a> function, or you can declare and use a <a href="https://golang.org/pkg/encoding/json/#Encoder"><code>json.Encoder</code></a> type.</p>
+
+<p>We&rsquo;ll explain how both approaches work in this chapter, but &mdash; for the purpose of sending JSON in an HTTP response &mdash; using <code>json.Marshal()</code> is generally the better choice. So let&rsquo;s start with that.</p>
+
+<p>The way that <code>json.Marshal()</code> works is conceptually quite simple &mdash; you pass a native Go value to it as an argument, and it returns a JSON representation of that value in a <code>[]byte</code> slice. The function signature looks like this:</p>
+
+<figure class="code go">
+<pre><span class="kd">func</span> <span class="nf">Marshal</span><span class="p">(</span><span class="nx">v</span> <span class="nx">any</span><span class="p">)</span> <span class="p">(</span><span class="p">[</span><span class="p">]</span><span class="kt">byte</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span></pre>
+</figure>
+
+<aside class="hint"><p>
+<strong>Note:</strong> The <code>v</code> parameter in the above method has the type <code>any</code>. This effectively means that we&rsquo;re able to pass any Go type to <code>Marshal()</code> as the <code>v</code> parameter.
+</p></aside>
+
+<p>Let&rsquo;s jump in and update our <code>healthcheckHandler</code> so that it uses <code>json.Marshal()</code> to generate a JSON response directly from a Go map &mdash; instead of using a fixed-format string like we were before. Like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/healthcheck.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;encoding/json&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;net/http&#34;</span>
+<span class="p">)</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">healthcheckHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Create a map which holds the information that we want to send in the response.
+</span><span class="c1"></span>    <span class="nx">data</span> <span class="o">:=</span> <span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="kt">string</span><span class="p">{</span>
+        <span class="s">&#34;status&#34;</span><span class="p">:</span>      <span class="s">&#34;available&#34;</span><span class="p">,</span>
+        <span class="s">&#34;environment&#34;</span><span class="p">:</span> <span class="nx">app</span><span class="p">.</span><span class="nx">config</span><span class="p">.</span><span class="nx">env</span><span class="p">,</span>
+        <span class="s">&#34;version&#34;</span><span class="p">:</span>     <span class="nx">version</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Pass the map to the json.Marshal() function. This returns a []byte slice 
+</span><span class="c1"></span>    <span class="c1">// containing the encoded JSON. If there was an error, we log it and send the client
+</span><span class="c1"></span>    <span class="c1">// a generic error message.
+</span><span class="c1"></span>    <span class="nx">js</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">json</span><span class="p">.</span><span class="nf">Marshal</span><span class="p">(</span><span class="nx">data</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="nx">http</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="s">&#34;The server encountered a problem and could not process your request&#34;</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusInternalServerError</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Append a newline to the JSON. This is just a small nicety to make it easier to 
+</span><span class="c1"></span>    <span class="c1">// view in terminal applications.
+</span><span class="c1"></span>    <span class="nx">js</span> <span class="p">=</span> <span class="nb">append</span><span class="p">(</span><span class="nx">js</span><span class="p">,</span> <span class="sc">&#39;\n&#39;</span><span class="p">)</span>
+
+    <span class="c1">// At this point we know that encoding the data worked without any problems, so we
+</span><span class="c1"></span>    <span class="c1">// can safely set any necessary HTTP headers for a successful response.
+</span><span class="c1"></span>    <span class="nx">w</span><span class="p">.</span><span class="nf">Header</span><span class="p">(</span><span class="p">)</span><span class="p">.</span><span class="nf">Set</span><span class="p">(</span><span class="s">&#34;Content-Type&#34;</span><span class="p">,</span> <span class="s">&#34;application/json&#34;</span><span class="p">)</span>
+
+    <span class="c1">// Use w.Write() to send the []byte slice containing the JSON as the response body.
+</span><span class="c1"></span>    <span class="nx">w</span><span class="p">.</span><span class="nf">Write</span><span class="p">(</span><span class="nx">js</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>If you restart the API and visit <a href="http://localhost:4000/v1/healthcheck"><code>localhost:4000/v1/healthcheck</code></a> in your browser, you should now get a response similar to this:</p>
+
+<figure class="img">
+<img src="assets/img/03.02-01.png" alt="03.02-01.png" />
+</figure>
+
+<p>That&rsquo;s looking good &mdash; we can see that the map has automatically been encoded to a JSON object for us, with the key-value pairs in the map appearing as <em>alphabetically sorted</em> key-value pairs in the JSON object.</p>
+
+<h3 id="creating-a-writejson-helper-method">Creating a writeJSON helper method</h3>
+
+<p>As our API grows we&rsquo;re going to be sending a lot of JSON responses, so it makes sense to move some of this logic into a reusable <code>writeJSON()</code> helper method.</p>
+
+<p>As well as creating and sending the JSON, we want to design this helper so that we can include <em>arbitrary headers</em> in successful responses later, such as a <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Location"><code>Location</code></a> header after creating a new movie in our system.</p>
+
+<p>If you&rsquo;re coding along, open the <code>cmd/api/helpers.go</code> file again and create the following <code>writeJSON()</code> method:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/helpers.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;encoding/json&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;errors&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+    <span class="s">&#34;strconv&#34;</span>
+
+    <span class="s">&#34;github.com/julienschmidt/httprouter&#34;</span>
+<span class="p">)</span>
+
+<span class="o">...</span>
+
+<span class="c1">// Define a writeJSON() helper for sending responses. This takes the destination
+</span><span class="c1"></span><span class="c1">// http.ResponseWriter, the HTTP status code to send, the data to encode to JSON, and a 
+</span><span class="c1"></span><span class="c1">// headers map containing any additional HTTP headers we want to include in the response.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">writeJSON</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">status</span> <span class="kt">int</span><span class="p">,</span> <span class="nx">data</span> <span class="nx">any</span><span class="p">,</span> <span class="nx">headers</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Header</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+    <span class="c1">// Encode the data to JSON, returning the error if there was one.
+</span><span class="c1"></span>    <span class="nx">js</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">json</span><span class="p">.</span><span class="nf">Marshal</span><span class="p">(</span><span class="nx">data</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">err</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Append a newline to make it easier to view in terminal applications.
+</span><span class="c1"></span>    <span class="nx">js</span> <span class="p">=</span> <span class="nb">append</span><span class="p">(</span><span class="nx">js</span><span class="p">,</span> <span class="sc">&#39;\n&#39;</span><span class="p">)</span>
+
+    <span class="c1">// At this point, we know that we won&#39;t encounter any more errors before writing the
+</span><span class="c1"></span>    <span class="c1">// response, so it&#39;s safe to add any headers that we want to include. We loop
+</span><span class="c1"></span>    <span class="c1">// through the headers map (which behind the scenes has the type map[string][]string)
+</span><span class="c1"></span>    <span class="c1">// and add all the header keys and values to the http.ResponseWriter&#39;s header map.
+</span><span class="c1"></span>    <span class="c1">// Note that it&#39;s OK if the provided headers map is nil. Go doesn&#39;t throw an error
+</span><span class="c1"></span>    <span class="c1">// if you try to range over (or generally, read from) a nil map.
+</span><span class="c1"></span>    <span class="k">for</span> <span class="nx">key</span><span class="p">,</span> <span class="nx">values</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">headers</span> <span class="p">{</span>
+        <span class="k">for</span> <span class="nx">_</span><span class="p">,</span> <span class="nx">value</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">values</span> <span class="p">{</span>
+            <span class="nx">w</span><span class="p">.</span><span class="nf">Header</span><span class="p">(</span><span class="p">)</span><span class="p">.</span><span class="nf">Add</span><span class="p">(</span><span class="nx">key</span><span class="p">,</span> <span class="nx">value</span><span class="p">)</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Add the &#34;Content-Type: application/json&#34; header, then write the status code and
+</span><span class="c1"></span>    <span class="c1">// JSON response.
+</span><span class="c1"></span>    <span class="nx">w</span><span class="p">.</span><span class="nf">Header</span><span class="p">(</span><span class="p">)</span><span class="p">.</span><span class="nf">Set</span><span class="p">(</span><span class="s">&#34;Content-Type&#34;</span><span class="p">,</span> <span class="s">&#34;application/json&#34;</span><span class="p">)</span>
+    <span class="nx">w</span><span class="p">.</span><span class="nf">WriteHeader</span><span class="p">(</span><span class="nx">status</span><span class="p">)</span>
+    <span class="nx">w</span><span class="p">.</span><span class="nf">Write</span><span class="p">(</span><span class="nx">js</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="kc">nil</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Now that the <code>writeJSON()</code> helper is in place, we can significantly simplify the code in <code>healthcheckHandler</code>, like so</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/healthcheck.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;net/http&#34;</span>
+<span class="p">)</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">healthcheckHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">data</span> <span class="o">:=</span> <span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="kt">string</span><span class="p">{</span>
+        <span class="s">&#34;status&#34;</span><span class="p">:</span>      <span class="s">&#34;available&#34;</span><span class="p">,</span>
+        <span class="s">&#34;environment&#34;</span><span class="p">:</span> <span class="nx">app</span><span class="p">.</span><span class="nx">config</span><span class="p">.</span><span class="nx">env</span><span class="p">,</span>
+        <span class="s">&#34;version&#34;</span><span class="p">:</span>     <span class="nx">version</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">writeJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusOK</span><span class="p">,</span> <span class="nx">data</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="nx">http</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="s">&#34;The server encountered a problem and could not process your request&#34;</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusInternalServerError</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>If you run the application again now, everything will compile correctly, and a request to the <code>GET /v1/healthcheck</code> endpoint should result in the same HTTP response as before.</p>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="how-different-go-types-are-encoded">How different Go types are encoded</h4>
+
+<p>In this chapter we&rsquo;ve been encoding a <code>map[string]string</code> type to JSON, which resulted in a JSON object with JSON strings as the values in the key-value pairs. But Go supports encoding many other native types too.</p>
+
+<p>The following table summarizes how different Go types are mapped to JSON data types during encoding:</p>
+
+<table>
+<thead>
+<tr>
+<th>Go type</th>
+<th>⇒</th>
+<th>JSON type</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td><code>bool</code></td>
+<td>⇒</td>
+<td>JSON boolean</td>
+</tr>
+
+<tr>
+<td><code>string</code></td>
+<td>⇒</td>
+<td>JSON string</td>
+</tr>
+
+<tr>
+<td><code>int*</code>, <code>uint*</code>, <code>float*</code>, <code>rune</code></td>
+<td>⇒</td>
+<td>JSON number</td>
+</tr>
+
+<tr>
+<td>arrays, non-<code>nil</code> slices</td>
+<td>⇒</td>
+<td>JSON array</td>
+</tr>
+
+<tr>
+<td>structs, non-<code>nil</code> maps</td>
+<td>⇒</td>
+<td>JSON object</td>
+</tr>
+
+<tr>
+<td><code>nil</code> pointers, interface values, slices, maps</td>
+<td>⇒</td>
+<td>JSON null</td>
+</tr>
+
+<tr>
+<td><code>chan</code>, <code>func</code>, <code>complex*</code></td>
+<td>⇒</td>
+<td>Not supported</td>
+</tr>
+
+<tr>
+<td><code>time.Time</code></td>
+<td>⇒</td>
+<td>RFC3339-format JSON string</td>
+</tr>
+
+<tr>
+<td><code>[]byte</code></td>
+<td>⇒</td>
+<td>Base64-encoded JSON string</td>
+</tr>
+</tbody>
+</table>
+<p>The last two of these are special cases which deserve a bit more explanation:</p>
+
+<ul>
+<li><p>Go <code>time.Time</code> values (which are actually <a href="https://github.com/golang/go/blob/dd150176c3cc49da68c8179f740eadc79404d351/src/time/time.go#L127">a struct</a> behind the scenes) will be encoded as a JSON string in RFC 3339 format like <code>&quot;2020-11-08T06:27:59+01:00&quot;</code>, rather than as a JSON object.</p></li>
+
+<li><p>A <code>[]byte</code> slice will be encoded as a base64-encoded JSON string, rather than as a JSON array. So, for example, a byte slice of <code>[]byte{'h','e','l','l','o'}</code> would appear as <code>&quot;aGVsbG8=&quot;</code> in the JSON output. The base64 encoding uses padding and the <a href="https://tools.ietf.org/html/rfc4648#section-4">standard character set</a>.</p></li>
+</ul>
+
+<p>A few other important things to mention:</p>
+
+<ul>
+<li><p>Encoding of nested types is supported. So, for example, if you have a <em>slice of structs</em> in Go that will encode to an <em>array of objects</em> in JSON.</p></li>
+
+<li><p>Channels, functions and <a href="https://golang.org/pkg/builtin/#complex128"><code>complex</code></a> number types cannot be encoded. If you try to do so, you&rsquo;ll get a <a href="https://golang.org/pkg/encoding/json/#UnsupportedTypeError"><code>json.UnsupportedTypeError</code></a> error at runtime.</p></li>
+
+<li><p>Any pointer values will encode as <em>the value pointed to</em>.</p></li>
+</ul>
+
+<h4 id="using-json-encoder">Using json.Encoder</h4>
+
+<p>At the start of this chapter I mentioned that it&rsquo;s also possible to use Go&rsquo;s <a href="https://golang.org/pkg/encoding/json/#Encoder"><code>json.Encoder</code></a> type to perform the encoding. This allows you to encode a Go value to JSON <em>and write that JSON to an output stream</em> in a single step.</p>
+
+<p>For example, you could use it in a handler like this:</p>
+
+<figure class="code go">
+<pre><span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">exampleHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">data</span> <span class="o">:=</span> <span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="kt">string</span><span class="p">{</span>
+        <span class="s">&#34;hello&#34;</span><span class="p">:</span> <span class="s">&#34;world&#34;</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Set the &#34;Content-Type: application/json&#34; header on the response.
+</span><span class="c1"></span>    <span class="nx">w</span><span class="p">.</span><span class="nf">Header</span><span class="p">(</span><span class="p">)</span><span class="p">.</span><span class="nf">Set</span><span class="p">(</span><span class="s">&#34;Content-Type&#34;</span><span class="p">,</span> <span class="s">&#34;application/json&#34;</span><span class="p">)</span>
+
+    <span class="c1">// Use the json.NewEncoder() function to initialize a json.Encoder instance that
+</span><span class="c1"></span>    <span class="c1">// writes to the http.ResponseWriter. Then we call its Encode() method, passing in 
+</span><span class="c1"></span>    <span class="c1">// the data that we want to encode to JSON (which in this case is the map above). If
+</span><span class="c1"></span>    <span class="c1">// the data can be successfully encoded to JSON, it will then be written to our 
+</span><span class="c1"></span>    <span class="c1">// http.ResponseWriter.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">json</span><span class="p">.</span><span class="nf">NewEncoder</span><span class="p">(</span><span class="nx">w</span><span class="p">)</span><span class="p">.</span><span class="nf">Encode</span><span class="p">(</span><span class="nx">data</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="nx">http</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="s">&#34;The server encountered a problem and could not process your request&#34;</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusInternalServerError</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>This pattern works, and it&rsquo;s very neat and elegant, but if you consider it carefully you might notice a slight problem&hellip;</p>
+
+<p>When we call <code>json.NewEncoder(w).Encode(data)</code> the JSON is created and written to the <code>http.ResponseWriter</code> in a single step, which means there&rsquo;s no opportunity to set HTTP response headers conditionally based on whether the <code>Encode()</code> method returns an error or not.</p>
+
+<p>Imagine, for example, that you want to set a <code>Cache-Control</code> header on a successful response, <em>but not set a <code>Cache-Control</code> header if the JSON encoding fails and you have to return an error response</em>.</p>
+
+<p>Implementing that cleanly while using the <code>json.Encoder</code> pattern is quite difficult.</p>
+
+<p>You <em>could</em> set the <code>Cache-Control</code> header and then <em>delete it from the header map again</em> in the event of an error &mdash; but that&rsquo;s pretty hacky.</p>
+
+<p>Another option is to write the JSON to an interim <a href="https://golang.org/pkg/bytes/#Buffer"><code>bytes.Buffer</code></a> instead of directly to the <code>http.ResponseWriter</code>. You can then check for any errors, before setting the <code>Cache-Control</code> header and copying the JSON from the <code>bytes.Buffer</code> to <code>http.ResponseWriter</code>. But once you start doing that, it&rsquo;s simpler and cleaner (as well as slightly faster) to use the alternative <code>json.Marshal()</code> approach instead.</p>
+
+<h4 id="performance-of-json-encoder-and-json-marshal">Performance of json.Encoder and json.Marshal</h4>
+
+<p>Talking of speed, you might be wondering if there&rsquo;s any performance difference between using <code>json.Encoder</code> and <code>json.Marshal()</code>. The short answer to that is <em>yes</em>&hellip; but the difference is small and in most cases you should not worry about it.</p>
+
+<p>The following benchmarks demonstrate the performance of the two approaches using the code in <a href="https://gist.github.com/alexedwards/8f11d0dc57fc119cbc791def783d8492">this gist</a> (note that each benchmark test is repeated three times):</p>
+
+<figure class="code bash">
+<pre>$ go test -run=^$ -bench=. -benchmem -count=3 -benchtime=5s
+<samp>goos: linux
+goarch: amd64
+BenchmarkEncoder-8     3477318     1692 ns/op     1046 B/op    15 allocs/op
+BenchmarkEncoder-8     3435145     1704 ns/op     1048 B/op    15 allocs/op
+BenchmarkEncoder-8     3631305     1595 ns/op     1039 B/op    15 allocs/op
+BenchmarkMarshal-8     3624570     1616 ns/op     1119 B/op    16 allocs/op
+BenchmarkMarshal-8     3549090     1626 ns/op     1123 B/op    16 allocs/op
+BenchmarkMarshal-8     3548070     1638 ns/op     1123 B/op    16 allocs/op</samp></pre>
+</figure>
+
+<p>In these results we can see that <code>json.Marshal()</code> requires ever so slightly more memory (B/op) than <code>json.Encoder</code>, and also makes one extra heap memory allocation (allocs/op).</p>
+
+<p>There&rsquo;s no obvious observable difference in the average runtime (ns/op) between the two approaches. Perhaps with a larger benchmark sample or a larger data set a difference might become clear, but it&rsquo;s likely to be in the order of <em>microseconds</em>, rather than anything larger.</p>
+
+<h4 id="additional-json-encoding-nuances">Additional JSON encoding nuances</h4>
+
+<p>Encoding things to JSON in Go is mostly quite intuitive. But there are a handful of behaviors
+which might catch you out or surprise you the first time you encounter them.</p>
+
+<p>We’ve already mentioned a couple of these in this chapter (in particular — <em>map entries being sorted alphabetically</em> and <em>byte slices being base64 encoded</em>), but I&rsquo;ve included a full list in <a href="21.04-json-encoding-nuances.html">this appendix</a>.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="03.01-fixed-format-json.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="03.03-encoding-structs.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "03.01-fixed-format-json.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "03.03-encoding-structs.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

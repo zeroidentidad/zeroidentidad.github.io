@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Exposing metrics with expvar &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="18.00-metrics.html">Metrics</a> &rsaquo; Exposing metrics with expvar</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="18.00-metrics.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="18.02-creating-custom-metrics.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 18.1.</div>
+			<h2 id="exposing-metrics-with-expvar">Exposing metrics with expvar</h2>
+
+<p>Viewing metrics for our application is made easy by the fact that the <code>expvar</code> package provides an <a href="https://golang.org/pkg/expvar/#Handler"><code>expvar.Handler()</code></a> function which returns an <em>HTTP handler exposing your application metrics</em>.</p>
+
+<p>By default this handler displays information about memory usage, along with a reminder of what command-line flags you used when starting the application, all outputted in JSON format.</p>
+
+<p>So the first thing that we&rsquo;re going to do is mount this handler at a new <code>GET /debug/vars</code> endpoint, like so:</p>
+
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>URL Pattern</th>
+<th>Handler</th>
+<th>Action</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td>&hellip;</td>
+<td>&hellip;</td>
+<td>&hellip;</td>
+<td>&hellip;</td>
+</tr>
+
+<tr>
+<td>GET</td>
+<td>/debug/vars</td>
+<td>expvar.Handler()</td>
+<td>Display application metrics</td>
+</tr>
+</tbody>
+</table>
+
+<figure class="code go">
+<figcaption>File: cmd/api/routes.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;expvar&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;net/http&#34;</span>
+
+    <span class="s">&#34;github.com/julienschmidt/httprouter&#34;</span>
+<span class="p">)</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">routes</span><span class="p">(</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span> <span class="p">{</span>
+    <span class="nx">router</span> <span class="o">:=</span> <span class="nx">httprouter</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nx">NotFound</span> <span class="p">=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">notFoundResponse</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nx">MethodNotAllowed</span> <span class="p">=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">methodNotAllowedResponse</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/healthcheck&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">healthcheckHandler</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/movies&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nf">requirePermission</span><span class="p">(</span><span class="s">&#34;movies:read&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">listMoviesHandler</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span> <span class="s">&#34;/v1/movies&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nf">requirePermission</span><span class="p">(</span><span class="s">&#34;movies:write&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">createMovieHandler</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nf">requirePermission</span><span class="p">(</span><span class="s">&#34;movies:read&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">showMovieHandler</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPatch</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nf">requirePermission</span><span class="p">(</span><span class="s">&#34;movies:write&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">updateMovieHandler</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodDelete</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nf">requirePermission</span><span class="p">(</span><span class="s">&#34;movies:write&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">deleteMovieHandler</span><span class="p">)</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span> <span class="s">&#34;/v1/users&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">registerUserHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPut</span><span class="p">,</span> <span class="s">&#34;/v1/users/activated&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">activateUserHandler</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span> <span class="s">&#34;/v1/tokens/authentication&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">createAuthenticationTokenHandler</span><span class="p">)</span>
+
+    <span class="c1">// Register a new GET /debug/vars endpoint pointing to the expvar handler.
+</span><span class="c1"></span>    <span class="nx">router</span><span class="p">.</span><span class="nf">Handler</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/debug/vars&#34;</span><span class="p">,</span> <span class="nx">expvar</span><span class="p">.</span><span class="nf">Handler</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="nx">app</span><span class="p">.</span><span class="nf">recoverPanic</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nf">enableCORS</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nf">rateLimit</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nf">authenticate</span><span class="p">(</span><span class="nx">router</span><span class="p">)</span><span class="p">)</span><span class="p">)</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<aside class="hint"><p>
+<strong>Note:</strong> Using the endpoint <code>GET /debug/vars</code> for the <code>expvar</code> handler is <em>conventional</em> but certainly not necessary. If you prefer, it&rsquo;s perfectly fine to register it at an alternative endpoint like <code>GET /v1/metrics</code> instead.
+</p></aside>
+
+<p>OK, let&rsquo;s try this out.</p>
+
+<p>Go ahead and restart the API, passing in a couple of command-line flags for demonstration purposes. Like so:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api -limiter-enabled=false -port=4000
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development</samp></pre>
+</figure>
+
+<p>And if you visit <a href="http://localhost:4000/debug/vars"><code>http://localhost:4000/debug/vars</code></a> in your web browser, you should see a JSON response containing information about your running application.</p>
+
+<p>In my case, the response looks like this:</p>
+
+<figure class="img">
+<img src="assets/img/18.01-01.png" alt="18.01-01.png" />
+</figure>
+
+<p>We can see that the JSON here currently contains two top-level items: <code>&quot;cmdline&quot;</code> and <code>&quot;memstats&quot;</code>. Let&rsquo;s quickly talk through what these represent.</p>
+
+<p>The <code>&quot;cmdline&quot;</code> item contains an array of the command-line arguments used to run the application, beginning with the program name. This is essentially a JSON representation of the <a href="https://golang.org/pkg/os/#pkg-variables"><code>os.Args</code></a> variable, and it&rsquo;s useful if you want to see exactly what non-default settings were used when starting the application.</p>
+
+<p>The <code>&quot;memstats&quot;</code> item contains a &lsquo;moment-in-time&rsquo; snapshot of memory usage, as returned by the <a href="https://golang.org/pkg/runtime/#MemStats"><code>runtime.MemStats()</code></a> function. Documentation and descriptions for all of the values can be <a href="https://golang.org/pkg/runtime/#MemStats">found here</a>, but the most important ones are:</p>
+
+<ul>
+<li><code>TotalAlloc</code> &mdash; Cumulative bytes allocated on the heap (will not decrease).</li>
+<li><code>HeapAlloc</code> &mdash; Current number of bytes on the heap.</li>
+<li><code>HeapObjects</code> &mdash; Current number of objects on the heap.</li>
+<li><code>Sys</code> &mdash; Total bytes of memory obtained from the OS (i.e. total memory reserved by the Go runtime for the heap, stacks, and other internal data structures).</li>
+<li><code>NumGC</code> &mdash; Number of completed garbage collector cycles.</li>
+<li><code>NextGC</code> &mdash; The target heap size of the next garbage collector cycle (Go aims to keep <code>HeapAlloc</code> ≤ <code>NextGC</code>).</li>
+</ul>
+
+<aside class="hint"><p>
+<strong>Hint:</strong> If any of the terms above are unfamiliar to you, then I strongly recommend reading the <a href="https://medium.com/eureka-engineering/understanding-allocations-in-go-stack-heap-memory-9a2631b5035d">Understanding Allocations in Go</a> blog post which provides a great introduction to how Go allocates memory and the concepts of the heap and the stack.
+</p></aside>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="18.00-metrics.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="18.02-creating-custom-metrics.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "18.00-metrics.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "18.02-creating-custom-metrics.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

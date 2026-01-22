@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Registering a user &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="12.00-user-model-setup-and-registration.html">User model setup and registration</a> &rsaquo; Registering a user</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="12.02-setting-up-the-users-model.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="13.00-sending-emails.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 12.3.</div>
+			<h2 id="registering-a-user">Registering a user</h2>
+
+<p>Now that we&rsquo;ve laid the groundwork, let&rsquo;s start putting it to use by creating a new API endpoint to manage the process of registering (or <em>signing up</em>) a new user.</p>
+
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>URL Pattern</th>
+<th>Handler</th>
+<th>Action</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td>GET</td>
+<td>/v1/healthcheck</td>
+<td>healthcheckHandler</td>
+<td>Show application information</td>
+</tr>
+
+<tr>
+<td>GET</td>
+<td>/v1/movies</td>
+<td>listMoviesHandler</td>
+<td>Show the details of all movies</td>
+</tr>
+
+<tr>
+<td>POST</td>
+<td>/v1/movies</td>
+<td>createMovieHandler</td>
+<td>Create a new movie</td>
+</tr>
+
+<tr>
+<td>GET</td>
+<td>/v1/movies/:id</td>
+<td>showMovieHandler</td>
+<td>Show the details of a specific movie</td>
+</tr>
+
+<tr>
+<td>PATCH</td>
+<td>/v1/movies/:id</td>
+<td>updateMovieHandler</td>
+<td>Update the details of a specific movie</td>
+</tr>
+
+<tr>
+<td>DELETE</td>
+<td>/v1/movies/:id</td>
+<td>deleteMovieHandler</td>
+<td>Delete a specific movie</td>
+</tr>
+
+<tr>
+<td><strong>POST</strong></td>
+<td><strong>/v1/users</strong></td>
+<td><strong>registerUserHandler</strong></td>
+<td><strong>Register a new user</strong></td>
+</tr>
+</tbody>
+</table>
+<p>When a client calls this new <code>POST /v1/users</code> endpoint, we will expect them to provide the following details for the new user in a JSON request body. Similar to this:</p>
+
+<figure class="code plain">
+<pre>{
+    &#34;name&#34;: &#34;Alice Smith&#34;,
+    &#34;email&#34;: &#34;alice@example.com&#34;,
+    &#34;password&#34;: &#34;pa55word&#34;
+}</pre>
+</figure>
+
+<p>When we receive this, the <code>registerUserHandler</code> should create a new <code>User</code> struct containing these details, validate it with the <code>ValidateUser()</code> helper, and then pass it to our <code>UserModel.Insert()</code> method to create a new database record.</p>
+
+<p>In fact, we&rsquo;ve already written most of the code we need for the <code>registerUserHandler</code> &mdash; it&rsquo;s now just a matter of piecing it all together in the correct order.</p>
+
+<p>If you&rsquo;re following along, go ahead and create a new <code>cmd/api/users.go</code> file:</p>
+
+<figure class="code bash">
+<pre>$ touch cmd/api/users.go</pre>
+</figure>
+
+<p>And then add the new <code>registerUserHandler</code> method containing the following code:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/users.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;errors&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+
+    <span class="s">&#34;greenlight.alexedwards.net/internal/data&#34;</span>
+    <span class="s">&#34;greenlight.alexedwards.net/internal/validator&#34;</span>
+<span class="p">)</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">registerUserHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Create an anonymous struct to hold the expected data from the request body.
+</span><span class="c1"></span>    <span class="kd">var</span> <span class="nx">input</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">Name</span>     <span class="kt">string</span> <span class="s">`</span><span class="s">json:&#34;name&#34;</span><span class="s">`</span>
+        <span class="nx">Email</span>    <span class="kt">string</span> <span class="s">`</span><span class="s">json:&#34;email&#34;</span><span class="s">`</span>
+        <span class="nx">Password</span> <span class="kt">string</span> <span class="s">`</span><span class="s">json:&#34;password&#34;</span><span class="s">`</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Parse the request body into the anonymous struct.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">input</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">badRequestResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Copy the data from the request body into a new User struct. Notice also that we
+</span><span class="c1"></span>    <span class="c1">// set the Activated field to false, which isn&#39;t strictly necessary because the 
+</span><span class="c1"></span>    <span class="c1">// Activated field will have the zero value of false by default. But setting this 
+</span><span class="c1"></span>    <span class="c1">// explicitly helps to make our intentions clear to anyone reading the code.
+</span><span class="c1"></span>    <span class="nx">user</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">data</span><span class="p">.</span><span class="nx">User</span><span class="p">{</span>
+        <span class="nx">Name</span><span class="p">:</span>      <span class="nx">input</span><span class="p">.</span><span class="nx">Name</span><span class="p">,</span>
+        <span class="nx">Email</span><span class="p">:</span>     <span class="nx">input</span><span class="p">.</span><span class="nx">Email</span><span class="p">,</span>
+        <span class="nx">Activated</span><span class="p">:</span> <span class="kc">false</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Use the Password.Set() method to generate and store the hashed and plaintext 
+</span><span class="c1"></span>    <span class="c1">// passwords.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="nx">user</span><span class="p">.</span><span class="nx">Password</span><span class="p">.</span><span class="nf">Set</span><span class="p">(</span><span class="nx">input</span><span class="p">.</span><span class="nx">Password</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="nx">v</span> <span class="o">:=</span> <span class="nx">validator</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="c1">// Validate the user struct and return the error messages to the client if any of 
+</span><span class="c1"></span>    <span class="c1">// the checks fail.
+</span><span class="c1"></span>    <span class="k">if</span> <span class="nx">data</span><span class="p">.</span><span class="nf">ValidateUser</span><span class="p">(</span><span class="nx">v</span><span class="p">,</span> <span class="nx">user</span><span class="p">)</span><span class="p">;</span> <span class="p">!</span><span class="nx">v</span><span class="p">.</span><span class="nf">Valid</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">failedValidationResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nx">Errors</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Insert the user data into the database.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Users</span><span class="p">.</span><span class="nf">Insert</span><span class="p">(</span><span class="nx">user</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">switch</span> <span class="p">{</span>
+        <span class="c1">// If we get a ErrDuplicateEmail error, use the v.AddError() method to manually
+</span><span class="c1"></span>        <span class="c1">// add a message to the validator instance, and then call our 
+</span><span class="c1"></span>        <span class="c1">// failedValidationResponse() helper.
+</span><span class="c1"></span>        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">data</span><span class="p">.</span><span class="nx">ErrDuplicateEmail</span><span class="p">)</span><span class="p">:</span>
+            <span class="nx">v</span><span class="p">.</span><span class="nf">AddError</span><span class="p">(</span><span class="s">&#34;email&#34;</span><span class="p">,</span> <span class="s">&#34;a user with this email address already exists&#34;</span><span class="p">)</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">failedValidationResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nx">Errors</span><span class="p">)</span>
+        <span class="k">default</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="p">}</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Write a JSON response containing the user data along with a 201 Created status 
+</span><span class="c1"></span>    <span class="c1">// code.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">writeJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusCreated</span><span class="p">,</span> <span class="nx">envelope</span><span class="p">{</span><span class="s">&#34;user&#34;</span><span class="p">:</span> <span class="nx">user</span><span class="p">}</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Before we try this out, we also need to add the new <code>POST /v1/users</code> endpoint to our <code>cmd/api/routes.go</code> file. Like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/routes.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">routes</span><span class="p">(</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span> <span class="p">{</span>
+    <span class="nx">router</span> <span class="o">:=</span> <span class="nx">httprouter</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nx">NotFound</span> <span class="p">=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">notFoundResponse</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nx">MethodNotAllowed</span> <span class="p">=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">methodNotAllowedResponse</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/healthcheck&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">healthcheckHandler</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/movies&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">listMoviesHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span> <span class="s">&#34;/v1/movies&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">createMovieHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">showMovieHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPatch</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">updateMovieHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodDelete</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">deleteMovieHandler</span><span class="p">)</span>
+
+    <span class="c1">// Add the route for the POST /v1/users endpoint.
+</span><span class="c1"></span>    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span> <span class="s">&#34;/v1/users&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">registerUserHandler</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="nx">app</span><span class="p">.</span><span class="nf">recoverPanic</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nf">rateLimit</span><span class="p">(</span><span class="nx">router</span><span class="p">)</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Once that&rsquo;s done, make sure all the files are saved and fire up the API.</p>
+
+<p>Then go ahead and make a request to the <code>POST /v1/users</code> endpoint to register a new user with the email address <code>alice@example.com</code>. You should get a <code>201 Created</code> response displaying the details for the user, similar to this:</p>
+
+<figure class="code bash">
+<pre>$ BODY=&#39;{&#34;name&#34;: &#34;Alice Smith&#34;, &#34;email&#34;: &#34;alice@example.com&#34;, &#34;password&#34;: &#34;pa55word&#34;}&#39;
+$ curl -i -d &#34;$BODY&#34; localhost:4000/v1/users
+<samp>HTTP/1.1 201 Created
+Content-Type: application/json
+Date: Mon, 15 Mar 2021 14:42:58 GMT
+Content-Length: 152
+
+{
+    &#34;user&#34;: {
+        &#34;id&#34;: 1,
+        &#34;created_at&#34;: &#34;2021-03-15T15:42:58+01:00&#34;,
+        &#34;name&#34;: &#34;Alice Smith&#34;,
+        &#34;email&#34;: &#34;alice@example.com&#34;,
+        &#34;activated&#34;: false
+    }
+}</samp></pre>
+</figure>
+
+<aside class="hint"><p>
+<strong>Hint:</strong> If you&rsquo;re following along, remember the password you used in the request above &mdash; you&rsquo;ll need it later!
+</p></aside>
+
+<p>That&rsquo;s looking good. We can see from the status code that the user record has been successfully created, and in the JSON response we can see the system-generated information for the new user &mdash; including the user&rsquo;s ID and activation status.</p>
+
+<p>If you take a look at your PostgreSQL database, you should also see the new record in the <code>users</code> table. Similar to this:</p>
+
+<figure class="code bash">
+<pre>$ psql $GREENLIGHT_DB_DSN
+<samp>Password for user greenlight: 
+psql (15.4 (Ubuntu 15.4-1.pgdg22.04+1))
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+Type &#34;help&#34; for help.</samp>
+
+greenlight=&gt; SELECT * FROM users;
+<samp> id |       created_at       |    name     |       email       |           password_hash             | activated | version 
+----+------------------------+-------------+-------------------+-------------------------------------+-----------+---------
+  1 | 2021-04-11 14:29:45+02 | Alice Smith | alice@example.com | \x24326124313224526157784d67356d... | f         |       1
+(1 row)</samp></pre>
+</figure>
+
+<aside class="hint"><p>
+<strong>Note:</strong> The <code>psql</code> tool always displays <code>bytea</code> values as a hex-encoded string. So the <code>password_hash</code> field in the output above displays a <em>hex encoding</em> of the bcrypt hash. If you want, you can run the following query to append the regular string version to the table too: <code>SELECT *, encode(password_hash, 'escape') FROM users</code>.
+</p></aside>
+
+<p>OK, let&rsquo;s try making another request to our API but with some invalid user details. This time our validation checks will kick in and the client should receive the relevant error messages. For example:</p>
+
+<figure class="code bash">
+<pre>$ BODY=&#39;{&#34;name&#34;: &#34;&#34;, &#34;email&#34;: &#34;bob@invalid.&#34;, &#34;password&#34;: &#34;pass&#34;}&#39;
+$ curl -d &#34;$BODY&#34; localhost:4000/v1/users
+<samp>{
+    &#34;error&#34;: {
+        &#34;email&#34;: &#34;must be a valid email address&#34;,
+        &#34;name&#34;: &#34;must be provided&#34;,
+        &#34;password&#34;: &#34;must be at least 8 bytes long&#34;
+    }
+}</samp></pre>
+</figure>
+
+<p>Lastly, try registering a second account for <code>alice@example.com</code>. This time you should get a validation error containing an <em>&ldquo;a user with this email address already exists&rdquo;</em> message, like so:</p>
+
+<figure class="code bash">
+<pre>$ BODY=&#39;{&#34;name&#34;: &#34;Alice Jones&#34;, &#34;email&#34;: &#34;alice@example.com&#34;, &#34;password&#34;: &#34;pa55word&#34;}&#39;
+$ curl -i -d &#34;$BODY&#34; localhost:4000/v1/users
+<samp>HTTP/1.1 422 Unprocessable Entity
+Cache-Control: no-store
+Content-Type: application/json
+Date: Wed, 30 Dec 2020 14:22:06 GMT
+Content-Length: 78
+
+{
+    &#34;error&#34;: {
+        &#34;email&#34;: &#34;a user with this email address already exists&#34;
+    }
+}</samp></pre>
+</figure>
+
+<p>If you want, you can also try sending some requests using alternative casings of <code>alice@example.com</code> &mdash; such as <code>ALICE@example.com</code> or <code>Alice@Example.com</code>. Because the <code>email</code> column in our database has the type <code>citext</code>, these alternative versions will be successfully identified as duplicates too.</p>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="email-case-sensitivity">Email case-sensitivity</h4>
+
+<p>Let&rsquo;s talk quickly about email addresses case-sensitivity in a bit more detail.</p>
+
+<ul>
+<li><p>Thanks to the specifications in <a href="https://www.ietf.org/rfc/rfc2821.txt">RFC 2821</a>, the domain part of an email address (<code>username@domain</code>) is case-insensitive. This means we can be confident that the real-life user behind <code>alice@example.com</code> is the same person as <code>alice@EXAMPLE.COM</code>.</p></li>
+
+<li><p>The username part of an email address <em>may or may not</em> be case-sensitive &mdash; it depends on the email provider. Almost every major email provider treats the username as case-insensitive, but it is not absolutely guaranteed. All we can say here is that the real-life user behind the address <code>alice@example.com</code> is <em>very probably</em> (but not definitely) the same as <code>ALICE@example.com</code>.</p></li>
+</ul>
+
+<p>So, what does this mean for our application?</p>
+
+<p>From a security point of view, we should always store the email address using the exact casing provided by the user during registration, and <strong>we should send them emails using that exact casing only</strong>. If we don&rsquo;t, there is a risk that emails could be delivered to the wrong real-life user. It&rsquo;s particularly important to be aware of this in any workflows that use email for authentication purposes, such as a password-reset workflow.</p>
+
+<p>However, because <code>alice@example.com</code> and <code>ALICE@example.com</code> are <em>very probably</em> the same user, we should generally treat email addresses as case-insensitive for comparison purposes.</p>
+
+<p>In our registration workflow, using a case-insensitive comparison prevents users from accidentally (or intentionally) registering multiple accounts by just using different casing. And from a user-experience point-of-view, in workflows like login, activation or password resets, it&rsquo;s more forgiving for users if we don&rsquo;t require them to submit their request with exactly the same email casing that they used when registering.</p>
+
+<h4 id="user-enumeration">User enumeration</h4>
+
+<p>It&rsquo;s important to be aware that our registration endpoint is vulnerable to <em>user enumeration</em>. For example, if an attacker wants to know whether <code>alice@example.com</code> has an account with us, all they need to do is send a request like this:</p>
+
+<figure class="code bash">
+<pre>$ BODY=&#39;{&#34;name&#34;: &#34;Alice Jones&#34;, &#34;email&#34;: &#34;alice@example.com&#34;, &#34;password&#34;: &#34;pa55word&#34;}&#39;
+$ curl -d &#34;$BODY&#34; localhost:4000/v1/users
+<samp>{
+    &#34;error&#34;: {
+        &#34;email&#34;: &#34;a user with this email address already exists&#34;
+    }
+}</samp></pre>
+</figure>
+
+<p>And they have the answer right there. We&rsquo;re explicitly telling the attacker that <code>alice@example.com</code> is already a user.</p>
+
+<p>So, what are the risks of leaking this information?</p>
+
+<p>The first and most obvious risk relates to user privacy. For services that are sensitive or confidential you probably don&rsquo;t want to make it obvious who has an account. The second risk is that it makes it easier for an attacker to compromise a user&rsquo;s account. Once they know a user&rsquo;s email address, they can potentially:</p>
+
+<ul>
+<li>Target the user via social engineering or another type of tailored attack to get their password.</li>
+<li>Search for the email address in leaked password tables, and try those same passwords on our service.</li>
+</ul>
+
+<p>Preventing enumeration attacks typically requires two things:</p>
+
+<ol>
+<li>Making sure that the response sent to the client is always exactly the same, irrespective of whether a user exists or not. Generally, this means changing your response wording to be ambiguous, and notifying the user of any problems in a side-channel (such as sending them an email to inform them that they already have an account).</li>
+<li>Making sure that the <em>time taken</em> to send the response is always the same, irrespective of whether a user exists or not. In Go, this generally means offloading work to a background goroutine.</li>
+</ol>
+
+<p>These mitigations, unfortunately, tend to increase the complexity of your application and add friction and obscurity to your workflows. For all your regular users who are not attackers, they&rsquo;re a negative from a UX point of view. You have to ask: <em>is it worth the trade-off?</em></p>
+
+<p>There are a few things to think about when answering this question. How important is user privacy in your application? How attractive (high-value) is a compromised account to an attacker? How important is it to reduce friction in your user workflows? The answers to those questions will vary from project-to-project, and will help form the basis for your decision.</p>
+
+<p>It&rsquo;s worth noting that many big-name services, including Twitter, GitHub and Amazon, don&rsquo;t prevent user enumeration (at least not on their registration pages). I&rsquo;m not suggesting that this makes it OK &mdash; just that those companies have decided that the additional friction for the user is worse than the privacy and security risks <em>in their specific case</em>.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="12.02-setting-up-the-users-model.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="13.00-sending-emails.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "12.02-setting-up-the-users-model.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "13.00-sending-emails.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

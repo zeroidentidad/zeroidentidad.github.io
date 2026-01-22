@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Rate limiting &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; Rate limiting</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="09.08.returning-pagination-metadata.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="10.01-global-rate-limiting.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 10.</div>
+			<h1 id="rate-limiting">Rate limiting</h1>
+
+<p>If you&rsquo;re building an API for public use, then it&rsquo;s quite likely that you&rsquo;ll want to implement some form of <em>rate limiting</em> to prevent clients from making <em>too many requests too quickly</em>, and putting excessive strain on your server.</p>
+
+<p>In this section of the book we&rsquo;re going to create some middleware to help with that.</p>
+
+<p>Essentially, we want this middleware to check how many requests have been received in the last &lsquo;N&rsquo; seconds and &mdash; if there have been too many &mdash; then it should send the client a <code>429 Too Many Requests</code> response. We&rsquo;ll position this middleware before our main application handlers, so that it carries out this check <em>before</em> we do any expensive processing like decoding a JSON request body or querying our database.</p>
+
+<p>You&rsquo;ll learn:</p>
+
+<ul>
+<li><p>About the principles behind <em>token-bucket</em> rate limiter algorithms and how we can apply them in the context of an API or web application.</p></li>
+
+<li><p>How to create middleware to rate-limit requests to your API endpoints, first by making a single global rate limiter, then extending it to support per-client limiting based on IP address.</p></li>
+
+<li><p>How to make rate limiter behavior configurable at runtime, including disabling the rate limiter altogether for testing purposes.</p></li>
+</ul>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="09.08.returning-pagination-metadata.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="10.01-global-rate-limiting.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "09.08.returning-pagination-metadata.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "10.01-global-rate-limiting.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

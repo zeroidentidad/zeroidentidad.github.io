@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Creating additional activation tokens &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="21.00-appendices.html">Appendices</a> &rsaquo; Creating additional activation tokens</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="21.01-managing-password-resets.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="21.03-authentication-with-json-web-tokens.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 21.2.</div>
+			<h2 id="creating-additional-activation-tokens">Creating additional activation tokens</h2>
+
+<p>You may also want to add a standalone endpoint to your API for generating activation tokens. This can be useful in scenarios where a user doesn&rsquo;t activate their account in time, or they never receive their welcome email.</p>
+
+<p>In this appendix, we&rsquo;ll quickly run through the code for doing that, and add the following endpoint:</p>
+
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>URL Pattern</th>
+<th>Handler</th>
+<th>Action</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td>POST</td>
+<td>/v1/tokens/activation</td>
+<td>createActivationTokenHandler</td>
+<td>Generate a new activation token</td>
+</tr>
+</tbody>
+</table>
+<p>The code for the <code>createActivationTokenHandler</code> handler should look like this:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/tokens.go</figcaption>
+<pre>
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">createActivationTokenHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Parse and validate the user&#39;s email address.
+</span><span class="c1"></span>    <span class="kd">var</span> <span class="nx">input</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">Email</span> <span class="kt">string</span> <span class="s">`</span><span class="s">json:&#34;email&#34;</span><span class="s">`</span>
+    <span class="p">}</span>
+
+    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">input</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">badRequestResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="nx">v</span> <span class="o">:=</span> <span class="nx">validator</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="nx">data</span><span class="p">.</span><span class="nf">ValidateEmail</span><span class="p">(</span><span class="nx">v</span><span class="p">,</span> <span class="nx">input</span><span class="p">.</span><span class="nx">Email</span><span class="p">)</span><span class="p">;</span> <span class="p">!</span><span class="nx">v</span><span class="p">.</span><span class="nf">Valid</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">failedValidationResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nx">Errors</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Try to retrieve the corresponding user record for the email address. If it can&#39;t
+</span><span class="c1"></span>    <span class="c1">// be found, return an error message to the client.
+</span><span class="c1"></span>    <span class="nx">user</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Users</span><span class="p">.</span><span class="nf">GetByEmail</span><span class="p">(</span><span class="nx">input</span><span class="p">.</span><span class="nx">Email</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">switch</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">data</span><span class="p">.</span><span class="nx">ErrRecordNotFound</span><span class="p">)</span><span class="p">:</span>
+            <span class="nx">v</span><span class="p">.</span><span class="nf">AddError</span><span class="p">(</span><span class="s">&#34;email&#34;</span><span class="p">,</span> <span class="s">&#34;no matching email address found&#34;</span><span class="p">)</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">failedValidationResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nx">Errors</span><span class="p">)</span>
+        <span class="k">default</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="p">}</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Return an error if the user has already been activated.
+</span><span class="c1"></span>    <span class="k">if</span> <span class="nx">user</span><span class="p">.</span><span class="nx">Activated</span> <span class="p">{</span>
+        <span class="nx">v</span><span class="p">.</span><span class="nf">AddError</span><span class="p">(</span><span class="s">&#34;email&#34;</span><span class="p">,</span> <span class="s">&#34;user has already been activated&#34;</span><span class="p">)</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">failedValidationResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nx">Errors</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Otherwise, create a new activation token.
+</span><span class="c1"></span>    <span class="nx">token</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Tokens</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="nx">user</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span> <span class="mi">3</span><span class="o">*</span><span class="mi">24</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Hour</span><span class="p">,</span> <span class="nx">data</span><span class="p">.</span><span class="nx">ScopeActivation</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Email the user with their additional activation token.
+</span><span class="c1"></span>    <span class="nx">app</span><span class="p">.</span><span class="nf">background</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">data</span> <span class="o">:=</span> <span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="nx">any</span><span class="p">{</span>
+            <span class="s">&#34;activationToken&#34;</span><span class="p">:</span> <span class="nx">token</span><span class="p">.</span><span class="nx">Plaintext</span><span class="p">,</span>
+        <span class="p">}</span>
+
+        <span class="c1">// Since email addresses MAY be case sensitive, notice that we are sending this 
+</span><span class="c1"></span>        <span class="c1">// email using the address stored in our database for the user --- not to the 
+</span><span class="c1"></span>        <span class="c1">// input.Email address provided by the client in this request.
+</span><span class="c1"></span>        <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">mailer</span><span class="p">.</span><span class="nf">Send</span><span class="p">(</span><span class="nx">user</span><span class="p">.</span><span class="nx">Email</span><span class="p">,</span> <span class="s">&#34;token_activation.tmpl&#34;</span><span class="p">,</span> <span class="nx">data</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="p">}</span>
+    <span class="p">}</span><span class="p">)</span>
+
+    <span class="c1">// Send a 202 Accepted response and confirmation message to the client.
+</span><span class="c1"></span>    <span class="nx">env</span> <span class="o">:=</span> <span class="nx">envelope</span><span class="p">{</span><span class="s">&#34;message&#34;</span><span class="p">:</span> <span class="s">&#34;an email will be sent to you containing activation instructions&#34;</span><span class="p">}</span>
+
+    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">writeJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusAccepted</span><span class="p">,</span> <span class="nx">env</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>You&rsquo;ll also need to create an <code>internal/mailer/templates/token_activation.tmpl</code> file containing the necessary email templates, similar to this:</p>
+
+<figure class="code plain">
+<figcaption>File: internal/mailer/templates/token_activation.tmpl</figcaption>
+<pre>{{define &#34;subject&#34;}}Activate your Greenlight account{{end}}
+
+{{define &#34;plainBody&#34;}}
+Hi,
+
+Please send a `PUT /v1/users/activated` request with the following JSON body to activate your account:
+
+{&#34;token&#34;: &#34;{{.activationToken}}&#34;}
+
+Please note that this is a one-time use token and it will expire in 3 days.
+
+Thanks,
+
+The Greenlight Team
+{{end}}
+
+{{define &#34;htmlBody&#34;}}
+&lt;!doctype html&gt;
+&lt;html&gt;
+  &lt;head&gt;
+    &lt;meta name=&#34;viewport&#34; content=&#34;width=device-width&#34; /&gt;
+    &lt;meta http-equiv=&#34;Content-Type&#34; content=&#34;text/html; charset=UTF-8&#34; /&gt;
+  &lt;/head&gt;
+  &lt;body&gt;
+    &lt;p&gt;Hi,&lt;/p&gt;
+    &lt;p&gt;Please send a &lt;code&gt;PUT /v1/users/activated&lt;/code&gt; request with the following JSON body to activate your account:&lt;/p&gt;
+    &lt;pre&gt;&lt;code&gt;
+    {&#34;token&#34;: &#34;{{.activationToken}}&#34;}
+    &lt;/code&gt;&lt;/pre&gt; 
+    &lt;p&gt;Please note that this is a one-time use token and it will expire in 3 days.&lt;/p&gt;
+    &lt;p&gt;Thanks,&lt;/p&gt;
+    &lt;p&gt;The Greenlight Team&lt;/p&gt;
+  &lt;/body&gt;
+&lt;/html&gt;
+{{end}}</pre>
+</figure>
+
+<p>And update the <code>cmd/api/routes.go</code> file to include the new endpoint:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/routes.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">routes</span><span class="p">(</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span> <span class="p">{</span>
+    <span class="nx">router</span> <span class="o">:=</span> <span class="nx">httprouter</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nx">NotFound</span> <span class="p">=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">notFoundResponse</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nx">MethodNotAllowed</span> <span class="p">=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">methodNotAllowedResponse</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/healthcheck&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">healthcheckHandler</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/movies&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nf">requirePermission</span><span class="p">(</span><span class="s">&#34;movies:read&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">listMoviesHandler</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span> <span class="s">&#34;/v1/movies&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nf">requirePermission</span><span class="p">(</span><span class="s">&#34;movies:write&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">createMovieHandler</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nf">requirePermission</span><span class="p">(</span><span class="s">&#34;movies:read&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">showMovieHandler</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPatch</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nf">requirePermission</span><span class="p">(</span><span class="s">&#34;movies:write&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">updateMovieHandler</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodDelete</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nf">requirePermission</span><span class="p">(</span><span class="s">&#34;movies:write&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">deleteMovieHandler</span><span class="p">)</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span> <span class="s">&#34;/v1/users&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">registerUserHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPut</span><span class="p">,</span> <span class="s">&#34;/v1/users/activated&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">activateUserHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPut</span><span class="p">,</span> <span class="s">&#34;/v1/users/password&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">updateUserPasswordHandler</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span> <span class="s">&#34;/v1/tokens/authentication&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">createAuthenticationTokenHandler</span><span class="p">)</span>
+    <span class="c1">// Add the POST /v1/tokens/activation endpoint.
+</span><span class="c1"></span>    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span> <span class="s">&#34;/v1/tokens/activation&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">createActivationTokenHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span> <span class="s">&#34;/v1/tokens/password-reset&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">createPasswordResetTokenHandler</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">Handler</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/debug/vars&#34;</span><span class="p">,</span> <span class="nx">expvar</span><span class="p">.</span><span class="nf">Handler</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="nx">app</span><span class="p">.</span><span class="nf">metrics</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nf">recoverPanic</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nf">enableCORS</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nf">rateLimit</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nf">authenticate</span><span class="p">(</span><span class="nx">router</span><span class="p">)</span><span class="p">)</span><span class="p">)</span><span class="p">)</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Now that those things are all in place, a user can request a new activation token by submitting their email address like this:</p>
+
+<figure class="code bash">
+<pre>$ curl -X POST -d &#39;{&#34;email&#34;: &#34;bob@example.com&#34;}&#39; localhost:4000/v1/tokens/activation
+<samp>{
+    &#34;message&#34;: &#34;an email will be sent to you containing activation instructions&#34;
+}</samp></pre>
+</figure>
+
+<p>The token will be sent to them in an email, and they can then submit the token to the <code>PUT /v1/users/activated</code> endpoint to activate their account, in exactly the same way as if they received the token in their welcome email.</p>
+
+<p>If you implement an endpoint like this, it&rsquo;s important to note that this would allow users to potentially have multiple valid activation tokens &lsquo;on the go&rsquo; at any one time. That&rsquo;s fine &mdash; but you just need to make sure that you delete <em>all</em> the activation tokens for a user once they&rsquo;ve successfully activated (not just the token that they used).</p>
+
+<p>And again, if your API is the backend for a website, then you can tweak the emails and workflow to make it more intuitive by using the same kind of patterns that we&rsquo;ve talked about previously.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="21.01-managing-password-resets.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="21.03-authentication-with-json-web-tokens.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "21.01-managing-password-resets.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "21.03-authentication-with-json-web-tokens.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

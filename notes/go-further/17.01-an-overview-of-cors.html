@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>An overview of CORS &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="17.00-cross-origin-requests.html">Cross-origin requests</a> &rsaquo; An overview of CORS</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="17.00-cross-origin-requests.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="17.02-demonstrating-the-same-origin-policy.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 17.1.</div>
+			<h2 id="an-overview-of-cors">An overview of CORS</h2>
+
+<p>Before we dive into any code, or start talking about cross-origin requests specifically, let&rsquo;s take a moment to define what we mean by the term <em>origin</em>.</p>
+
+<p>Basically, if two URLs have the same <em>scheme</em>, <em>host</em> and <em>port</em> (if specified) they are said to share the same origin. To help illustrate this, let&rsquo;s compare the following URLs:</p>
+
+<table>
+<thead>
+<tr>
+<th>URL A</th>
+<th>URL B</th>
+<th>Same origin?</th>
+<th>Reason</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td><code>https://foo.com/a</code></td>
+<td><code>http://foo.com/a</code></td>
+<td>No</td>
+<td>Different scheme (<code>http</code> vs <code>https</code>)</td>
+</tr>
+
+<tr>
+<td><code>http://foo.com/a</code></td>
+<td><code>http://www.foo.com/a</code></td>
+<td>No</td>
+<td>Different host (<code>foo.com</code> vs <code>www.foo.com</code>)</td>
+</tr>
+
+<tr>
+<td><code>http://foo.com/a</code></td>
+<td><code>http://foo.com:443/a</code></td>
+<td>No</td>
+<td>Different port (no port vs <code>443</code>)</td>
+</tr>
+
+<tr>
+<td><code>http://foo.com/a</code></td>
+<td><code>http://foo.com/b</code></td>
+<td>Yes</td>
+<td>Only the path is different</td>
+</tr>
+
+<tr>
+<td><code>http://foo.com/a</code></td>
+<td><code>http://foo.com/a?b=c</code></td>
+<td>Yes</td>
+<td>Only the query string is different</td>
+</tr>
+
+<tr>
+<td><code>http://foo.com/a#b</code></td>
+<td><code>http://foo.com/a#c</code></td>
+<td>Yes</td>
+<td>Only the fragment is different</td>
+</tr>
+</tbody>
+</table>
+<p>Understanding what origins are is important because all web browsers implement a security mechanism known as the <em>same-origin policy</em>. There are some very small differences in how browsers implement this policy, but broadly speaking:</p>
+
+<ul>
+<li><p>A webpage on one origin can <em>embed</em> certain types of resources from another origin in their HTML &mdash; including images, CSS, and JavaScript files. For example, doing this in your webpage is OK:</p>
+
+<figure class="code html">
+<pre><span class="p">&lt;</span><span class="nt">img</span> <span class="na">src</span><span class="o">=</span><span class="s">&#34;http://anotherorigin.com/example.png&#34;</span> <span class="na">alt</span><span class="o">=</span><span class="s">&#34;example image&#34;</span><span class="p"></span><span class="p">&gt;</span></pre>
+</figure>
+</li>
+
+<li><p>A webpage on one origin can <em>send</em> data to a different origin. For example, it&rsquo;s OK for an HTML form in a webpage to submit data to a different origin.</p></li>
+
+<li><p>But a webpage on one origin is <em>not</em> allowed to <em>read</em> data from a different origin.</p></li>
+</ul>
+
+<p>The key thing here is the final bullet-point: the same-origin policy prevents a (potentially malicious) website on another origin from <em>reading</em> (possibly confidential) information from your website.</p>
+
+<p>It&rsquo;s important to emphasize that cross-origin <em>sending of data</em> is not prevented by the same-origin policy, despite also being dangerous. In fact, this is why CSRF attacks are possible and why we need to take additional steps to prevent them &mdash; such as using <code>SameSite</code> cookies and CSRF tokens.</p>
+
+<p>As a developer, the time that you&rsquo;re most likely to run up against the same-origin policy is when making cross-origin requests from JavaScript running in a browser.</p>
+
+<p>For example, let&rsquo;s say that you have a webpage at <code>https://foo.com</code> containing some front-end JavaScript code. If this JavaScript tries to make an HTTP request to <code>https://bar.com/data.json</code> (a different origin), then the request will be sent and processed by the <code>bar.com</code> server, but the user&rsquo;s web browser will <em>block the response</em> so that the JavaScript code from <code>https://foo.com</code> cannot see it.</p>
+
+<p>Generally speaking, the same-origin policy is an extremely useful security safeguard. But while it&rsquo;s good in the general case, in certain circumstances you might want to relax the restriction.</p>
+
+<p>For example, if you have an API at <code>api.example.com</code> and a trusted JavaScript front-end application running on <code>www.example.com</code>, then you&rsquo;ll probably want to allow cross-origin requests from the trusted <code>www.example.com</code> domain to your API.</p>
+
+<p>Or perhaps you have a completely open public API, and you want to allow cross-origin requests <em>from anywhere</em> so it&rsquo;s easy for other developers to integrate with their own websites.</p>
+
+<p>Fortunately, most modern web browsers allow you to allow or disallow specific cross-origin requests to your API by setting <code>Access-Control</code> headers on your API responses. We&rsquo;ll explain exactly how to do that and how these headers work over the next few chapters of this book.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="17.00-cross-origin-requests.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="17.02-demonstrating-the-same-origin-policy.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "17.00-cross-origin-requests.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "17.02-demonstrating-the-same-origin-policy.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

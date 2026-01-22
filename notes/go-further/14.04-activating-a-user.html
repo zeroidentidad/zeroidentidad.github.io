@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Activating a user &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="14.00-user-activation.html">User activation</a> &rsaquo; Activating a user</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="14.03-sending-activation-tokens.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="15.00-authentication.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 14.4.</div>
+			<h2 id="activating-a-user">Activating a user</h2>
+
+<p>In this chapter we&rsquo;re going to move on to the part of the activation workflow where we actually activate a user. But before we write any code, I&rsquo;d like to quickly talk about the relationship between users and tokens in our system.</p>
+
+<p>What we have is known in relational database terms as a <em>one-to-many relationship</em> &mdash; where one user may have many tokens, but a token can only belong to one user.</p>
+
+<p>When you have a one-to-many relationship like this, you&rsquo;ll potentially want to execute queries against the relationship from two different sides. In our case, for example, we might want to either:</p>
+
+<ul>
+<li>Retrieve the user associated with a token.</li>
+<li>Retrieve all tokens associated with a user.</li>
+</ul>
+
+<p>To implement these queries in your code, a clean and clear approach is to update your database models to include some additional methods, like this:</p>
+
+<figure class="code plain">
+<pre>UserModel.GetForToken(token)   → Retrieve the user associated with a token
+TokenModel.GetAllForUser(user) → Retrieve all tokens associated with a user</pre>
+</figure>
+
+<p>The nice thing about this approach is that the returned entities align with each model’s main responsibility: the <code>UserModel</code> method is returning a user, and the <code>TokenModel</code> method is returning tokens.</p>
+
+<h3 id="creating-the-activateuserhandler">Creating the activateUserHandler</h3>
+
+<p>Now that we&rsquo;ve got a very high-level idea of how we&rsquo;re going to query the user ↔ token relationship in our database models, let&rsquo;s start to build up the code for activating a user.</p>
+
+<p>In order to do this, we&rsquo;ll need to add a new <code>PUT /v1/users/activated</code> endpoint to our API:</p>
+
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>URL Pattern</th>
+<th>Handler</th>
+<th>Action</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td>GET</td>
+<td>/v1/healthcheck</td>
+<td>healthcheckHandler</td>
+<td>Show application information</td>
+</tr>
+
+<tr>
+<td>GET</td>
+<td>/v1/movies</td>
+<td>listMoviesHandler</td>
+<td>Show the details of all movies</td>
+</tr>
+
+<tr>
+<td>POST</td>
+<td>/v1/movies</td>
+<td>createMovieHandler</td>
+<td>Create a new movie</td>
+</tr>
+
+<tr>
+<td>GET</td>
+<td>/v1/movies/:id</td>
+<td>showMovieHandler</td>
+<td>Show the details of a specific movie</td>
+</tr>
+
+<tr>
+<td>PATCH</td>
+<td>/v1/movies/:id</td>
+<td>updateMovieHandler</td>
+<td>Update the details of a specific movie</td>
+</tr>
+
+<tr>
+<td>DELETE</td>
+<td>/v1/movies/:id</td>
+<td>deleteMovieHandler</td>
+<td>Delete a specific movie</td>
+</tr>
+
+<tr>
+<td>POST</td>
+<td>/v1/users</td>
+<td>registerUserHandler</td>
+<td>Register a new user</td>
+</tr>
+
+<tr>
+<td><strong>PUT</strong></td>
+<td><strong>/v1/users/activated</strong></td>
+<td><strong>activateUserHandler</strong></td>
+<td><strong>Activate a specific user</strong></td>
+</tr>
+</tbody>
+</table>
+<p>And the workflow will look like this:</p>
+
+<ol>
+<li>The user submits the plaintext activation token (which they just received in their email) to the <code>PUT /v1/users/activated</code> endpoint.</li>
+<li>We validate the plaintext token to check that it matches the expected format, sending the client an error message if necessary.</li>
+<li>We then call the <code>UserModel.GetForToken()</code> method to retrieve the details of the user associated with the provided token. If there is no matching token found, or it has expired, we send the client an error message.</li>
+<li>We activate the associated user by setting <code>activated = true</code> on the user record and update it in our database.</li>
+<li>We delete all activation tokens for the user from the <code>tokens</code> table. We can do this using the <code>TokenModel.DeleteAllForUser()</code> method that we made earlier.</li>
+<li>We send the updated user details in a JSON response.</li>
+</ol>
+
+<p>Let&rsquo;s begin in our <code>cmd/api/users.go</code> file and create the new <code>activateUserHandler</code> to work through these steps:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/users.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">activateUserHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Parse the plaintext activation token from the request body.
+</span><span class="c1"></span>    <span class="kd">var</span> <span class="nx">input</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">TokenPlaintext</span> <span class="kt">string</span> <span class="s">`</span><span class="s">json:&#34;token&#34;</span><span class="s">`</span>
+    <span class="p">}</span>
+
+    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">input</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">badRequestResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Validate the plaintext token provided by the client.
+</span><span class="c1"></span>    <span class="nx">v</span> <span class="o">:=</span> <span class="nx">validator</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="nx">data</span><span class="p">.</span><span class="nf">ValidateTokenPlaintext</span><span class="p">(</span><span class="nx">v</span><span class="p">,</span> <span class="nx">input</span><span class="p">.</span><span class="nx">TokenPlaintext</span><span class="p">)</span><span class="p">;</span> <span class="p">!</span><span class="nx">v</span><span class="p">.</span><span class="nf">Valid</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">failedValidationResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nx">Errors</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Retrieve the details of the user associated with the token using the 
+</span><span class="c1"></span>    <span class="c1">// GetForToken() method (which we will create in a minute). If no matching record
+</span><span class="c1"></span>    <span class="c1">// is found, then we let the client know that the token they provided is not valid.
+</span><span class="c1"></span>    <span class="nx">user</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Users</span><span class="p">.</span><span class="nf">GetForToken</span><span class="p">(</span><span class="nx">data</span><span class="p">.</span><span class="nx">ScopeActivation</span><span class="p">,</span> <span class="nx">input</span><span class="p">.</span><span class="nx">TokenPlaintext</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">switch</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">data</span><span class="p">.</span><span class="nx">ErrRecordNotFound</span><span class="p">)</span><span class="p">:</span>
+            <span class="nx">v</span><span class="p">.</span><span class="nf">AddError</span><span class="p">(</span><span class="s">&#34;token&#34;</span><span class="p">,</span> <span class="s">&#34;invalid or expired activation token&#34;</span><span class="p">)</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">failedValidationResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nx">Errors</span><span class="p">)</span>
+        <span class="k">default</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="p">}</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Update the user&#39;s activation status.
+</span><span class="c1"></span>    <span class="nx">user</span><span class="p">.</span><span class="nx">Activated</span> <span class="p">=</span> <span class="kc">true</span>
+
+    <span class="c1">// Save the updated user record in our database, checking for any edit conflicts in
+</span><span class="c1"></span>    <span class="c1">// the same way that we did for our movie records.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Users</span><span class="p">.</span><span class="nf">Update</span><span class="p">(</span><span class="nx">user</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">switch</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">data</span><span class="p">.</span><span class="nx">ErrEditConflict</span><span class="p">)</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">editConflictResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+        <span class="k">default</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="p">}</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// If everything went successfully, then we delete all activation tokens for the
+</span><span class="c1"></span>    <span class="c1">// user.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Tokens</span><span class="p">.</span><span class="nf">DeleteAllForUser</span><span class="p">(</span><span class="nx">data</span><span class="p">.</span><span class="nx">ScopeActivation</span><span class="p">,</span> <span class="nx">user</span><span class="p">.</span><span class="nx">ID</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Send the updated user details to the client in a JSON response.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">writeJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusOK</span><span class="p">,</span> <span class="nx">envelope</span><span class="p">{</span><span class="s">&#34;user&#34;</span><span class="p">:</span> <span class="nx">user</span><span class="p">}</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>If you try to compile the application at this point, you&rsquo;ll get an error because the <code>UserModel.GetForToken()</code> method doesn&rsquo;t yet exist. Let&rsquo;s go ahead and create that now.</p>
+
+<h3 id="the-usermodel-getfortoken-method">The UserModel.GetForToken method</h3>
+
+<p>As we mentioned above, we want the <code>UserModel.GetForToken()</code> method to retrieve the details of the user associated with a particular activation token. If there is no matching token found, or it has expired, we want this to return a <code>ErrRecordNotFound</code> error instead.</p>
+
+<p>In order to do that, we&rsquo;ll need to execute the following SQL query on our database:</p>
+
+<figure class="code plain">
+<pre>SELECT users.id, users.created_at, users.name, users.email, users.password_hash, users.activated, users.version
+FROM users
+INNER JOIN tokens
+ON users.id = tokens.user_id
+WHERE tokens.hash = $1
+AND tokens.scope = $2 
+AND tokens.expiry &gt; $3</pre>
+</figure>
+
+<p>This is more complicated than most of the SQL queries we&rsquo;ve used so far, so let&rsquo;s take a moment to explain what it is doing.</p>
+
+<p>In this query we are using <code>INNER JOIN</code> to join together information from the <code>users</code> and <code>tokens</code> tables. Specifically, we&rsquo;re using the <code>ON users.id = tokens.user_id</code> clause to specify that we want to join records <em>where the user <code>id</code> value equals the token <code>user_id</code></em>.</p>
+
+<p>Behind the scenes, you can think of <code>INNER JOIN</code> as creating an &lsquo;interim&rsquo; table containing the joined data from <em>both</em> tables. Then, in our SQL query, we use the <code>WHERE</code> clause to filter this interim table to leave only rows where the token hash and token scope match specific placeholder parameter values, and the token expiry is after a specific time. Because the token hash is also a primary key, we will always be left with exactly one record which contains the details of the user associated with the token hash (or no records at all, if there wasn&rsquo;t a matching token).</p>
+
+<aside class="hint"><p>
+<strong>Hint:</strong> If you&rsquo;re not familiar with performing joins in SQL, then <a href="https://www.dataquest.io/blog/sql-joins-tutorial/">this article</a> provides a good overview of the different types of joins, how they work, and some examples that should help assist your understanding.
+</p></aside>
+
+<p>If you&rsquo;re following along, open up your <code>internal/data/users.go</code> file and add a <code>GetForToken()</code> method which executes this SQL query like so:</p>
+
+<figure class="code go">
+<figcaption>File: internal/data/users.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">data</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;context&#34;</span>
+    <span class="s">&#34;crypto/sha256&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;database/sql&#34;</span>
+    <span class="s">&#34;errors&#34;</span>
+    <span class="s">&#34;time&#34;</span>
+
+    <span class="s">&#34;greenlight.alexedwards.net/internal/validator&#34;</span>
+
+    <span class="s">&#34;golang.org/x/crypto/bcrypt&#34;</span>
+<span class="p">)</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="nx">UserModel</span><span class="p">)</span> <span class="nf">GetForToken</span><span class="p">(</span><span class="nx">tokenScope</span><span class="p">,</span> <span class="nx">tokenPlaintext</span> <span class="kt">string</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">User</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Calculate the SHA-256 hash of the plaintext token provided by the client.
+</span><span class="c1"></span>    <span class="c1">// Remember that this returns a byte *array* with length 32, not a slice.
+</span><span class="c1"></span>    <span class="nx">tokenHash</span> <span class="o">:=</span> <span class="nx">sha256</span><span class="p">.</span><span class="nf">Sum256</span><span class="p">(</span><span class="p">[</span><span class="p">]</span><span class="nb">byte</span><span class="p">(</span><span class="nx">tokenPlaintext</span><span class="p">)</span><span class="p">)</span>
+
+    <span class="c1">// Set up the SQL query.
+</span><span class="c1"></span>    <span class="nx">query</span> <span class="o">:=</span> <span class="s">`</span><span class="s">
+</span><span class="s">        SELECT users.id, users.created_at, users.name, users.email, users.password_hash, users.activated, users.version
+</span><span class="s">        FROM users
+</span><span class="s">        INNER JOIN tokens
+</span><span class="s">        ON users.id = tokens.user_id
+</span><span class="s">        WHERE tokens.hash = $1
+</span><span class="s">        AND tokens.scope = $2 
+</span><span class="s">        AND tokens.expiry &gt; $3</span><span class="s">`</span>
+
+    <span class="c1">// Create a slice containing the query arguments. Notice how we use the [:] operator
+</span><span class="c1"></span>    <span class="c1">// to get a slice containing the token hash, rather than passing in the array (which
+</span><span class="c1"></span>    <span class="c1">// is not supported by the pq driver), and that we pass the current time as the
+</span><span class="c1"></span>    <span class="c1">// value to check against the token expiry.
+</span><span class="c1"></span>    <span class="nx">args</span> <span class="o">:=</span> <span class="p">[</span><span class="p">]</span><span class="nx">any</span><span class="p">{</span><span class="nx">tokenHash</span><span class="p">[</span><span class="p">:</span><span class="p">]</span><span class="p">,</span> <span class="nx">tokenScope</span><span class="p">,</span> <span class="nx">time</span><span class="p">.</span><span class="nf">Now</span><span class="p">(</span><span class="p">)</span><span class="p">}</span>
+
+    <span class="kd">var</span> <span class="nx">user</span> <span class="nx">User</span>
+
+    <span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="mi">3</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">)</span>
+    <span class="k">defer</span> <span class="nf">cancel</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="c1">// Execute the query, scanning the return values into a User struct. If no matching
+</span><span class="c1"></span>    <span class="c1">// record is found we return an ErrRecordNotFound error.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">m</span><span class="p">.</span><span class="nx">DB</span><span class="p">.</span><span class="nf">QueryRowContext</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">query</span><span class="p">,</span> <span class="nx">args</span><span class="o">...</span><span class="p">)</span><span class="p">.</span><span class="nf">Scan</span><span class="p">(</span>
+        <span class="o">&amp;</span><span class="nx">user</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span>
+        <span class="o">&amp;</span><span class="nx">user</span><span class="p">.</span><span class="nx">CreatedAt</span><span class="p">,</span>
+        <span class="o">&amp;</span><span class="nx">user</span><span class="p">.</span><span class="nx">Name</span><span class="p">,</span>
+        <span class="o">&amp;</span><span class="nx">user</span><span class="p">.</span><span class="nx">Email</span><span class="p">,</span>
+        <span class="o">&amp;</span><span class="nx">user</span><span class="p">.</span><span class="nx">Password</span><span class="p">.</span><span class="nx">hash</span><span class="p">,</span>
+        <span class="o">&amp;</span><span class="nx">user</span><span class="p">.</span><span class="nx">Activated</span><span class="p">,</span>
+        <span class="o">&amp;</span><span class="nx">user</span><span class="p">.</span><span class="nx">Version</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">switch</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">sql</span><span class="p">.</span><span class="nx">ErrNoRows</span><span class="p">)</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">ErrRecordNotFound</span>
+        <span class="k">default</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">err</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Return the matching user.
+</span><span class="c1"></span>    <span class="k">return</span> <span class="o">&amp;</span><span class="nx">user</span><span class="p">,</span> <span class="kc">nil</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Now that this is in place, the final thing we need to do is add the <code>PUT /v1/users/activated</code> endpoint to the <code>cmd/api/routes.go</code> file. Like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/routes.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">routes</span><span class="p">(</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span> <span class="p">{</span>
+    <span class="nx">router</span> <span class="o">:=</span> <span class="nx">httprouter</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nx">NotFound</span> <span class="p">=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">notFoundResponse</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nx">MethodNotAllowed</span> <span class="p">=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">methodNotAllowedResponse</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/healthcheck&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">healthcheckHandler</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/movies&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">listMoviesHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span> <span class="s">&#34;/v1/movies&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">createMovieHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">showMovieHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPatch</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">updateMovieHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodDelete</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">deleteMovieHandler</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span> <span class="s">&#34;/v1/users&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">registerUserHandler</span><span class="p">)</span>
+    <span class="c1">// Add the route for the PUT /v1/users/activated endpoint.
+</span><span class="c1"></span>    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPut</span><span class="p">,</span> <span class="s">&#34;/v1/users/activated&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">activateUserHandler</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="nx">app</span><span class="p">.</span><span class="nf">recoverPanic</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nf">rateLimit</span><span class="p">(</span><span class="nx">router</span><span class="p">)</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>As an aside, I should quickly explain that the reason we&rsquo;re using <code>PUT</code> rather than <code>POST</code> for this endpoint is because it&rsquo;s <em>idempotent</em>.</p>
+
+<p>If a client sends the same <code>PUT /v1/users/activated</code> request multiple times, the first will succeed (assuming the token is valid) and then any subsequent requests will result in an error being sent to the client (because the token has been used and deleted from the database). But the important thing is that <em>nothing in our application state (i.e. database) changes after that first request</em>.</p>
+
+<p>Basically, there are no application state side-effects from the client sending the same request multiple times, which means that the endpoint is idempotent and using <code>PUT</code> is more appropriate than <code>POST</code>.</p>
+
+<p>Alright, let&rsquo;s restart the API and then try this out.</p>
+
+<p>First, try making some requests to the <code>PUT /v1/users/activated</code> endpoint containing some invalid tokens. You should get the appropriate error messages in response, like so:</p>
+
+<figure class="code bash">
+<pre>$ curl -X PUT -d &#39;{&#34;token&#34;: &#34;invalid&#34;}&#39; localhost:4000/v1/users/activated
+<samp>{
+    &#34;error&#34;: {
+        &#34;token&#34;: &#34;must be 26 bytes long&#34;
+    }
+}</samp>
+
+$ curl -X PUT -d &#39;{&#34;token&#34;: &#34;ABCDEFGHIJKLMNOPQRSTUVWXYZ&#34;}&#39; localhost:4000/v1/users/activated
+<samp>{
+    &#34;error&#34;: {
+        &#34;token&#34;: &#34;invalid or expired activation token&#34;
+    }
+}</samp></pre>
+</figure>
+
+<p>Then try making a request using a valid activation token from one of your emails (which will be in your Mailtrap inbox if you&rsquo;re following along). In my case, I&rsquo;ll use the token <code>P4B3URJZJ2NW5UPZC2OHN4H2NM</code> to activate the user <code>faith@example.com</code> (who we created in the previous chapter).</p>
+
+<p>You should get a JSON response back with an <code>activated</code> field that confirms that the user has been activated, similar to this:</p>
+
+<figure class="code bash">
+<pre>$ curl -X PUT -d &#39;{&#34;token&#34;: &#34;P4B3URJZJ2NW5UPZC2OHN4H2NM&#34;}&#39; localhost:4000/v1/users/activated
+<samp>{
+    &#34;user&#34;: {
+        &#34;id&#34;: 7,
+        &#34;created_at&#34;: &#34;2021-04-15T20:25:41+02:00&#34;,
+        &#34;name&#34;: &#34;Faith Smith&#34;,
+        &#34;email&#34;: &#34;faith@example.com&#34;,
+        &#34;activated&#34;: true
+    }
+}</samp></pre>
+</figure>
+
+<p>And if you try repeating the request again with the same token, you should now get an <code>&quot;invalid or expired activation token&quot;</code> error due to the fact we have deleted all activation tokens for <code>faith@example.com</code>.</p>
+
+<figure class="code bash">
+<pre>$ curl -X PUT -d &#39;{&#34;token&#34;: &#34;P4B3URJZJ2NW5UPZC2OHN4H2NM&#34;}&#39; localhost:4000/v1/users/activated
+<samp>{
+    &#34;error&#34;: {
+        &#34;token&#34;: &#34;invalid or expired activation token&#34;
+    }
+}</samp></pre>
+</figure>
+
+<aside class="important"><p>
+<strong>Important:</strong> In production, with activation tokens for real accounts, you must make sure that the tokens are only ever accepted over an encrypted HTTPS connection &mdash; not via regular HTTP like we are using here.
+</p></aside>
+
+<p>Lastly, let&rsquo;s take a quick look in our database to see the state of our <code>users</code> table.</p>
+
+<figure class="code bash">
+<pre>$ psql $GREENLIGHT_DB_DSN
+Password for user greenlight: 
+<samp>psql (15.4 (Ubuntu 15.4-1.pgdg22.04+1))
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+Type &#34;help&#34; for help.</samp>
+
+greenlight=&gt; SELECT email, activated, version FROM users;
+<samp>       email       | activated | version 
+-------------------+-----------+---------
+ alice@example.com | f         |       1
+ bob@example.com   | f         |       1
+ carol@example.com | f         |       1
+ dave@example.com  | f         |       1
+ edith@example.com | f         |       1
+ faith@example.com | t         |       2</samp></pre>
+</figure>
+
+<p>In contrast to all the other users, we can see that <code>faith@example.com</code> has now got the value <code>activated = true</code> and the version number for their user record has been bumped up to <code>2</code>.</p>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="web-application-workflow">Web application workflow</h4>
+
+<p>If your API is the backend to a website, rather than a completely standalone service, you can tweak the activation workflow to make it simpler and more intuitive for users while still being secure.</p>
+
+<p>There are two main options here. The first, and most robust, option is to ask the user to copy-and-paste the token into a form on your website which then performs the <code>PUT /v1/users/activate</code> request for them using some JavaScript. The welcome email to support that workflow could look something like this:</p>
+
+<figure class="code plain">
+<pre>Hi,
+
+Thanks for signing up for a Greenlight account. We&#39;re excited to have you on board!
+
+For future reference, your user ID number is 123.
+
+To activate your Greenlight account please visit https://example.com/users/activate and 
+enter the following code:
+
+--------------------------
+RMMCV3MZCEBYQADXBODCLTAF6L
+--------------------------
+
+Please note that this code will expire in 3 days and can only be used once.
+
+Thanks,
+
+The Greenlight Team</pre>
+</figure>
+
+<p>This approach is fundamentally simple and secure &mdash; effectively your website just provides a form that performs the <code>PUT</code> request for the user, rather than them needing to do it manually using <code>curl</code> or another tool.</p>
+
+<aside class="note"><p>
+<strong>Note:</strong> When creating the link in this email, don&rsquo;t rely on the <code>Host</code> header from <a href="https://golang.org/pkg/net/http/#Request"><code>r.Host</code></a> to construct the URL, as that would be vulnerable to a <a href="https://portswigger.net/web-security/host-header">host header injection attack</a>. The URL domain should be either be hard-coded or passed in as a command-line flag when starting the application.
+</p></aside>
+
+<p>Alternatively, if you don&rsquo;t want the user to copy-and-paste a token, you could ask them to click a link containing the token which takes them to a page on your website. Similar to this:</p>
+
+<figure class="code plain">
+<pre>Hi,
+
+Thanks for signing up for a Greenlight account. We&#39;re excited to have you on board!
+
+For future reference, your user ID number is 123.
+
+To activate your Greenlight account please click the following link:
+
+https://example.com/users/activate?token=RMMCV3MZCEBYQADXBODCLTAF6L
+
+Please note that this link will expire in 3 days and can only be used once.
+
+Thanks,
+
+The Greenlight Team</pre>
+</figure>
+
+<p>This page should then display a button that says something like &lsquo;Confirm your account activation&rsquo;, and some JavaScript on the webpage can extract the token from the URL and submit it to your <code>PUT /v1/users/activate</code> API endpoint when the user clicks the button.</p>
+
+<p>If you go with this second option, you also need to take steps to avoid the token being <a href="https://medium.com/@shahjerry33/password-reset-token-leak-via-referrer-2e622500c2c1">leaked in a referrer header</a> if the user navigates to a different site. You can use the <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy"><code>Referrer-Policy: Origin</code></a> header or <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy#integration_with_html"><code>&lt;meta name=&quot;referrer&quot; content=&quot;origin&quot;&gt;</code></a> HTML tag to mitigate this, although you should be aware that it&rsquo;s not supported by absolutely all web browsers (support is <a href="https://caniuse.com/referrer-policy">currently at 97%</a>).</p>
+
+<p>In all cases though, whatever the email and workflow looks like in terms of the front-end and user-experience, the back-end API endpoint that we&rsquo;ve implemented is the same and doesn&rsquo;t need to change.</p>
+
+<h4 id="sql-query-timing-attack">SQL query timing attack</h4>
+
+<p>It&rsquo;s worth pointing out that the SQL query we&rsquo;re using in <code>UserModel.GetForToken()</code> is theoretically vulnerable to a timing attack, because PostgreSQL&rsquo;s evaluation of the <code>tokens.hash = $1</code> condition is not performed in constant-time.</p>
+
+<figure class="code plain">
+<pre>SELECT users.id, users.created_at, users.name, users.email, users.password_hash, users.activated, users.version
+FROM users
+INNER JOIN tokens
+ON users.id = tokens.user_id
+WHERE tokens.hash = $1    --&lt;-- This is vulnerable to a timing attack
+AND tokens.scope = $2 
+AND tokens.expiry &gt; $3</pre>
+</figure>
+
+<p>Although it would be somewhat tricky to pull off, in theory an attacker could issue thousands of requests to our <code>PUT /v1/users/activated</code> endpoint and analyze tiny discrepancies in the average response time to build up a picture of a hashed activation token value in the database.</p>
+
+<p>But, in our case, even if a timing attack was successful it would only leak the <em>hashed</em> token value from the database &mdash; not the plaintext token value that the user actually needs to submit to activate their account.</p>
+
+<p>So the attacker would still need to use brute-force to find a 26-character string which happens to have the same SHA-256 hash that they discovered from the timing attack. This is incredibly difficult to do, and not viable with current technology.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="14.03-sending-activation-tokens.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="15.00-authentication.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "14.03-sending-activation-tokens.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "15.00-authentication.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

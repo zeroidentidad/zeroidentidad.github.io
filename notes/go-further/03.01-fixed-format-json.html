@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Fixed-format JSON &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="03.00-sending-json-responses.html">Sending JSON responses</a> &rsaquo; Fixed-format JSON</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="03.00-sending-json-responses.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="03.02-json-encoding.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 3.1.</div>
+			<h2 id="fixed-format-json">Fixed-format JSON</h2>
+
+<p>Let&rsquo;s begin by updating our <code>healthcheckHandler</code> to send a well-formed JSON response that looks like this:</p>
+
+<figure class="code plain">
+<pre>{&#34;status&#34;: &#34;available&#34;, &#34;environment&#34;: &#34;development&#34;, &#34;version&#34;: &#34;1.0.0&#34;}</pre>
+</figure>
+
+<p>At this stage, the thing I&rsquo;d like to emphasize is that JSON is <em>just text</em>. Sure, it has certain control characters that give the text structure and meaning, but fundamentally, it is just text.</p>
+
+<p>So that means you can write a JSON response from your Go handlers in the same way that you would write any other text response: using <code>w.Write()</code>, <code>io.WriteString()</code> or one of the <code>fmt.Fprint</code> functions.</p>
+
+<p>In fact, the only special thing we need to do is set a <code>Content-Type: application/json</code> header on the response, so that the client knows it&rsquo;s receiving JSON and can interpret it accordingly.</p>
+
+<p>Let&rsquo;s do exactly that.</p>
+
+<p>Open up the <code>cmd/api/healthcheck.go</code> file and update the <code>healthcheckHandler</code> as follows:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/healthcheck.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;fmt&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+<span class="p">)</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">healthcheckHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Create a fixed-format JSON response from a string. Notice how we&#39;re using a raw
+</span><span class="c1"></span>    <span class="c1">// string literal (enclosed with backticks) so that we can include double quote 
+</span><span class="c1"></span>    <span class="c1">// characters in the JSON without needing to escape them? We also use the %q verb to 
+</span><span class="c1"></span>    <span class="c1">// wrap the interpolated values in double quotes.
+</span><span class="c1"></span>    <span class="nx">js</span> <span class="o">:=</span> <span class="s">`</span><span class="s">{</span><span class="s">&#34;status&#34;: &#34;available&#34;, &#34;environment&#34;: %q, &#34;version&#34;: %q}</span><span class="s">`</span>
+    <span class="nx">js</span> <span class="p">=</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="nx">js</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">config</span><span class="p">.</span><span class="nx">env</span><span class="p">,</span> <span class="nx">version</span><span class="p">)</span>
+
+    <span class="c1">// Set the &#34;Content-Type: application/json&#34; header on the response. If you forget to do
+</span><span class="c1"></span>    <span class="c1">// this, Go will default to sending a &#34;Content-Type: text/plain; charset=utf-8&#34;
+</span><span class="c1"></span>    <span class="c1">// header instead.
+</span><span class="c1"></span>    <span class="nx">w</span><span class="p">.</span><span class="nf">Header</span><span class="p">(</span><span class="p">)</span><span class="p">.</span><span class="nf">Set</span><span class="p">(</span><span class="s">&#34;Content-Type&#34;</span><span class="p">,</span> <span class="s">&#34;application/json&#34;</span><span class="p">)</span>
+
+    <span class="c1">// Write the JSON as the HTTP response body.
+</span><span class="c1"></span>    <span class="nx">w</span><span class="p">.</span><span class="nf">Write</span><span class="p">(</span><span class="p">[</span><span class="p">]</span><span class="nb">byte</span><span class="p">(</span><span class="nx">js</span><span class="p">)</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Once you&rsquo;ve made those changes, restart the API, open a second terminal, and use <code>curl</code> to make a request to the <code>GET /v1/healthcheck</code> endpoint. You should now get back a response that looks like this:</p>
+
+<figure class="code bash">
+<pre>$ curl -i localhost:4000/v1/healthcheck
+<samp>HTTP/1.1 200 OK
+Content-Type: application/json
+Date: Tue, 06 Apr 2021 08:38:12 GMT
+Content-Length: 73
+
+{&#34;status&#34;: &#34;available&#34;, &#34;environment&#34;: &#34;development&#34;, &#34;version&#34;: &#34;1.0.0&#34;}</samp></pre>
+</figure>
+
+<p>You might also like to try visiting <a href="http://localhost:4000/v1/healthcheck"><code>localhost:4000/v1/healthcheck</code></a> in your browser.</p>
+
+<p>If you&rsquo;re running one of the newer versions of Firefox, you&rsquo;ll find that it knows the response contains JSON (due to the <code>Content-Type</code> header) and it will present the response using the built-in JSON viewer. Like so:</p>
+
+<figure class="img">
+<img src="assets/img/03.01-01.png" alt="03.01-01.png" />
+</figure>
+
+<p>If you click on the <strong>Raw Data</strong> tab you should see the original unformatted JSON response:</p>
+
+<figure class="img">
+<img src="assets/img/03.01-02.png" alt="03.01-02.png" />
+</figure>
+
+<p>Or you can even select the <strong>Pretty Print</strong> option to add whitespace, like so:</p>
+
+<figure class="img">
+<img src="assets/img/03.01-03.png" alt="03.01-03.png" />
+</figure>
+
+<p>Of course, using a fixed-format string like we are in this chapter is a pretty simple and lo-fi approach to generating a JSON response. But it&rsquo;s worth remembering that it <em>is</em> a valid option. It can be useful for API endpoints that always return the same static JSON, or as a quick and easy way to generate small dynamic responses like we have here.</p>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="json-charset">JSON charset</h4>
+
+<p>In your programming career you might have come across other JSON APIs which send responses with the header <code>Content-Type: application/json; charset=utf-8</code>.</p>
+
+<p>Including a <code>charset</code> parameter like this isn&rsquo;t normally necessary. The <a href="https://tools.ietf.org/html/rfc8259#section-8.1">JSON RFC</a> states:</p>
+
+<blockquote>
+<p>JSON text exchanged between systems that are not part of a closed ecosystem MUST be encoded using UTF-8.</p>
+</blockquote>
+
+<p>The important word here is &ldquo;must&rdquo;. Because our API will be a public-facing application, it means that our JSON responses must always be UTF-8 encoded. And it also means that <em>it&rsquo;s safe for the client to assume that the responses it gets are always UTF-8 encoded</em>. Because of this, including a <code>charset=utf-8</code> parameter is redundant.</p>
+
+<p>The RFC <a href="https://tools.ietf.org/html/rfc8259#page-11">also explicitly notes</a> that the <code>application/json</code> media type does not have a <code>charset</code> parameter defined, which means that it is technically incorrect to include one too.</p>
+
+<p>Basically, in our application a <code>charset</code> parameter serves no purpose, and it&rsquo;s safe (and also correct) to not include one in our <code>Content-Type: application/json</code> header.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="03.00-sending-json-responses.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="03.02-json-encoding.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "03.00-sending-json-responses.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "03.02-json-encoding.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

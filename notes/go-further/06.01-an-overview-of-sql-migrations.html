@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>An overview of SQL migrations &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="06.00-sql-migrations.html">SQL migrations</a> &rsaquo; An overview of SQL migrations</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="06.00-sql-migrations.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="06.02-working-with-sql-migrations.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 6.1.</div>
+			<h2 id="an-overview-of-sql-migrations">An overview of SQL migrations</h2>
+
+<p>In case you&rsquo;re not familiar with the idea of SQL migrations, at a very high level the concept works like this:</p>
+
+<ol>
+<li><p>For every change that you want to make to your database schema (like creating a table, adding a column, or removing an unused index) you create a pair of <em>migration files</em>. One file is the &lsquo;up&rsquo; migration which contains the SQL statements necessary to implement the change, and the other is a &lsquo;down&rsquo; migration which contains the SQL statements to reverse (or <em>roll back</em>) the change.</p></li>
+
+<li><p>Each pair of migration files is numbered sequentially, usually <code>0001, 0002, 0003...</code> or with a <a href="https://en.wikipedia.org/wiki/Unix_time">Unix timestamp</a>, to indicate the order in which migrations should be applied to a database.</p></li>
+
+<li><p>You use some kind of tool or script to execute or roll back the SQL statements in the sequential migration files against your database. The tool keeps track of which migrations have already been applied, so that only the necessary SQL statements are actually executed.</p></li>
+</ol>
+
+<p>Using migrations to manage your database schema, rather than manually executing the SQL statements yourself, has a few benefits:</p>
+
+<ul>
+<li><p>The database schema (along with its evolution and changes) is completely described by the &lsquo;up&rsquo; and &lsquo;down&rsquo; SQL migration files. And because these are just regular files containing some SQL statements, they can be included and tracked alongside the rest of your code in a version control system.</p></li>
+
+<li><p>It&rsquo;s possible to replicate the current database schema precisely on another machine by running the necessary &lsquo;up&rsquo; migrations. This is a big help when you need to manage and synchronize database schemas in different environments (development, testing, production, etc.).</p></li>
+
+<li><p>It&rsquo;s possible to roll back database schema changes if necessary by applying the appropriate &lsquo;down&rsquo; migrations.</p></li>
+</ul>
+
+<h3 id="installing-the-migrate-tool">Installing the migrate tool</h3>
+
+<p>To manage SQL migrations in this project we&rsquo;re going to use the <a href="https://github.com/golang-migrate/migrate"><code>migrate</code></a> command-line tool.</p>
+
+<p>Detailed installation instructions for different operating systems <a href="https://github.com/golang-migrate/migrate/tree/master/cmd/migrate">can be found here</a>, but on macOS you should be able to install it with the command:</p>
+
+<figure class="code bash">
+<pre>$ brew install golang-migrate</pre>
+</figure>
+
+<p>And on Linux and Windows, the easiest method is to download a <a href="https://github.com/golang-migrate/migrate/releases">pre-built binary</a> and move it to a location on your system path. For example, on Linux:</p>
+
+<figure class="code bash">
+<pre>$ cd /tmp
+$ curl -L https://github.com/golang-migrate/migrate/releases/download/v4.16.2/migrate.linux-amd64.tar.gz | tar xvz
+$ mv migrate ~/go/bin/</pre>
+</figure>
+
+<p>Before you continue, please check that it&rsquo;s available and working on your machine by trying to execute the <code>migrate</code> binary with the <code>-version</code> flag. It should output the current version number similar to this:</p>
+
+<figure class="code bash">
+<pre>$ migrate -version
+<samp>4.16.2</samp></pre>
+</figure>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="adding-migrate-as-a-module-tool-dependency">Adding migrate as a module tool dependency</h4>
+
+<p>The <code>migrate</code> tool itself is written in Go, which means that &mdash; in theory &mdash; you could use the <code>go get -tool</code> command to add <code>migrate</code> as a <a href="https://www.alexedwards.net/blog/how-to-manage-tool-dependencies-in-go-1.24-plus">tool dependency</a> to your <code>go.mod</code> file, instead of installing it as a binary like we have done.</p>
+
+<p>But we haven&rsquo;t done this for two reasons:</p>
+
+<ol>
+<li><p>At the time of writing, it&rsquo;s not possible to actually run <code>migrate</code> as a tool dependency due to the fact that the <code>go tool</code> command doesn&rsquo;t currently support build tags. There&rsquo;s an open issue about this <a href="https://github.com/golang-migrate/migrate/issues/1232">here</a>.</p></li>
+
+<li><p>The <code>migrate</code> codebase has a <em>ton</em> of child dependencies. If you add it to your <code>go.mod</code> as a tool dependency, and you also want to vendor dependencies (which we will do later in the book), it will bloat your repository by around 280MB.</p></li>
+</ol>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="06.00-sql-migrations.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="06.02-working-with-sql-migrations.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "06.00-sql-migrations.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "06.02-working-with-sql-migrations.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Creating custom metrics &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="18.00-metrics.html">Metrics</a> &rsaquo; Creating custom metrics</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="18.01-exposing-metrics-with-expvar.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="18.03-request-level-metrics.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 18.2.</div>
+			<h2 id="creating-custom-metrics">Creating custom metrics</h2>
+
+<p>The default information exposed by the <code>expvar</code> handler is a good start, but we can make it even more useful by exposing some additional custom metrics in the JSON response.</p>
+
+<p>To illustrate this, we&rsquo;ll start really simple and first expose our application version number in the JSON. If you don&rsquo;t remember, the version number is currently defined as the string constant <code>&quot;1.0.0&quot;</code> in our <code>main.go</code> file.</p>
+
+<p>The code to do this breaks down into two basic steps: first we need to register a custom variable with the <code>expvar</code> package, and then we need to set the value for the variable itself. In one line, the code looks roughly like this:</p>
+
+<figure class="code go">
+<pre><span class="nx">expvar</span><span class="p">.</span><span class="nf">NewString</span><span class="p">(</span><span class="s">&#34;version&#34;</span><span class="p">)</span><span class="p">.</span><span class="nf">Set</span><span class="p">(</span><span class="nx">version</span><span class="p">)</span></pre>
+</figure>
+
+<p>The first part of this &mdash; <code>expvar.NewString(&quot;version&quot;)</code> &mdash; creates a new <a href="https://golang.org/pkg/expvar/#String"><code>expvar.String</code></a> type, then <em>publishes it</em> so it appears in the <code>expvar</code> handler&rsquo;s JSON response with the name <code>&quot;version&quot;</code>, and then returns a pointer to it. Then we use the <code>Set()</code> method on it to assign an actual value to the pointer.</p>
+
+<p>Two other things to note:</p>
+
+<ul>
+<li>The <code>expvar.String</code> type is safe for concurrent use. So &mdash; if you want to &mdash; it&rsquo;s OK to manipulate this value at runtime from your application handlers.</li>
+<li>If you try to register two <code>expvar</code> variables with the same name, you&rsquo;ll get a runtime panic when the duplicate variable is registered.</li>
+</ul>
+
+<p>Let&rsquo;s go ahead and integrate this code into our <code>main()</code> function, like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/main.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;context&#34;</span>
+    <span class="s">&#34;database/sql&#34;</span>
+    <span class="s">&#34;expvar&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;flag&#34;</span>
+    <span class="s">&#34;log/slog&#34;</span>
+    <span class="s">&#34;os&#34;</span>
+    <span class="s">&#34;strings&#34;</span>
+    <span class="s">&#34;sync&#34;</span>
+    <span class="s">&#34;time&#34;</span>
+
+    <span class="s">&#34;greenlight.alexedwards.net/internal/data&#34;</span>
+    <span class="s">&#34;greenlight.alexedwards.net/internal/mailer&#34;</span>
+
+    <span class="nx">_</span> <span class="s">&#34;github.com/lib/pq&#34;</span>
+<span class="p">)</span>
+
+<span class="c1">// Remember, our version number is just a constant string (for now).
+</span><span class="c1"></span><span class="kd">const</span> <span class="nx">version</span> <span class="p">=</span> <span class="s">&#34;1.0.0&#34;</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="nf">main</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+    <span class="o">...</span>
+
+    <span class="c1">// Publish a new &#34;version&#34; variable in the expvar handler containing our application
+</span><span class="c1"></span>    <span class="c1">// version number (currently the constant &#34;1.0.0&#34;).
+</span><span class="c1"></span>    <span class="nx">expvar</span><span class="p">.</span><span class="nf">NewString</span><span class="p">(</span><span class="s">&#34;version&#34;</span><span class="p">)</span><span class="p">.</span><span class="nf">Set</span><span class="p">(</span><span class="nx">version</span><span class="p">)</span>
+
+    <span class="nx">app</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">application</span><span class="p">{</span>
+        <span class="nx">config</span><span class="p">:</span> <span class="nx">cfg</span><span class="p">,</span>
+        <span class="nx">logger</span><span class="p">:</span> <span class="nx">logger</span><span class="p">,</span>
+        <span class="nx">models</span><span class="p">:</span> <span class="nx">data</span><span class="p">.</span><span class="nf">NewModels</span><span class="p">(</span><span class="nx">db</span><span class="p">)</span><span class="p">,</span>
+        <span class="nx">mailer</span><span class="p">:</span> <span class="nx">mailer</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">serve</span><span class="p">(</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="nx">os</span><span class="p">.</span><span class="nf">Exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="o">...</span></pre>
+</figure>
+
+<p>If you restart the API and visit <a href="http://localhost:4000/debug/vars"><code>http://localhost:4000/debug/vars</code></a> in your web browser again, you should now see a <code>&quot;version&quot;: &quot;1.0.0&quot;</code> item in the JSON.</p>
+
+<p>Similar to this:</p>
+
+<figure class="img">
+<img src="assets/img/18.02-01.png" alt="18.02-01.png" />
+</figure>
+
+<aside class="hint"><p>
+<strong>Note:</strong> In the code above we used the <code>expvar.NewString()</code> function to register and publish a string in the <code>expvar</code> handler. But Go also provides functions for a few other common data types: <a href="https://golang.org/pkg/expvar/#NewFloat"><code>NewFloat()</code></a>, <a href="https://golang.org/pkg/expvar/#NewInt"><code>NewInt()</code></a> and <a href="https://golang.org/pkg/expvar/#NewMap"><code>NewMap()</code></a>. All these work in a very similar way, and we&rsquo;ll put them to use in the next chapter.
+</p></aside>
+
+<h3 id="dynamic-metrics">Dynamic metrics</h3>
+
+<p>Occasionally you might want to publish metrics which require you to call other code &mdash; or do some kind of pre-processing &mdash; to generate the necessary information. To help with this there is the <a href="https://golang.org/pkg/expvar/#Publish"><code>expvar.Publish()</code></a> function, which allows you to publish the <em>result of a function</em> in the JSON output.</p>
+
+<p>For example, if you want to publish the number of currently active goroutines from Go&rsquo;s <a href="https://golang.org/pkg/runtime/#NumGoroutine"><code>runtime.NumGoroutine()</code></a> function, you could write the following code:</p>
+
+<figure class="code go">
+<pre><span class="nx">expvar</span><span class="p">.</span><span class="nf">Publish</span><span class="p">(</span><span class="s">&#34;goroutines&#34;</span><span class="p">,</span> <span class="nx">expvar</span><span class="p">.</span><span class="nf">Func</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="p">)</span> <span class="nx">any</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="nx">runtime</span><span class="p">.</span><span class="nf">NumGoroutine</span><span class="p">(</span><span class="p">)</span>
+<span class="p">}</span><span class="p">)</span><span class="p">)</span></pre>
+</figure>
+
+<p>It&rsquo;s important to point out here that the <code>any</code> value returned from this function <em>must</em> encode to JSON without any errors. If it can&rsquo;t be encoded to JSON, then it will be omitted from the <code>expvar</code> output and the response from the <code>GET /debug/vars</code> endpoint will be malformed. Any error will be silently discarded.</p>
+
+<p>In the case of the code snippet above, <code>runtime.NumGoroutine()</code> returns a regular <code>int</code> type &mdash; which will encode to a JSON number. So there&rsquo;s no problem with that here.</p>
+
+<p>OK, let&rsquo;s add this code to our <code>main()</code> function, along with two other functions which:</p>
+
+<ul>
+<li>Publish information about the state of our database connection pool (such as the number of idle and in-use connections) via the <a href="https://golang.org/pkg/database/sql/#DB.Stats"><code>db.Stats()</code></a> method.</li>
+<li>Publish the current Unix timestamp with second precision.</li>
+</ul>
+
+<figure class="code go">
+<figcaption>File: cmd/api/main.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;context&#34;</span>
+    <span class="s">&#34;database/sql&#34;</span>
+    <span class="s">&#34;expvar&#34;</span>
+    <span class="s">&#34;flag&#34;</span>
+    <span class="s">&#34;log/slog&#34;</span>
+    <span class="s">&#34;os&#34;</span>
+    <span class="s">&#34;runtime&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;strings&#34;</span>
+    <span class="s">&#34;sync&#34;</span>
+    <span class="s">&#34;time&#34;</span>
+
+    <span class="s">&#34;greenlight.alexedwards.net/internal/data&#34;</span>
+    <span class="s">&#34;greenlight.alexedwards.net/internal/mailer&#34;</span>
+
+    <span class="nx">_</span> <span class="s">&#34;github.com/lib/pq&#34;</span>
+<span class="p">)</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="nf">main</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+    <span class="o">...</span>
+
+    <span class="nx">expvar</span><span class="p">.</span><span class="nf">NewString</span><span class="p">(</span><span class="s">&#34;version&#34;</span><span class="p">)</span><span class="p">.</span><span class="nf">Set</span><span class="p">(</span><span class="nx">version</span><span class="p">)</span>
+
+    <span class="c1">// Publish the number of active goroutines.
+</span><span class="c1"></span>    <span class="nx">expvar</span><span class="p">.</span><span class="nf">Publish</span><span class="p">(</span><span class="s">&#34;goroutines&#34;</span><span class="p">,</span> <span class="nx">expvar</span><span class="p">.</span><span class="nf">Func</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="p">)</span> <span class="nx">any</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">runtime</span><span class="p">.</span><span class="nf">NumGoroutine</span><span class="p">(</span><span class="p">)</span>
+    <span class="p">}</span><span class="p">)</span><span class="p">)</span>
+
+    <span class="c1">// Publish the database connection pool statistics.
+</span><span class="c1"></span>    <span class="nx">expvar</span><span class="p">.</span><span class="nf">Publish</span><span class="p">(</span><span class="s">&#34;database&#34;</span><span class="p">,</span> <span class="nx">expvar</span><span class="p">.</span><span class="nf">Func</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="p">)</span> <span class="nx">any</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">db</span><span class="p">.</span><span class="nf">Stats</span><span class="p">(</span><span class="p">)</span>
+    <span class="p">}</span><span class="p">)</span><span class="p">)</span>
+
+    <span class="c1">// Publish the current Unix timestamp.
+</span><span class="c1"></span>    <span class="nx">expvar</span><span class="p">.</span><span class="nf">Publish</span><span class="p">(</span><span class="s">&#34;timestamp&#34;</span><span class="p">,</span> <span class="nx">expvar</span><span class="p">.</span><span class="nf">Func</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="p">)</span> <span class="nx">any</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">time</span><span class="p">.</span><span class="nf">Now</span><span class="p">(</span><span class="p">)</span><span class="p">.</span><span class="nf">Unix</span><span class="p">(</span><span class="p">)</span>
+    <span class="p">}</span><span class="p">)</span><span class="p">)</span>
+
+    <span class="nx">app</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">application</span><span class="p">{</span>
+        <span class="nx">config</span><span class="p">:</span> <span class="nx">cfg</span><span class="p">,</span>
+        <span class="nx">logger</span><span class="p">:</span> <span class="nx">logger</span><span class="p">,</span>
+        <span class="nx">models</span><span class="p">:</span> <span class="nx">data</span><span class="p">.</span><span class="nf">NewModels</span><span class="p">(</span><span class="nx">db</span><span class="p">)</span><span class="p">,</span>
+        <span class="nx">mailer</span><span class="p">:</span> <span class="nx">mailer</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">serve</span><span class="p">(</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="nx">os</span><span class="p">.</span><span class="nf">Exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="o">...</span></pre>
+</figure>
+
+<p>If you restart the API and open the <code>GET /debug/vars</code> endpoint in your browser again, you should now see the additional <code>&quot;database&quot;</code>,  <code>&quot;goroutines&quot;</code> and <code>&quot;timestamp&quot;</code> items in the JSON. Like so:</p>
+
+<figure class="img">
+<img src="assets/img/18.02-02.png" alt="18.02-02.png" />
+</figure>
+
+<p>In my case, I can see that the application currently has 8 active goroutines, and the database connection pool is in its &lsquo;initial&rsquo; state with just one currently idle connection (which was created when our code called <code>db.PingContext()</code> on startup).</p>
+
+<p>If you like, you can use a tool like <a href="https://github.com/rakyll/hey">hey</a> to generate some requests to your application and see how these figures change under load. For example, you can send a batch of requests to the <code>POST /v1/tokens/authentication</code> endpoint (which is slow and costly because it checks a bcrypt-hashed password) like so:</p>
+
+<figure class="code bash">
+<pre>$ BODY=&#39;{&#34;email&#34;: &#34;alice@example.com&#34;, &#34;password&#34;: &#34;pa55word&#34;}&#39;
+$ hey -d &#34;$BODY&#34; -m &#34;POST&#34; http://localhost:4000/v1/tokens/authentication
+<samp>
+Summary:
+  Total:        8.0979 secs
+  Slowest:      2.4612 secs
+  Fastest:      1.6169 secs
+  Average:      1.9936 secs
+  Requests/sec: 24.6977
+  
+  Total data:   24975 bytes
+  Size/request: 124 bytes
+
+Response time histogram:
+  1.617 [1]  |■
+  1.701 [6]  |■■■■■
+  1.786 [10] |■■■■■■■■■
+  1.870 [26] |■■■■■■■■■■■■■■■■■■■■■■■
+  1.955 [36] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+  2.039 [46] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+  2.123 [36] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+  2.208 [21] |■■■■■■■■■■■■■■■■■■
+  2.292 [12] |■■■■■■■■■■
+  2.377 [4]  |■■■
+  2.461 [2]  |■■
+
+
+Latency distribution:
+  10% in 1.8143 secs
+  25% in 1.8871 secs
+  50% in 1.9867 secs
+  75% in 2.1000 secs
+  90% in 2.2017 secs
+  95% in 2.2642 secs
+  99% in 2.3799 secs
+
+Details (average, fastest, slowest):
+  DNS+dialup:	0.0009 secs, 1.6169 secs, 2.4612 secs
+  DNS-lookup:	0.0005 secs, 0.0000 secs, 0.0030 secs
+  req write:	0.0002 secs, 0.0000 secs, 0.0051 secs
+  resp wait:	1.9924 secs, 1.6168 secs, 2.4583 secs
+  resp read:	0.0000 secs, 0.0000 secs, 0.0001 secs
+
+Status code distribution:
+  [201]	200 responses</samp></pre>
+</figure>
+
+<aside class="important"><p>
+<strong>Important:</strong> Make sure that your API has the rate limiter turned off by using the <code>-limiter-enabled=false</code> command-line flag, otherwise the <code>hey</code> tool will receive a lot of <code>429 Too Many Requests</code> responses.
+</p></aside>
+
+<p>If you visit the <code>GET /debug/vars</code> endpoint while the <code>hey</code> tool is running, you should see that your application metrics now look quite different:</p>
+
+<figure class="img">
+<img src="assets/img/18.02-03.png" alt="18.02-03.png" />
+</figure>
+
+<p>At the moment I took this screenshot, we can see that my API application had 118 active goroutines, with 11 database connections in use and 14 connections sitting idle.</p>
+
+<p>There are a couple of other interesting things to point out too.</p>
+
+<p>The database <code>WaitCount</code> figure of 25 is the total number of times that our application had to wait for a database connection to become available in our <code>sql.DB</code> pool (because all connections were in-use). Likewise, <code>WaitCountDuration</code> is the cumulative amount of time (in nanoseconds) spent waiting for a connection. From these, it&rsquo;s possible to calculate that <em>when our application did have to wait for a database connection, the average wait time was approximately 98 milliseconds</em>. Ideally, you want to be seeing zeroes or very low numbers for these two things under normal load in production.</p>
+
+<p>Also, the <code>MaxIdleTimeClosed</code> figure is the total count of the number of connections that have been closed because they reached their <code>ConnMaxIdleTime</code> limit (which in our case is set to 15 minutes by default). If you leave the application running but don&rsquo;t use it, and come back in 15 minutes time, you should see that the number of open connections has dropped to zero and the <code>MaxIdleTimeClosed</code> count has increased accordingly.</p>
+
+<p>You might like to play around with this and try changing some of the configuration parameters for the connection pool to see how it affects the behavior of these figures under load. For example:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api -limiter-enabled=false -db-max-open-conns=50 -db-max-idle-conns=50 -db-max-idle-time=20s -port=4000 </pre>
+</figure>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="protecting-the-metrics-endpoint">Protecting the metrics endpoint</h4>
+
+<p>It&rsquo;s important to be aware that these metrics provide very useful information to anyone who wants to perform a denial-of-service attack against your application, and that the <code>&quot;cmdline&quot;</code> values may also expose potentially sensitive information (like a database DSN).</p>
+
+<p>So you should make sure to restrict access to the <code>GET /debug/vars</code> endpoint when running in a production environment.</p>
+
+<p>There are a few different approaches you could take to do this.</p>
+
+<p>One option is to leverage our existing authentication process and create a <code>metrics:view</code> permission so that only certain trusted users can access the endpoint. Another option would be to use HTTP Basic Authentication to restrict access to the endpoint.</p>
+
+<p>In our case, when we deploy our application in production later we will run it behind <a href="https://caddyserver.com/">Caddy</a> as a reverse proxy. As part of our Caddy set up, we&rsquo;ll restrict access to the <code>GET /debug/vars</code> endpoint so that it can only be accessed via connections from the local machine, rather than being exposed on the internet.</p>
+
+<h4 id="removing-default-metrics">Removing default metrics</h4>
+
+<p>It&rsquo;s currently not possible to remove the default <code>&quot;cmdline&quot;</code> and <code>&quot;memstats&quot;</code> items from the <code>expvar</code> handler, even if you want to. There&rsquo;s an <a href="https://github.com/golang/go/issues/29105">open issue</a> regarding this, and hopefully it will become possible to omit these in a future version of Go.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="18.01-exposing-metrics-with-expvar.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="18.03-request-level-metrics.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "18.01-exposing-metrics-with-expvar.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "18.03-request-level-metrics.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

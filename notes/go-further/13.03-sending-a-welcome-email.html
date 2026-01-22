@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Sending a welcome email &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="13.00-sending-emails.html">Sending emails</a> &rsaquo; Sending a welcome email</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="13.02-creating-email-templates.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="13.04-sending-background-emails.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 13.3.</div>
+			<h2 id="sending-a-welcome-email">Sending a welcome email</h2>
+
+<p>Now that we have the content for the welcome email written, let&rsquo;s create the code to send it.</p>
+
+<p>To send emails we <em>could</em> use Go&rsquo;s <a href="https://golang.org/pkg/net/smtp/"><code>net/smtp</code></a> package from the standard library. But unfortunately it&rsquo;s been frozen for a few years, and doesn&rsquo;t support some of the features that you might need in more advanced use cases, such as adding attachments.</p>
+
+<p>So instead, I recommend using the third-party <a href="https://pkg.go.dev/github.com/wneessen/go-mail"><code>wneessen/go-mail</code></a> package to help send emails. It&rsquo;s well tested, has good documentation, and a very clear and usable API.</p>
+
+<p>If you&rsquo;re coding along, please use <code>go get</code> to download the latest release of this package:</p>
+
+<figure class="code bash">
+<pre>$ go get github.com/wneessen/go-mail@latest
+<samp>go: added github.com/wneessen/go-mail v0.6.2</samp></pre>
+</figure>
+
+<h3 id="creating-an-email-helper">Creating an email helper</h3>
+
+<p>Rather than writing all the code for sending the welcome email in our <code>registerUserHandler</code>, in this chapter we&rsquo;re going to create a new <code>internal/mailer</code> package which wraps up the logic for parsing our email templates and sending emails.</p>
+
+<p>In addition to that, we&rsquo;re also going to use Go&rsquo;s embedded files functionality, so that the email template files will be <em>built into our binary</em> when we create it later. This is really nice because it means we won&rsquo;t have to deploy these template files separately to our production server.</p>
+
+<p>It&rsquo;s probably easiest to demonstrate how this works by getting straight into the code and talking through the details as we go.</p>
+
+<p>Let&rsquo;s begin by creating a new <code>internal/mailer/mailer.go</code> file:</p>
+
+<figure class="code bash">
+<pre>$ touch internal/mailer/mailer.go</pre>
+</figure>
+
+<p>And then go ahead and add the following code:</p>
+
+<figure class="code go">
+<figcaption>File: internal/mailer/mailer.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">mailer</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;bytes&#34;</span>
+    <span class="s">&#34;embed&#34;</span>
+    <span class="s">&#34;time&#34;</span>
+
+    <span class="s">&#34;github.com/wneessen/go-mail&#34;</span>
+
+    <span class="c1">// Import the html/template and text/template packages. Because these share the same 
+</span><span class="c1"></span>    <span class="c1">// package name (&#34;template&#34;) we need to disambiguate them and alias them to ht and tt 
+</span><span class="c1"></span>    <span class="c1">// respectively.
+</span><span class="c1"></span>    <span class="nx">ht</span> <span class="s">&#34;html/template&#34;</span>
+    <span class="nx">tt</span> <span class="s">&#34;text/template&#34;</span>
+<span class="p">)</span>
+
+<span class="c1">// Below we declare a new variable with the type embed.FS (embedded file system) to hold 
+</span><span class="c1"></span><span class="c1">// our email templates. This has a comment directive in the format `//go:embed &lt;path&gt;`
+</span><span class="c1"></span><span class="c1">// IMMEDIATELY ABOVE it, which indicates to Go that we want to store the contents of the
+</span><span class="c1"></span><span class="c1">// ./templates directory in the templateFS embedded file system variable.
+</span><span class="c1"></span><span class="c1">// ↓↓↓
+</span><span class="c1"></span>
+<span class="c1">//go:embed &#34;templates&#34;
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">templateFS</span> <span class="nx">embed</span><span class="p">.</span><span class="nx">FS</span>
+
+<span class="c1">// Define a Mailer struct which contains a mail.Client instance (used to connect to a
+</span><span class="c1"></span><span class="c1">// SMTP server) and the sender information for your emails (the name and address you
+</span><span class="c1"></span><span class="c1">// want the email to be from, such as &#34;Alice Smith &lt;alice@example.com&gt;&#34;).
+</span><span class="c1"></span><span class="kd">type</span> <span class="nx">Mailer</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">client</span> <span class="o">*</span><span class="nx">mail</span><span class="p">.</span><span class="nx">Client</span>
+    <span class="nx">sender</span> <span class="kt">string</span>
+<span class="p">}</span>
+
+<span class="kd">func</span> <span class="nf">New</span><span class="p">(</span><span class="nx">host</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">port</span> <span class="kt">int</span><span class="p">,</span> <span class="nx">username</span><span class="p">,</span> <span class="nx">password</span><span class="p">,</span> <span class="nx">sender</span> <span class="kt">string</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">Mailer</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Initialize a new mail.Dialer instance with the given SMTP server settings. We 
+</span><span class="c1"></span>    <span class="c1">// also configure this to use a 5-second timeout whenever we send an email. I&#39;ve
+</span><span class="c1"></span>    <span class="c1">// split the NewClient arguments over multiple lines for readability, but you can
+</span><span class="c1"></span>    <span class="c1">// make this a single line if you prefer.
+</span><span class="c1"></span>    <span class="nx">client</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">mail</span><span class="p">.</span><span class="nf">NewClient</span><span class="p">(</span>
+        <span class="nx">host</span><span class="p">,</span>
+        <span class="nx">mail</span><span class="p">.</span><span class="nf">WithSMTPAuth</span><span class="p">(</span><span class="nx">mail</span><span class="p">.</span><span class="nx">SMTPAuthLogin</span><span class="p">)</span><span class="p">,</span>
+        <span class="nx">mail</span><span class="p">.</span><span class="nf">WithPort</span><span class="p">(</span><span class="nx">port</span><span class="p">)</span><span class="p">,</span>
+        <span class="nx">mail</span><span class="p">.</span><span class="nf">WithUsername</span><span class="p">(</span><span class="nx">username</span><span class="p">)</span><span class="p">,</span>
+        <span class="nx">mail</span><span class="p">.</span><span class="nf">WithPassword</span><span class="p">(</span><span class="nx">password</span><span class="p">)</span><span class="p">,</span>
+        <span class="nx">mail</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="mi">5</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">)</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">err</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Return a Mailer instance containing the client and sender information.
+</span><span class="c1"></span>    <span class="nx">mailer</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">Mailer</span><span class="p">{</span>
+        <span class="nx">client</span><span class="p">:</span> <span class="nx">client</span><span class="p">,</span>
+        <span class="nx">sender</span><span class="p">:</span> <span class="nx">sender</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="nx">mailer</span><span class="p">,</span> <span class="kc">nil</span>
+<span class="p">}</span>
+
+<span class="c1">// Define a Send() method on the Mailer type. This takes the recipient email address
+</span><span class="c1"></span><span class="c1">// as the first parameter, the name of the file containing the templates, and any
+</span><span class="c1"></span><span class="c1">// dynamic data for the templates as an any parameter.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="o">*</span><span class="nx">Mailer</span><span class="p">)</span> <span class="nf">Send</span><span class="p">(</span><span class="nx">recipient</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">templateFile</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">data</span> <span class="nx">any</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+    <span class="c1">// Use the ParseFS() method from text/template to parse the required template file
+</span><span class="c1"></span>    <span class="c1">// from the embedded file system.
+</span><span class="c1"></span>    <span class="nx">textTmpl</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">tt</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="s">&#34;&#34;</span><span class="p">)</span><span class="p">.</span><span class="nf">ParseFS</span><span class="p">(</span><span class="nx">templateFS</span><span class="p">,</span> <span class="s">&#34;templates/&#34;</span><span class="o">+</span><span class="nx">templateFile</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">err</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Execute the named template &#34;subject&#34;, passing in the dynamic data and storing the
+</span><span class="c1"></span>    <span class="c1">// result in a bytes.Buffer variable.
+</span><span class="c1"></span>    <span class="nx">subject</span> <span class="o">:=</span> <span class="nb">new</span><span class="p">(</span><span class="nx">bytes</span><span class="p">.</span><span class="nx">Buffer</span><span class="p">)</span>
+    <span class="nx">err</span> <span class="p">=</span> <span class="nx">textTmpl</span><span class="p">.</span><span class="nf">ExecuteTemplate</span><span class="p">(</span><span class="nx">subject</span><span class="p">,</span> <span class="s">&#34;subject&#34;</span><span class="p">,</span> <span class="nx">data</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">err</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Follow the same pattern to execute the &#34;plainBody&#34; template and store the result
+</span><span class="c1"></span>    <span class="c1">// in the plainBody variable.
+</span><span class="c1"></span>    <span class="nx">plainBody</span> <span class="o">:=</span> <span class="nb">new</span><span class="p">(</span><span class="nx">bytes</span><span class="p">.</span><span class="nx">Buffer</span><span class="p">)</span>
+    <span class="nx">err</span> <span class="p">=</span> <span class="nx">textTmpl</span><span class="p">.</span><span class="nf">ExecuteTemplate</span><span class="p">(</span><span class="nx">plainBody</span><span class="p">,</span> <span class="s">&#34;plainBody&#34;</span><span class="p">,</span> <span class="nx">data</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">err</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Use the ParseFS() method from html/template this time to parse the required template 
+</span><span class="c1"></span>    <span class="c1">// file from the embedded file system.
+</span><span class="c1"></span>    <span class="nx">htmlTmpl</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">ht</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="s">&#34;&#34;</span><span class="p">)</span><span class="p">.</span><span class="nf">ParseFS</span><span class="p">(</span><span class="nx">templateFS</span><span class="p">,</span> <span class="s">&#34;templates/&#34;</span><span class="o">+</span><span class="nx">templateFile</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">err</span>
+    <span class="p">}</span>
+
+    <span class="c1">// And execute the &#34;htmlBody&#34; template and store the result in the htmlBody variable.
+</span><span class="c1"></span>    <span class="nx">htmlBody</span> <span class="o">:=</span> <span class="nb">new</span><span class="p">(</span><span class="nx">bytes</span><span class="p">.</span><span class="nx">Buffer</span><span class="p">)</span>
+    <span class="nx">err</span> <span class="p">=</span> <span class="nx">htmlTmpl</span><span class="p">.</span><span class="nf">ExecuteTemplate</span><span class="p">(</span><span class="nx">htmlBody</span><span class="p">,</span> <span class="s">&#34;htmlBody&#34;</span><span class="p">,</span> <span class="nx">data</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">err</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Use the mail.NewMsg() function to initialize a new mail.Msg instance. 
+</span><span class="c1"></span>    <span class="c1">// Then we use the To(), From() and Subject() methods to set the email recipient, 
+</span><span class="c1"></span>    <span class="c1">// sender and subject headers, the SetBodyString() method to set the plain-text body, 
+</span><span class="c1"></span>    <span class="c1">// and the AddAlternativeString() method to set the HTML body.
+</span><span class="c1"></span>    <span class="nx">msg</span> <span class="o">:=</span> <span class="nx">mail</span><span class="p">.</span><span class="nf">NewMsg</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">err</span> <span class="p">=</span> <span class="nx">msg</span><span class="p">.</span><span class="nf">To</span><span class="p">(</span><span class="nx">recipient</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">err</span>
+    <span class="p">}</span>
+
+    <span class="nx">err</span> <span class="p">=</span> <span class="nx">msg</span><span class="p">.</span><span class="nf">From</span><span class="p">(</span><span class="nx">m</span><span class="p">.</span><span class="nx">sender</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">err</span>
+    <span class="p">}</span>
+
+    <span class="nx">msg</span><span class="p">.</span><span class="nf">Subject</span><span class="p">(</span><span class="nx">subject</span><span class="p">.</span><span class="nf">String</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">msg</span><span class="p">.</span><span class="nf">SetBodyString</span><span class="p">(</span><span class="nx">mail</span><span class="p">.</span><span class="nx">TypeTextPlain</span><span class="p">,</span> <span class="nx">plainBody</span><span class="p">.</span><span class="nf">String</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">msg</span><span class="p">.</span><span class="nf">AddAlternativeString</span><span class="p">(</span><span class="nx">mail</span><span class="p">.</span><span class="nx">TypeTextHTML</span><span class="p">,</span> <span class="nx">htmlBody</span><span class="p">.</span><span class="nf">String</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+
+    <span class="c1">// Call the DialAndSend() method on the dialer, passing in the message to send. This
+</span><span class="c1"></span>    <span class="c1">// opens a connection to the SMTP server, sends the message, then closes the
+</span><span class="c1"></span>    <span class="c1">// connection.
+</span><span class="c1"></span>    <span class="k">return</span> <span class="nx">m</span><span class="p">.</span><span class="nx">client</span><span class="p">.</span><span class="nf">DialAndSend</span><span class="p">(</span><span class="nx">msg</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<h3 id="using-embedded-file-systems">Using embedded file systems</h3>
+
+<p>Before we continue, let&rsquo;s take a quick moment to discuss embedded file systems in more detail, because there are a couple of things that can be confusing when you first encounter them.</p>
+
+<ul>
+<li><p>You can only use the <code>//go:embed</code> directive on global variables at package level, not within functions or methods. If you try to use it in a function or method, you&rsquo;ll get the error <code>&quot;go:embed cannot apply to var inside func&quot;</code> at compile time.</p></li>
+
+<li><p>When you use the directive <code>//go:embed &quot;&lt;path&gt;&quot;</code> to create an embedded file system, the path should be <em>relative to the source code file containing the directive</em>. So in our case, <code>//go:embed &quot;templates&quot;</code> embeds the contents of the directory at <code>internal/mailer/templates</code>.</p></li>
+
+<li><p>The embedded file system is rooted in the directory which contains the <code>//go:embed</code> directive. So, in our case, to get the <code>user_welcome.tmpl</code> file we need to retrieve it from <code>templates/user_welcome.tmpl</code> in the embedded file system.</p></li>
+
+<li><p>Paths cannot contain <code>.</code> or <code>..</code> elements, nor may they begin or end with a <code>/</code>. This essentially restricts you to only embedding files that are contained
+within the same directory (or a subdirectory) as the source code which has the <code>//go:embed</code> directive.</p></li>
+
+<li><p>If the path is for a directory, then all files in the directory are recursively embedded, except for files with names that begin with <code>.</code> or <code>_</code>. If you want to include these files you should use the <code>*</code> wildcard character in the path, like <code>//go:embed &quot;templates/*&quot;</code></p></li>
+
+<li><p>You can specify multiple directories and files in one directive. For example: <code>//go:embed &quot;images&quot; &quot;styles/css&quot; &quot;favicon.ico&quot;</code>.</p></li>
+
+<li><p>The path separator should always be a forward slash, even on Windows machines.</p></li>
+</ul>
+
+<h3 id="using-our-mail-helper">Using our mail helper</h3>
+
+<p>Now that our email helper package is in place, we need to hook it up to the rest of our code in the <code>cmd/api/main.go</code> file. Specifically, we need to do two things:</p>
+
+<ul>
+<li>Adapt our code to accept the configuration settings for the SMTP server as command-line flags.</li>
+<li>Initialize a new <code>Mailer</code> instance and make it available to our handlers via the <code>application</code> struct.</li>
+</ul>
+
+<p>If you&rsquo;re following along, please make sure to use your own Mailtrap SMTP server settings from the previous chapter as the default values for the command-line flags here &mdash; not the exact values I&rsquo;m using in the code below.</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/main.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;context&#34;</span>
+    <span class="s">&#34;database/sql&#34;</span>
+    <span class="s">&#34;flag&#34;</span>
+    <span class="s">&#34;log/slog&#34;</span>
+    <span class="s">&#34;os&#34;</span>
+    <span class="s">&#34;time&#34;</span>
+
+    <span class="s">&#34;greenlight.alexedwards.net/internal/data&#34;</span>
+    <span class="s">&#34;greenlight.alexedwards.net/internal/mailer&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>
+    <span class="nx">_</span> <span class="s">&#34;github.com/lib/pq&#34;</span>
+<span class="p">)</span>
+
+<span class="kd">const</span> <span class="nx">version</span> <span class="p">=</span> <span class="s">&#34;1.0.0&#34;</span>
+
+<span class="c1">// Update the config struct to hold the SMTP server settings.
+</span><span class="c1"></span><span class="kd">type</span> <span class="nx">config</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">port</span> <span class="kt">int</span>
+    <span class="nx">env</span>  <span class="kt">string</span>
+    <span class="nx">db</span>   <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">dsn</span>          <span class="kt">string</span>
+        <span class="nx">maxOpenConns</span> <span class="kt">int</span>
+        <span class="nx">maxIdleConns</span> <span class="kt">int</span>
+        <span class="nx">maxIdleTime</span>  <span class="nx">time</span><span class="p">.</span><span class="nx">Duration</span>
+    <span class="p">}</span>
+    <span class="nx">limiter</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">enabled</span> <span class="kt">bool</span>
+        <span class="nx">rps</span>     <span class="kt">float64</span>
+        <span class="nx">burst</span>   <span class="kt">int</span>
+    <span class="p">}</span>
+    <span class="nx">smtp</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">host</span>     <span class="kt">string</span>
+        <span class="nx">port</span>     <span class="kt">int</span>
+        <span class="nx">username</span> <span class="kt">string</span>
+        <span class="nx">password</span> <span class="kt">string</span>
+        <span class="nx">sender</span>   <span class="kt">string</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="c1">// Update the application struct to hold a pointer to a new Mailer instance.
+</span><span class="c1"></span><span class="kd">type</span> <span class="nx">application</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">config</span> <span class="nx">config</span>
+    <span class="nx">logger</span> <span class="o">*</span><span class="nx">slog</span><span class="p">.</span><span class="nx">Logger</span>
+    <span class="nx">models</span> <span class="nx">data</span><span class="p">.</span><span class="nx">Models</span>
+    <span class="nx">mailer</span> <span class="o">*</span><span class="nx">mailer</span><span class="p">.</span><span class="nx">Mailer</span>
+<span class="p">}</span>
+
+<span class="kd">func</span> <span class="nf">main</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">cfg</span> <span class="nx">config</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">port</span><span class="p">,</span> <span class="s">&#34;port&#34;</span><span class="p">,</span> <span class="mi">4000</span><span class="p">,</span> <span class="s">&#34;API server port&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">env</span><span class="p">,</span> <span class="s">&#34;env&#34;</span><span class="p">,</span> <span class="s">&#34;development&#34;</span><span class="p">,</span> <span class="s">&#34;Environment (development|staging|production)&#34;</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">dsn</span><span class="p">,</span> <span class="s">&#34;db-dsn&#34;</span><span class="p">,</span> <span class="nx">os</span><span class="p">.</span><span class="nf">Getenv</span><span class="p">(</span><span class="s">&#34;GREENLIGHT_DB_DSN&#34;</span><span class="p">)</span><span class="p">,</span> <span class="s">&#34;PostgreSQL DSN&#34;</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">maxOpenConns</span><span class="p">,</span> <span class="s">&#34;db-max-open-conns&#34;</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="s">&#34;PostgreSQL max open connections&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">maxIdleConns</span><span class="p">,</span> <span class="s">&#34;db-max-idle-conns&#34;</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="s">&#34;PostgreSQL max idle connections&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">DurationVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">maxIdleTime</span><span class="p">,</span> <span class="s">&#34;db-max-idle-time&#34;</span><span class="p">,</span> <span class="mi">15</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Minute</span><span class="p">,</span> <span class="s">&#34;PostgreSQL max connection idle time&#34;</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">BoolVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">limiter</span><span class="p">.</span><span class="nx">enabled</span><span class="p">,</span> <span class="s">&#34;limiter-enabled&#34;</span><span class="p">,</span> <span class="kc">true</span><span class="p">,</span> <span class="s">&#34;Enable rate limiter&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">Float64Var</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">limiter</span><span class="p">.</span><span class="nx">rps</span><span class="p">,</span> <span class="s">&#34;limiter-rps&#34;</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="s">&#34;Rate limiter maximum requests per second&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">limiter</span><span class="p">.</span><span class="nx">burst</span><span class="p">,</span> <span class="s">&#34;limiter-burst&#34;</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="s">&#34;Rate limiter maximum burst&#34;</span><span class="p">)</span>
+
+    <span class="c1">// Read the SMTP server configuration settings into the config struct, using the
+</span><span class="c1"></span>    <span class="c1">// Mailtrap settings as the default values. IMPORTANT: If you&#39;re following along,
+</span><span class="c1"></span>    <span class="c1">// make sure to replace the default values for smtp-username and smtp-password
+</span><span class="c1"></span>    <span class="c1">// with your own Mailtrap credentials.
+</span><span class="c1"></span>    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">smtp</span><span class="p">.</span><span class="nx">host</span><span class="p">,</span> <span class="s">&#34;smtp-host&#34;</span><span class="p">,</span> <span class="s">&#34;sandbox.smtp.mailtrap.io&#34;</span><span class="p">,</span> <span class="s">&#34;SMTP host&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">smtp</span><span class="p">.</span><span class="nx">port</span><span class="p">,</span> <span class="s">&#34;smtp-port&#34;</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="s">&#34;SMTP port&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">smtp</span><span class="p">.</span><span class="nx">username</span><span class="p">,</span> <span class="s">&#34;smtp-username&#34;</span><span class="p">,</span> <span class="s">&#34;a7420fc0883489&#34;</span><span class="p">,</span> <span class="s">&#34;SMTP username&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">smtp</span><span class="p">.</span><span class="nx">password</span><span class="p">,</span> <span class="s">&#34;smtp-password&#34;</span><span class="p">,</span> <span class="s">&#34;e75ffd0a3aa5ec&#34;</span><span class="p">,</span> <span class="s">&#34;SMTP password&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">smtp</span><span class="p">.</span><span class="nx">sender</span><span class="p">,</span> <span class="s">&#34;smtp-sender&#34;</span><span class="p">,</span> <span class="s">&#34;Greenlight &lt;no-reply@greenlight.alexedwards.net&gt;&#34;</span><span class="p">,</span> <span class="s">&#34;SMTP sender&#34;</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">Parse</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">logger</span> <span class="o">:=</span> <span class="nx">slog</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="nx">slog</span><span class="p">.</span><span class="nf">NewTextHandler</span><span class="p">(</span><span class="nx">os</span><span class="p">.</span><span class="nx">Stdout</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span><span class="p">)</span>
+
+    <span class="nx">db</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nf">openDB</span><span class="p">(</span><span class="nx">cfg</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="nx">os</span><span class="p">.</span><span class="nf">Exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="p">}</span>
+    <span class="k">defer</span> <span class="nx">db</span><span class="p">.</span><span class="nf">Close</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">logger</span><span class="p">.</span><span class="nf">Info</span><span class="p">(</span><span class="s">&#34;database connection pool established&#34;</span><span class="p">)</span>
+
+    <span class="c1">// Initialize a new Mailer instance using the settings from the command line
+</span><span class="c1"></span>    <span class="c1">// flags.
+</span><span class="c1"></span>    <span class="nx">mailer</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">mailer</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">smtp</span><span class="p">.</span><span class="nx">host</span><span class="p">,</span> <span class="nx">cfg</span><span class="p">.</span><span class="nx">smtp</span><span class="p">.</span><span class="nx">port</span><span class="p">,</span> <span class="nx">cfg</span><span class="p">.</span><span class="nx">smtp</span><span class="p">.</span><span class="nx">username</span><span class="p">,</span> <span class="nx">cfg</span><span class="p">.</span><span class="nx">smtp</span><span class="p">.</span><span class="nx">password</span><span class="p">,</span> <span class="nx">cfg</span><span class="p">.</span><span class="nx">smtp</span><span class="p">.</span><span class="nx">sender</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="nx">os</span><span class="p">.</span><span class="nf">Exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="c1">// And add it to the application struct.
+</span><span class="c1"></span>    <span class="nx">app</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">application</span><span class="p">{</span>
+        <span class="nx">config</span><span class="p">:</span> <span class="nx">cfg</span><span class="p">,</span>
+        <span class="nx">logger</span><span class="p">:</span> <span class="nx">logger</span><span class="p">,</span>
+        <span class="nx">models</span><span class="p">:</span> <span class="nx">data</span><span class="p">.</span><span class="nf">NewModels</span><span class="p">(</span><span class="nx">db</span><span class="p">)</span><span class="p">,</span>
+        <span class="nx">mailer</span><span class="p">:</span> <span class="nx">mailer</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">serve</span><span class="p">(</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="nx">os</span><span class="p">.</span><span class="nf">Exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="o">...</span></pre>
+</figure>
+
+<p>And then the final thing we need to do is update our <code>registerUserHandler</code> to actually send the email, which we can do like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/users.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">registerUserHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    
+    <span class="o">...</span> <span class="c1">// Nothing above here needs to change.
+</span><span class="c1"></span>
+    <span class="c1">// Call the Send() method on our Mailer, passing in the user&#39;s email address,
+</span><span class="c1"></span>    <span class="c1">// name of the template file, and the User struct containing the new user&#39;s data.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">mailer</span><span class="p">.</span><span class="nf">Send</span><span class="p">(</span><span class="nx">user</span><span class="p">.</span><span class="nx">Email</span><span class="p">,</span> <span class="s">&#34;user_welcome.tmpl&#34;</span><span class="p">,</span> <span class="nx">user</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">writeJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusCreated</span><span class="p">,</span> <span class="nx">envelope</span><span class="p">{</span><span class="s">&#34;user&#34;</span><span class="p">:</span> <span class="nx">user</span><span class="p">}</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Alright, let&rsquo;s try this out!</p>
+
+<p>Run the application, then use <code>curl</code> in another terminal window to register a brand-new user with the email address <code>bob@example.com</code>:</p>
+
+<figure class="code bash">
+<pre>$ BODY=&#39;{&#34;name&#34;: &#34;Bob Jones&#34;, &#34;email&#34;: &#34;bob@example.com&#34;, &#34;password&#34;: &#34;pa55word&#34;}&#39;
+$ curl -w &#39;\nTime: %{time_total}\n&#39; -d &#34;$BODY&#34; localhost:4000/v1/users
+<samp>{
+    &#34;user&#34;: {
+        &#34;id&#34;: 3,
+        &#34;created_at&#34;: &#34;2021-04-11T20:26:22+02:00&#34;,
+        &#34;name&#34;: &#34;Bob Jones&#34;,
+        &#34;email&#34;: &#34;bob@example.com&#34;,
+        &#34;activated&#34;: false
+    }
+}
+
+Time: 2.331957</samp></pre>
+</figure>
+
+<p>If everything is set up correctly you should get a <code>201 Created</code> response containing the new user details, similar to the response above.</p>
+
+<aside class="important"><p>
+<strong>Important:</strong> If you receive a <code>&quot;dial tcp: connect: connection refused&quot;</code> error this means that your application could not connect to the Mailtrap SMTP server. Please double check that your Mailtrap credentials are correct, or try using port <code>2525</code> instead of port <code>25</code>.
+</p></aside>
+
+<aside class="hint"><p>
+<strong>Note:</strong> I&rsquo;ve used the <code>-w</code> flag again to display the total time taken for the request to complete, which in my case was ≈ 2.3 seconds. That&rsquo;s quite a long time for an HTTP request to complete, and we&rsquo;ll speed it up in the next chapter by sending the welcome email in a background goroutine.
+</p></aside>
+
+<h3 id="checking-the-email-in-mailtrap">Checking the email in Mailtrap</h3>
+
+<p>If you&rsquo;ve been following along and are using the Mailtrap SMTP server credentials, when you go back to your account you should now see the welcome email for <code>bob@example.com</code> in your <strong>Demo inbox</strong>, like so:</p>
+
+<figure class="img">
+<img src="assets/img/13.03-01.png" alt="13.03-01.png" />
+</figure>
+
+<p>If you want, you can also click on the <strong>Text</strong> tab to see the plain-text version of the email, and the <strong>Raw</strong> tab to see the complete email including headers.</p>
+
+<p>Wrapping this up, we covered quite a lot of ground in this chapter. But the nice thing about the pattern we&rsquo;ve built is that it&rsquo;s easy to extend. If we want to send other emails from our application in the future, we can simply make an additional file in our <code>internal/mailer/templates</code> folder with the email content, and then send it from our handlers in the same way that we have done here.</p>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="retrying-email-send-attempts">Retrying email send attempts</h4>
+
+<p>If you want, you can make the email sending process a bit more robust by adding some basic &lsquo;retry&rsquo; functionality to the <code>Mailer.Send()</code> method. For example:</p>
+
+<figure class="code go">
+<pre><span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="nx">Mailer</span><span class="p">)</span> <span class="nf">Send</span><span class="p">(</span><span class="nx">recipient</span><span class="p">,</span> <span class="nx">templateFile</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">data</span> <span class="nx">any</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+    <span class="o">...</span>
+
+    <span class="c1">// Try sending the email up to three times before aborting and returning the final 
+</span><span class="c1"></span>    <span class="c1">// error. We sleep for 500 milliseconds between each attempt.
+</span><span class="c1"></span>    <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="mi">1</span><span class="p">;</span> <span class="nx">i</span> <span class="o">&lt;=</span> <span class="mi">3</span><span class="p">;</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>
+        <span class="nx">err</span> <span class="p">=</span> <span class="nx">m</span><span class="p">.</span><span class="nx">client</span><span class="p">.</span><span class="nf">DialAndSend</span><span class="p">(</span><span class="nx">msg</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nx">err</span> <span class="o">==</span> <span class="kc">nil</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="kc">nil</span>
+        <span class="p">}</span>
+
+        <span class="c1">// If it didn&#39;t work, sleep for a short time and retry.
+</span><span class="c1"></span>        <span class="k">if</span> <span class="nx">i</span> <span class="o">!=</span> <span class="mi">3</span> <span class="p">{</span>
+            <span class="nx">time</span><span class="p">.</span><span class="nf">Sleep</span><span class="p">(</span><span class="mi">500</span> <span class="o">*</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Millisecond</span><span class="p">)</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="nx">err</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>This retry functionality is a relatively simple addition to our code, but it helps to increase the probability that emails are successfully sent in the event of transient network issues. If you&rsquo;re sending emails in a background process (like we will do in the next chapter), you might want to make the sleep duration even longer here, as it won&rsquo;t materially impact the client and gives more time for transient issues to resolve.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="13.02-creating-email-templates.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="13.04-sending-background-emails.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "13.02-creating-email-templates.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "13.04-sending-background-emails.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Creating a DigitalOcean droplet &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="20.00-deployment-and-hosting.html">Deployment and hosting</a> &rsaquo; Creating a DigitalOcean droplet</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="20.00-deployment-and-hosting.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="20.02-server-configuration-and-installing-software.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 20.1.</div>
+			<h2 id="creating-a-digitalocean-droplet">Creating a DigitalOcean droplet</h2>
+
+<p>The first thing that we need to do is commission a server on DigitalOcean to host our application.</p>
+
+<p>Strictly speaking, what we&rsquo;re going to commission is actually a <em>virtual machine</em> known in DigitalOcean terminology as a <a href="https://www.digitalocean.com/products/droplets/"><em>droplet</em></a>.</p>
+
+<p>If you&rsquo;d like to follow along with this stage of the book, you&rsquo;ll need to <a href="https://cloud.digitalocean.com/registrations/new">register for a DigitalOcean account</a> if you don&rsquo;t already have one. As part of the registration process, you&rsquo;ll be prompted to confirm your email address and then add a minimum of $5 USD pre-paid credit to your account using either a credit/debit card or PayPal.</p>
+
+<p>Once you&rsquo;ve completed the registration and added the credit, you should find yourself presented with your account control panel, which should look similar to this:</p>
+
+<figure class="img">
+<img src="assets/img/20.01-02.png" alt="20.01-02.png" />
+</figure>
+
+<h3 id="creating-an-ssh-key">Creating an SSH key</h3>
+
+<p>In order to log in to droplets in your DigitalOcean account you&rsquo;ll need an <em>SSH keypair</em>.</p>
+
+<aside class="hint"><p>
+<strong>Suggestion:</strong> If you&rsquo;re unfamiliar with SSH, SSH keys, or <a href="https://en.wikipedia.org/wiki/Public-key_cryptography">public-key cryptography</a> generally, then I recommend reading through the first half of <a href="https://www.digitalocean.com/community/tutorials/ssh-essentials-working-with-ssh-servers-clients-and-keys">this guide</a> to get an overview before continuing.
+</p></aside>
+
+<p>If you already have an SSH keypair that you&rsquo;re happy to use for this purpose, then that&rsquo;s great, and you can skip ahead to the next section.</p>
+
+<p>But if you don&rsquo;t, you&rsquo;ll need to create a keypair using the <a href="https://www.ssh.com/ssh/keygen/"><code>ssh-keygen</code></a> command on your local machine. Similar to this:</p>
+
+<figure class="code bash">
+<pre>$ ssh-keygen -t rsa -b 4096 -C &#34;greenlight@greenlight.alexedwards.net&#34; -f $HOME/.ssh/id_rsa_greenlight
+<samp>Generating public/private rsa key pair.</samp>
+Enter passphrase (empty for no passphrase): 
+Enter same passphrase again: 
+<samp>Your identification has been saved in /home/alex/.ssh/id_rsa_greenlight
+Your public key has been saved in /home/alex/.ssh/id_rsa_greenlight.pub
+The key fingerprint is:
+SHA256:MXASjIyE1p2BAGZ70zkUV058rA65hm3sxdIcnWLGkwg greenlight@greenlight.alexedwards.net
+The key&#39;s randomart image is:
++---[RSA 4096]----+
+|o*+oo*Bo+o.      |
+|+.oo=E++o. o     |
+|.. o +. *.= .    |
+|  . . .+ % o     |
+|      + S +      |
+|     . B *       |
+|      + o        |
+|       .         |
+|                 |
++----[SHA256]-----+</samp></pre>
+</figure>
+
+<p>This will generate two new files in your <code>$HOME/.ssh</code> folder:</p>
+
+<ul>
+<li>The <code>$HOME/.ssh/id_rsa_greenlight</code> file contains your <em>private key</em>. Make sure to keep this secure, because anyone who has access to it will be able to impersonate you.</li>
+<li>The <code>$HOME/.ssh/id_rsa_greenlight.pub</code> file contains your <em>public key</em>. We&rsquo;ll upload a copy of this public key to DigitalOcean.</li>
+</ul>
+
+<p>If you open your public key file in a text editor you should see that the content looks similar to this (line breaks added for readability):</p>
+
+<figure class="code plain">
+<pre>ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDBheUdwyzUt056EsvUidpaGqL3zodDAffHbVVPPN7AJal5/oL6
+hzmpPoCGIZueU3Fra2BPzrVtBTsNLOm0UwyQ3G8D474ETsWqlgtU3M3DBvdeI0sAaQdGxH8SkgUGswRUPNNzVG3V
+xvu5aOludfZ0J1kKEkS1PzWXRll2YoKlzSO42Ne0Gzo++ZdbQWl0Y/C0sLb2sBBviIxXHU8dXmp3823yUErqkWrF
+ZGGBhAco9t18gUe6MLei1+AyK+VHnRbCYvStrId7qExEs2dPzCmaEec01wCnLJ6LaRYZQnFpBRuzIZ9dTwwsJH+T
+cXGo87x8MRnGY6nKNVoz8lupbSyjxkHw3PBTfkelJh+tNKiFzxs8J8WiHDfJKzrKDDQVUGbE3TYZXddGSxvi+rv0
+Sfrf85zgvPjRVa2E6tjTl6nD8CnC+3wlU/01gRjVxVtPx7B9n51f+k8n2vMm8UozAv6+YruE1zZoHRHw9IvPCEy3
+5B4l6GJxWzAqzjTns7kJR3Qk+xzcu2jOAehc+Do8MMx+xegzOzlgRY3mbPx8jbB3L1WmjNF6vV2BrJR/NxKoRgTf
+nAQA44JaevaG4+KpbVZvkvSNoaI8uP6z8b5AptUHz/QO9Gc5M+n2EAPFjv/lNMN+0g5ZmMH8n6NpBXzP9Qmgujgn
+hsGP+GmI4ZgvuUgjTQ== greenlight@greenlight.alexedwards.net</pre>
+</figure>
+
+<p>And if you run the <code>ssh-add -l</code> command, you should see your new SSH key listed in the output, similar to this:</p>
+
+<figure class="code bash">
+<pre>$ ssh-add -l
+<samp>4096 SHA256:MXASjIyE1p2BAGZ70zkUV058rA65hm3sxdIcnWLGkwg greenlight@greenlight.alexedwards.net (RSA)</samp></pre>
+</figure>
+
+<p>If you don&rsquo;t see your key listed, then please add it to your <em>SSH agent</em> like so:</p>
+
+<figure class="code bash">
+<pre>$ ssh-add $HOME/.ssh/id_rsa_greenlight
+<samp>Enter passphrase for /home/alex/.ssh/id_rsa_greenlight: 
+Identity added: /home/alex/.ssh/id_rsa_greenlight (greenlight@greenlight.alexedwards.net)</samp></pre>
+</figure>
+
+<h3 id="adding-the-ssh-key-to-digitalocean">Adding the SSH key to DigitalOcean</h3>
+
+<p>Now you&rsquo;ve got an SSH keypair you can use, head back to your DigitalOcean control panel and navigate to the <strong>Settings › Security</strong> tab.</p>
+
+<figure class="img">
+<img src="assets/img/20.01-03.png" alt="20.01-03.png" />
+</figure>
+
+<p>Click the <strong>Add SSH Key</strong> button, then in the popup window that appears paste in the text contents from your <code>$HOME/.ssh/id_rsa_greenlight.pub</code> public key file, give it a memorable name, and submit the form, similar to the screenshot below.</p>
+
+<figure class="img">
+<img src="assets/img/20.01-04.png" alt="20.01-04.png" />
+</figure>
+
+<p>The screen should then update to confirm that your SSH key has been successfully added, like so:</p>
+
+<figure class="img">
+<img src="assets/img/20.01-05.png" alt="20.01-05.png" />
+</figure>
+
+<h3 id="creating-a-droplet">Creating a droplet</h3>
+
+<p>Now that you have a valid SSH key added to your account, it&rsquo;s time to actually create a droplet.</p>
+
+<p>There are a couple of ways that you can do this. It&rsquo;s possible to do so programmatically via the <a href="https://developers.digitalocean.com/documentation/v2/">DigitalOcean API</a> or using the official <a href="https://www.digitalocean.com/community/tutorials/how-to-use-doctl-the-official-digitalocean-command-line-client">command-line tool</a>, and if you need to create or manage a lot of servers then I recommend using these.</p>
+
+<p>Or alternatively, it&rsquo;s possible to create a droplet manually via your control panel on the DigitalOcean website. This is the approach we&rsquo;ll take in this book, partly because it&rsquo;s simple enough to do as a one-off, and partly because it helps give an overview of the available droplet settings if you haven&rsquo;t used DigitalOcean before.</p>
+
+<p>Go ahead and click the green <strong>Create</strong> button in the top right corner and select <strong>Droplets</strong> from the dropdown menu:</p>
+
+<figure class="img">
+<img src="assets/img/20.01-06.png" alt="20.01-06.png" />
+</figure>
+
+<p>This will then take you to the options page for creating a new droplet. The first thing to choose is the data center where your droplet will be physically hosted. I&rsquo;m going to choose <strong>Frankfurt</strong> but feel free to pick an alternative location if you like.</p>
+
+<figure class="img">
+<img src="assets/img/20.01-07.png" alt="20.01-07.png" />
+</figure>
+
+<p>The next thing to choose is the operating system for your droplet. If you&rsquo;re following along, please select <strong>Ubuntu 22.04 (LTS) x64</strong>.</p>
+
+<figure class="img">
+<img src="assets/img/20.01-08.png" alt="20.01-08.png" />
+</figure>
+
+<p>Then you need to pick a plan that matches the technical specifications you need for the droplet. In this case we&rsquo;ll select the <strong>Basic Regular</strong> plan at <strong>$4/month</strong>, which will give us a virtual machine with 512MB RAM, 10GB of disk space, and 500GB of <a href="https://www.digitalocean.com/docs/billing/bandwidth/">outbound data transfer</a> each month (inbound data transfer is unrestricted).</p>
+
+<figure class="img">
+<img src="assets/img/20.01-09.png" alt="20.01-09.png" />
+</figure>
+
+<p>The next option allows us to add <a href="https://www.digitalocean.com/products/block-storage/">block storage</a> to the droplet. This is essentially a droplet-independent storage volume which acts like a local hard disk and can be moved between different droplets. It&rsquo;s not something we need right now, so you can skip this section.</p>
+
+<p>Under the <strong>Authentication Method</strong> section, make sure that <strong>SSH keys</strong> is selected as the authentication method and that the SSH key that you just uploaded is checked.</p>
+
+<figure class="img">
+<img src="assets/img/20.01-10.png" alt="20.01-10.png" />
+</figure>
+
+<p>After that we can select some &ldquo;add-on&rdquo; features for our droplet. In our case we&rsquo;ll select <strong>Monitoring</strong>, which will allow you to later see graphs of various droplet statistics (like CPU, memory and disk use) in your DigitalOcean control panel &mdash; and you can also set up alerts if resource usage exceeds a certain threshold.</p>
+
+<p>You can also choose to pay an additional 20% charge to enable automated <a href="https://www.digitalocean.com/docs/images/backups/">droplet backups</a>. If you select this option, then DigitalOcean will take a &lsquo;snapshot&rsquo; of your droplet once a week and store it for a period of 4 weeks. You can then restore a droplet to its snapshotted state via the control panel if you ever need to. It&rsquo;s entirely up to you whether to enable backups or not &mdash; but it&rsquo;s a simple and hassle-free safety net.</p>
+
+<figure class="img">
+<img src="assets/img/20.01-11.png" alt="20.01-11.png" />
+</figure>
+
+<p>Then we get to the final configuration options.</p>
+
+<p>We only need <strong>one droplet</strong> right now, so you can leave that as the default.</p>
+
+<p>You should also add a <strong>hostname</strong> for the droplet. Amongst other things, the hostname is used as the main identifier for the droplet in the DigitalOcean control panel, and it&rsquo;s also what you&rsquo;ll see when you SSH into the droplet later to administer it. So you should pick a name that is sensible and easy-to-recognize. I&rsquo;m going to use the hostname <code>greenlight-production</code>, but feel free to use something different if you like.</p>
+
+<p>Adding <a href="https://www.digitalocean.com/docs/droplets/how-to/tag/">tags</a> to your droplet is completely optional, but if you do a lot of work with DigitalOcean they can be a useful way to help filter and manage droplets. I&rsquo;ll use the tags <code>greenlight</code> and <code>production</code> here.</p>
+
+<figure class="img">
+<img src="assets/img/20.01-12.png" alt="20.01-12.png" />
+</figure>
+
+<p>Once that&rsquo;s all set, go ahead and click the <strong>Create Droplet</strong> button at the foot of the screen. You should see a progress bar while the droplet is being set up for you, and after a minute or two the droplet should be live and ready to use.</p>
+
+<figure class="img">
+<img src="assets/img/20.01-13.png" alt="20.01-13.png" />
+</figure>
+
+<p>The most important thing at this point is noting the IP address for the droplet, which in my case is <code>161.35.71.158</code>.</p>
+
+<p>If you like, you can also click the droplet hostname to see more detailed information about the droplet (including the monitoring statistics) and make any further configuration and management changes if you need to.</p>
+
+<figure class="img">
+<img src="assets/img/20.01-14.png" alt="20.01-14.png" />
+</figure>
+
+<p>OK, now that the droplet is set up, it&rsquo;s time for the moment of truth!</p>
+
+<p>Open a new terminal window and try connecting to the droplet via SSH as the <code>root</code> user, using the droplet IP address. Like so&hellip;</p>
+
+<figure class="code bash">
+<pre>$ ssh root@161.35.71.158
+<samp>The authenticity of host &#39;161.35.71.158 (161.35.71.158)&#39; can&#39;t be established.
+ED25519 key fingerprint is SHA256:pBVp+W/Sb/BZkQy5JnsGQ0+QOr6clTtB3CFoEOFPKTk.
+This key is not known by any other names
+Are you sure you want to continue connecting (yes/no/[fingerprint])?</samp> yes
+<samp>Warning: Permanently added &#39;161.35.71.158&#39; (ED25519) to the list of known hosts.
+Welcome to Ubuntu 22.04.1 LTS (GNU/Linux 5.15.0-50-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/advantage
+
+  System information as of Thu Feb 23 15:17:11 UTC 2023
+
+  System load:  0.05615234375     Users logged in:       0
+  Usage of /:   16.8% of 9.51GB   IPv4 address for eth0: 161.35.71.158
+  Memory usage: 43%               IPv4 address for eth0: 10.19.0.5
+  Swap usage:   0%                IPv4 address for eth1: 10.114.0.2
+  Processes:    105
+
+112 updates can be applied immediately.
+66 of these updates are standard security updates.
+To see these additional updates run: apt list --upgradable
+
+The programs included with the Ubuntu system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Ubuntu comes with ABSOLUTELY NO WARRANTY, to the extent permitted by
+applicable law</samp>
+
+root@greenlight-production:~#</pre>
+</figure>
+
+<aside class="hint"><p>
+<strong>Note:</strong> As this is the first time that you&rsquo;re using SSH to connect to this droplet you&rsquo;ll get a message saying that &ldquo;the authenticity of host can&rsquo;t be established&rdquo;. This is <a href="https://superuser.com/questions/1295569/does-the-authenticity-of-host-cant-be-established-message-in-ssh-reflect-a-se">fine in this instance</a> and just type <code>yes</code> to continue. If your SSH key is protected with a passphrase, you may also be prompted to enter that too.
+</p></aside>
+
+<p>Great, that looks like it&rsquo;s working well. Our Ubuntu Linux droplet is up and running, and we&rsquo;ve been able to successfully connect to it as the <code>root</code> user over SSH.</p>
+
+<p>You can go ahead and type <code>exit</code> to terminate the SSH connection and return to the terminal on your local machine, like so:</p>
+
+<figure class="code bash">
+<pre>root@greenlight-production:~# exit
+<samp>logout
+Connection to 161.35.71.158 closed.</samp></pre>
+</figure>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="20.00-deployment-and-hosting.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="20.02-server-configuration-and-installing-software.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "20.00-deployment-and-hosting.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "20.02-server-configuration-and-installing-software.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

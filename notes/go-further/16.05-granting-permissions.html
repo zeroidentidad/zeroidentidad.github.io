@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Granting permissions &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="16.00-authorization.html">Permission-based authorization</a> &rsaquo; Granting permissions</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="16.04-checking-permissions.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="17.00-cross-origin-requests.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 16.5.</div>
+			<h2 id="granting-permissions">Granting permissions</h2>
+
+<p>Our permissions model and authorization middleware are now functioning well. But &mdash; at the moment &mdash; when a new user registers an account they <em>don&rsquo;t have any permissions</em>. In this chapter we&rsquo;re going to change that so that new users are automatically <em>granted</em> the <code>&quot;movies:read&quot;</code> permission by default.</p>
+
+<h3 id="updating-the-permissions-model">Updating the permissions model</h3>
+
+<p>In order to grant permissions to a user, we&rsquo;ll need to update our <code>PermissionModel</code> to include an <code>AddForUser()</code> method, which adds <em>one or more permission codes for a specific user</em> to our database. The idea is that we will be able to use it in our handlers like this:</p>
+
+<figure class="code go">
+<pre><span class="c1">// Add the &#34;movies:read&#34; and &#34;movies:write&#34; permissions for the user with ID = 2.
+</span><span class="c1"></span><span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Permissions</span><span class="p">.</span><span class="nf">AddForUser</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="s">&#34;movies:read&#34;</span><span class="p">,</span> <span class="s">&#34;movies:write&#34;</span><span class="p">)</span></pre>
+</figure>
+
+<p>Behind the scenes, the SQL statement that we need to insert this data looks like this:</p>
+
+<figure class="code plain">
+<pre>INSERT INTO users_permissions
+SELECT $1, permissions.id FROM permissions WHERE permissions.code = ANY($2)</pre>
+</figure>
+
+<p>In this query, the <code>$1</code> parameter will be the user&rsquo;s ID, and the <code>$2</code> parameter will be <em>a PostgreSQL array</em> of the permission codes that we want to add for the user, like <code>{'movies:read', 'movies:write'}</code>.</p>
+
+<p>So what&rsquo;s happening here is that the <code>SELECT ...</code> statement on the second line creates an &lsquo;interim&rsquo; table with rows made up of the user ID <em>and the corresponding IDs for the permission codes in the array</em>. Then we insert the contents of this interim table into our <code>user_permissions</code> table.</p>
+
+<p>Let&rsquo;s go ahead and create the <code>AddForUser()</code> method in the <code>internal/data/permissions.go</code> file:</p>
+
+<figure class="code go">
+<figcaption>File: internal/data/permissions.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">data</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;context&#34;</span>
+    <span class="s">&#34;database/sql&#34;</span>
+    <span class="s">&#34;time&#34;</span>
+
+    <span class="s">&#34;github.com/lib/pq&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span><span class="p">)</span>
+
+<span class="o">...</span>
+
+<span class="c1">// Add the provided permission codes for a specific user. Notice that we&#39;re using a 
+</span><span class="c1"></span><span class="c1">// variadic parameter for the codes so that we can assign multiple permissions in a 
+</span><span class="c1"></span><span class="c1">// single call.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="nx">PermissionModel</span><span class="p">)</span> <span class="nf">AddForUser</span><span class="p">(</span><span class="nx">userID</span> <span class="kt">int64</span><span class="p">,</span> <span class="nx">codes</span> <span class="o">...</span><span class="kt">string</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+    <span class="nx">query</span> <span class="o">:=</span> <span class="s">`</span><span class="s">
+</span><span class="s">        INSERT INTO users_permissions
+</span><span class="s">        SELECT $1, permissions.id FROM permissions WHERE permissions.code = ANY($2)</span><span class="s">`</span>
+
+    <span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="mi">3</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">)</span>
+    <span class="k">defer</span> <span class="nf">cancel</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">_</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">m</span><span class="p">.</span><span class="nx">DB</span><span class="p">.</span><span class="nf">ExecContext</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">query</span><span class="p">,</span> <span class="nx">userID</span><span class="p">,</span> <span class="nx">pq</span><span class="p">.</span><span class="nf">Array</span><span class="p">(</span><span class="nx">codes</span><span class="p">)</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nx">err</span>
+<span class="p">}</span></pre>
+</figure>
+
+<h3 id="updating-the-registration-handler">Updating the registration handler</h3>
+
+<p>Now that&rsquo;s in place, let&rsquo;s update our <code>registerUserHandler</code> so that new users are automatically granted the <code>movies:read</code> permission when they register. Like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/users.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">registerUserHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">input</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">Name</span>     <span class="kt">string</span> <span class="s">`</span><span class="s">json:&#34;name&#34;</span><span class="s">`</span>
+        <span class="nx">Email</span>    <span class="kt">string</span> <span class="s">`</span><span class="s">json:&#34;email&#34;</span><span class="s">`</span>
+        <span class="nx">Password</span> <span class="kt">string</span> <span class="s">`</span><span class="s">json:&#34;password&#34;</span><span class="s">`</span>
+    <span class="p">}</span>
+
+    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">input</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">badRequestResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="nx">user</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">data</span><span class="p">.</span><span class="nx">User</span><span class="p">{</span>
+        <span class="nx">Name</span><span class="p">:</span>      <span class="nx">input</span><span class="p">.</span><span class="nx">Name</span><span class="p">,</span>
+        <span class="nx">Email</span><span class="p">:</span>     <span class="nx">input</span><span class="p">.</span><span class="nx">Email</span><span class="p">,</span>
+        <span class="nx">Activated</span><span class="p">:</span> <span class="kc">false</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="nx">err</span> <span class="p">=</span> <span class="nx">user</span><span class="p">.</span><span class="nx">Password</span><span class="p">.</span><span class="nf">Set</span><span class="p">(</span><span class="nx">input</span><span class="p">.</span><span class="nx">Password</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="nx">v</span> <span class="o">:=</span> <span class="nx">validator</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="nx">data</span><span class="p">.</span><span class="nf">ValidateUser</span><span class="p">(</span><span class="nx">v</span><span class="p">,</span> <span class="nx">user</span><span class="p">)</span><span class="p">;</span> <span class="p">!</span><span class="nx">v</span><span class="p">.</span><span class="nf">Valid</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">failedValidationResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nx">Errors</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Users</span><span class="p">.</span><span class="nf">Insert</span><span class="p">(</span><span class="nx">user</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">switch</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">data</span><span class="p">.</span><span class="nx">ErrDuplicateEmail</span><span class="p">)</span><span class="p">:</span>
+            <span class="nx">v</span><span class="p">.</span><span class="nf">AddError</span><span class="p">(</span><span class="s">&#34;email&#34;</span><span class="p">,</span> <span class="s">&#34;a user with this email address already exists&#34;</span><span class="p">)</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">failedValidationResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nx">Errors</span><span class="p">)</span>
+        <span class="k">default</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="p">}</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Add the &#34;movies:read&#34; permission for the new user.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Permissions</span><span class="p">.</span><span class="nf">AddForUser</span><span class="p">(</span><span class="nx">user</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span> <span class="s">&#34;movies:read&#34;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="nx">token</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Tokens</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="nx">user</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span> <span class="mi">3</span><span class="o">*</span><span class="mi">24</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Hour</span><span class="p">,</span> <span class="nx">data</span><span class="p">.</span><span class="nx">ScopeActivation</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="nx">app</span><span class="p">.</span><span class="nf">background</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">data</span> <span class="o">:=</span> <span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="nx">any</span><span class="p">{</span>
+            <span class="s">&#34;activationToken&#34;</span><span class="p">:</span> <span class="nx">token</span><span class="p">.</span><span class="nx">Plaintext</span><span class="p">,</span>
+            <span class="s">&#34;userID&#34;</span><span class="p">:</span>          <span class="nx">user</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span>
+        <span class="p">}</span>
+
+        <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">mailer</span><span class="p">.</span><span class="nf">Send</span><span class="p">(</span><span class="nx">user</span><span class="p">.</span><span class="nx">Email</span><span class="p">,</span> <span class="s">&#34;user_welcome.tmpl&#34;</span><span class="p">,</span> <span class="nx">data</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="p">}</span>
+    <span class="p">}</span><span class="p">)</span>
+
+    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">writeJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusAccepted</span><span class="p">,</span> <span class="nx">envelope</span><span class="p">{</span><span class="s">&#34;user&#34;</span><span class="p">:</span> <span class="nx">user</span><span class="p">}</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="o">...</span></pre>
+</figure>
+
+<p>Let&rsquo;s check that this is working correctly by registering a brand-new user with the email address <code>grace@example.com</code>:</p>
+
+<figure class="code bash">
+<pre>$ BODY=&#39;{&#34;name&#34;: &#34;Grace Smith&#34;, &#34;email&#34;: &#34;grace@example.com&#34;, &#34;password&#34;: &#34;pa55word&#34;}&#39;
+$ curl -d &#34;$BODY&#34; localhost:4000/v1/users
+<samp>{
+    &#34;user&#34;: {
+        &#34;id&#34;: 8,
+        &#34;created_at&#34;: &#34;2021-04-16T21:32:56+02:00&#34;,
+        &#34;name&#34;: &#34;Grace Smith&#34;,
+        &#34;email&#34;: &#34;grace@example.com&#34;,
+        &#34;activated&#34;: false
+    }
+}</samp></pre>
+</figure>
+
+<p>If you open <code>psql</code>, you should be able to see that they have the <code>movies:read</code> permission by running the following SQL query:</p>
+
+<figure class="code plain">
+<pre>SELECT email, code FROM users 
+INNER JOIN users_permissions ON users.id = users_permissions.user_id
+INNER JOIN permissions ON users_permissions.permission_id = permissions.id
+WHERE users.email = &#39;grace@example.com&#39;;</pre>
+</figure>
+
+<p>Like so:</p>
+
+<figure class="code bash">
+<pre>$ psql $GREENLIGHT_DB_DSN
+Password for user greenlight: 
+<samp>psql (15.4 (Ubuntu 15.4-1.pgdg22.04+1))
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+Type &#34;help&#34; for help.</samp>
+
+greenlight=&gt; SELECT email, code FROM users 
+greenlight-&gt; INNER JOIN users_permissions ON users.id = users_permissions.user_id
+greenlight-&gt; INNER JOIN permissions ON users_permissions.permission_id = permissions.id
+greenlight-&gt; WHERE users.email = &#39;grace@example.com&#39;;
+<samp>       email       |    code     
+-------------------+-------------
+ grace@example.com | movies:read
+(1 row)</samp></pre>
+</figure>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="16.04-checking-permissions.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="17.00-cross-origin-requests.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "16.04-checking-permissions.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "17.00-cross-origin-requests.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Intercepting shutdown signals &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="11.00-graceful-shutdown.html">Graceful shutdown</a> &rsaquo; Intercepting shutdown signals</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="11.01-sending-shutdown-signals.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="11.03-executing-the-shutdown.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 11.2.</div>
+			<h2 id="intercepting-shutdown-signals">Intercepting shutdown signals</h2>
+
+<p>Before we get into the nuts and bolts of how to intercept signals, let&rsquo;s move the code related to our <code>http.Server</code> out of the <code>main()</code> function and into a separate file. This will give us a clean and clear starting point from which we can build up the graceful shutdown functionality.</p>
+
+<p>If you&rsquo;re following along, create a new <code>cmd/api/server.go</code> file:</p>
+
+<figure class="code bash">
+<pre>$ touch cmd/api/server.go</pre>
+</figure>
+
+<p>And then add a new <code>app.serve()</code> method which initializes and starts our <code>http.Server</code>, like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/server.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;fmt&#34;</span>
+    <span class="s">&#34;log/slog&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+    <span class="s">&#34;time&#34;</span>
+<span class="p">)</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">serve</span><span class="p">(</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+    <span class="c1">// Declare an HTTP server using the same settings as in our main() function.
+</span><span class="c1"></span>    <span class="nx">srv</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">http</span><span class="p">.</span><span class="nx">Server</span><span class="p">{</span>
+        <span class="nx">Addr</span><span class="p">:</span>         <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;:%d&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">config</span><span class="p">.</span><span class="nx">port</span><span class="p">)</span><span class="p">,</span>
+        <span class="nx">Handler</span><span class="p">:</span>      <span class="nx">app</span><span class="p">.</span><span class="nf">routes</span><span class="p">(</span><span class="p">)</span><span class="p">,</span>
+        <span class="nx">IdleTimeout</span><span class="p">:</span>  <span class="nx">time</span><span class="p">.</span><span class="nx">Minute</span><span class="p">,</span>
+        <span class="nx">ReadTimeout</span><span class="p">:</span>  <span class="mi">5</span> <span class="o">*</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">,</span>
+        <span class="nx">WriteTimeout</span><span class="p">:</span> <span class="mi">10</span> <span class="o">*</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">,</span>
+        <span class="nx">ErrorLog</span><span class="p">:</span>     <span class="nx">slog</span><span class="p">.</span><span class="nf">NewLogLogger</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Handler</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="nx">slog</span><span class="p">.</span><span class="nx">LevelError</span><span class="p">)</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Likewise log a &#34;starting server&#34; message.
+</span><span class="c1"></span>    <span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Info</span><span class="p">(</span><span class="s">&#34;starting server&#34;</span><span class="p">,</span> <span class="s">&#34;addr&#34;</span><span class="p">,</span> <span class="nx">srv</span><span class="p">.</span><span class="nx">Addr</span><span class="p">,</span> <span class="s">&#34;env&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">config</span><span class="p">.</span><span class="nx">env</span><span class="p">)</span>
+
+    <span class="c1">// Start the server as normal, returning any error.
+</span><span class="c1"></span>    <span class="k">return</span> <span class="nx">srv</span><span class="p">.</span><span class="nf">ListenAndServe</span><span class="p">(</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>With that in place, we can simplify our <code>main()</code> function to use this new <code>app.serve()</code> method like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/main.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;context&#34;</span>
+    <span class="s">&#34;database/sql&#34;</span>
+    <span class="s">&#34;flag&#34;</span>
+    <span class="s">&#34;log/slog&#34;</span>
+    <span class="s">&#34;os&#34;</span>
+    <span class="s">&#34;time&#34;</span>
+
+    <span class="s">&#34;greenlight.alexedwards.net/internal/data&#34;</span>
+
+    <span class="nx">_</span> <span class="s">&#34;github.com/lib/pq&#34;</span>
+<span class="p">)</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="nf">main</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">cfg</span> <span class="nx">config</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">port</span><span class="p">,</span> <span class="s">&#34;port&#34;</span><span class="p">,</span> <span class="mi">4000</span><span class="p">,</span> <span class="s">&#34;API server port&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">env</span><span class="p">,</span> <span class="s">&#34;env&#34;</span><span class="p">,</span> <span class="s">&#34;development&#34;</span><span class="p">,</span> <span class="s">&#34;Environment (development|staging|production)&#34;</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">dsn</span><span class="p">,</span> <span class="s">&#34;db-dsn&#34;</span><span class="p">,</span> <span class="nx">os</span><span class="p">.</span><span class="nf">Getenv</span><span class="p">(</span><span class="s">&#34;GREENLIGHT_DB_DSN&#34;</span><span class="p">)</span><span class="p">,</span> <span class="s">&#34;PostgreSQL DSN&#34;</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">maxOpenConns</span><span class="p">,</span> <span class="s">&#34;db-max-open-conns&#34;</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="s">&#34;PostgreSQL max open connections&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">maxIdleConns</span><span class="p">,</span> <span class="s">&#34;db-max-idle-conns&#34;</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="s">&#34;PostgreSQL max idle connections&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">DurationVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">maxIdleTime</span><span class="p">,</span> <span class="s">&#34;db-max-idle-time&#34;</span><span class="p">,</span> <span class="mi">15</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Minute</span><span class="p">,</span> <span class="s">&#34;PostgreSQL max connection idle time&#34;</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">Float64Var</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">limiter</span><span class="p">.</span><span class="nx">rps</span><span class="p">,</span> <span class="s">&#34;limiter-rps&#34;</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="s">&#34;Rate limiter maximum requests per second&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">limiter</span><span class="p">.</span><span class="nx">burst</span><span class="p">,</span> <span class="s">&#34;limiter-burst&#34;</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="s">&#34;Rate limiter maximum burst&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">BoolVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">limiter</span><span class="p">.</span><span class="nx">enabled</span><span class="p">,</span> <span class="s">&#34;limiter-enabled&#34;</span><span class="p">,</span> <span class="kc">true</span><span class="p">,</span> <span class="s">&#34;Enable rate limiter&#34;</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">Parse</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">logger</span> <span class="o">:=</span> <span class="nx">slog</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="nx">slog</span><span class="p">.</span><span class="nf">NewTextHandler</span><span class="p">(</span><span class="nx">os</span><span class="p">.</span><span class="nx">Stdout</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span><span class="p">)</span>
+
+    <span class="nx">db</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nf">openDB</span><span class="p">(</span><span class="nx">cfg</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="nx">os</span><span class="p">.</span><span class="nf">Exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="p">}</span>
+    <span class="k">defer</span> <span class="nx">db</span><span class="p">.</span><span class="nf">Close</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">logger</span><span class="p">.</span><span class="nf">Info</span><span class="p">(</span><span class="s">&#34;database connection pool established&#34;</span><span class="p">)</span>
+
+    <span class="nx">app</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">application</span><span class="p">{</span>
+        <span class="nx">config</span><span class="p">:</span> <span class="nx">cfg</span><span class="p">,</span>
+        <span class="nx">logger</span><span class="p">:</span> <span class="nx">logger</span><span class="p">,</span>
+        <span class="nx">models</span><span class="p">:</span> <span class="nx">data</span><span class="p">.</span><span class="nf">NewModels</span><span class="p">(</span><span class="nx">db</span><span class="p">)</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Call app.serve() to start the server.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">serve</span><span class="p">(</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="nx">os</span><span class="p">.</span><span class="nf">Exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="o">...</span></pre>
+</figure>
+
+<h3 id="catching-sigint-and-sigterm-signals">Catching SIGINT and SIGTERM signals</h3>
+
+<p>Next, we want to update our application so that it &lsquo;catches&rsquo; any <code>SIGINT</code> and <code>SIGTERM</code> signals. As we mentioned above, <code>SIGKILL</code> signals are not catchable (and will always cause the application to terminate immediately), and we&rsquo;ll leave <code>SIGQUIT</code> with its default behavior (as it&rsquo;s handy if you want to execute a non-graceful shutdown via a keyboard shortcut).</p>
+
+<p>To catch the signals, we&rsquo;ll need to spin up a background goroutine which runs for the lifetime of our application. In this background goroutine, we can use the <a href="https://godoc.org/os/signal#Notify"><code>signal.Notify()</code></a> function to listen for specific signals and relay them to a channel for further processing.</p>
+
+<p>I&rsquo;ll demonstrate.</p>
+
+<p>Open up the <code>cmd/api/server.go</code> file and update it like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/server.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;fmt&#34;</span>
+    <span class="s">&#34;log/slog&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+    <span class="s">&#34;os&#34;</span>        <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;os/signal&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;syscall&#34;</span>   <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;time&#34;</span>
+<span class="p">)</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">serve</span><span class="p">(</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+    <span class="nx">srv</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">http</span><span class="p">.</span><span class="nx">Server</span><span class="p">{</span>
+        <span class="nx">Addr</span><span class="p">:</span>         <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;:%d&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">config</span><span class="p">.</span><span class="nx">port</span><span class="p">)</span><span class="p">,</span>
+        <span class="nx">Handler</span><span class="p">:</span>      <span class="nx">app</span><span class="p">.</span><span class="nf">routes</span><span class="p">(</span><span class="p">)</span><span class="p">,</span>
+        <span class="nx">IdleTimeout</span><span class="p">:</span>  <span class="nx">time</span><span class="p">.</span><span class="nx">Minute</span><span class="p">,</span>
+        <span class="nx">ReadTimeout</span><span class="p">:</span>  <span class="mi">5</span> <span class="o">*</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">,</span>
+        <span class="nx">WriteTimeout</span><span class="p">:</span> <span class="mi">10</span> <span class="o">*</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">,</span>
+        <span class="nx">ErrorLog</span><span class="p">:</span>     <span class="nx">slog</span><span class="p">.</span><span class="nf">NewLogLogger</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Handler</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="nx">slog</span><span class="p">.</span><span class="nx">LevelError</span><span class="p">)</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Start a background goroutine.
+</span><span class="c1"></span>    <span class="k">go</span> <span class="kd">func</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="c1">// Create a quit channel which carries os.Signal values.
+</span><span class="c1"></span>        <span class="nx">quit</span> <span class="o">:=</span> <span class="nb">make</span><span class="p">(</span><span class="kd">chan</span> <span class="nx">os</span><span class="p">.</span><span class="nx">Signal</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+
+        <span class="c1">// Use signal.Notify() to listen for incoming SIGINT and SIGTERM signals and 
+</span><span class="c1"></span>        <span class="c1">// relay them to the quit channel. Any other signals will not be caught by
+</span><span class="c1"></span>        <span class="c1">// signal.Notify() and will retain their default behavior.
+</span><span class="c1"></span>        <span class="nx">signal</span><span class="p">.</span><span class="nf">Notify</span><span class="p">(</span><span class="nx">quit</span><span class="p">,</span> <span class="nx">syscall</span><span class="p">.</span><span class="nx">SIGINT</span><span class="p">,</span> <span class="nx">syscall</span><span class="p">.</span><span class="nx">SIGTERM</span><span class="p">)</span>
+
+        <span class="c1">// Read the signal from the quit channel. This code will block until a signal is
+</span><span class="c1"></span>        <span class="c1">// received.
+</span><span class="c1"></span>        <span class="nx">s</span> <span class="o">:=</span> <span class="o">&lt;-</span><span class="nx">quit</span>
+
+        <span class="c1">// Log a message to say that the signal has been caught. Notice that we also
+</span><span class="c1"></span>        <span class="c1">// call the String() method on the signal to get the signal name and include it
+</span><span class="c1"></span>        <span class="c1">// in the log entry attributes.
+</span><span class="c1"></span>        <span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Info</span><span class="p">(</span><span class="s">&#34;caught signal&#34;</span><span class="p">,</span> <span class="s">&#34;signal&#34;</span><span class="p">,</span> <span class="nx">s</span><span class="p">.</span><span class="nf">String</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+
+        <span class="c1">// Exit the application with a 0 (success) status code.
+</span><span class="c1"></span>        <span class="nx">os</span><span class="p">.</span><span class="nf">Exit</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="p">}</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="c1">// Start the server as normal.
+</span><span class="c1"></span>    <span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Info</span><span class="p">(</span><span class="s">&#34;starting server&#34;</span><span class="p">,</span> <span class="s">&#34;addr&#34;</span><span class="p">,</span> <span class="nx">srv</span><span class="p">.</span><span class="nx">Addr</span><span class="p">,</span> <span class="s">&#34;env&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">config</span><span class="p">.</span><span class="nx">env</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="nx">srv</span><span class="p">.</span><span class="nf">ListenAndServe</span><span class="p">(</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>At the moment this new code isn&rsquo;t doing much &mdash; after intercepting the signal, all we do is log a message and then exit our application. But the important thing is that it demonstrates the pattern of how to catch specific signals and handle them in your code.</p>
+
+<p>One thing I&rsquo;d like to quickly emphasize about this: our <code>quit</code> channel is a <a href="https://gobyexample.com/channel-buffering">buffered channel</a> with size 1.</p>
+
+<p>We need to use a buffered channel here because <code>signal.Notify()</code> <a href="https://github.com/golang/go/blob/bc7e4d9257693413d57ad467814ab71f1585a155/src/os/signal/signal.go#L243">does not wait</a> for a receiver to be available when sending a signal to the <code>quit</code> channel. If we had used a regular (non-buffered) channel here instead, a signal could be &lsquo;missed&rsquo; if our <code>quit</code> channel is not ready to receive at the exact moment that the signal is sent. By using a buffered channel, we avoid this problem and ensure that we never miss a signal.</p>
+
+<p>OK, let&rsquo;s try this out.</p>
+
+<p>First, run the application and then press <code>Ctrl+C</code> on your keyboard to send a <code>SIGINT</code> signal. You should see a <code>&quot;caught signal&quot;</code> log entry with <code>&quot;signal&quot;:&quot;interrupt&quot;</code> in the attributes, similar to this:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development
+time=2023-09-10T10:59:14.345+02:00 level=INFO msg=&#34;caught signal&#34; signal=interrupt</samp></pre>
+</figure>
+
+<p>You can also restart the application and try sending a <code>SIGTERM</code> signal. This time, the log entry attributes should contain <code>signal=terminated</code>, like so:</p>
+
+<figure class="code bash">
+<pre>$ pkill -SIGTERM api</pre>
+</figure>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development
+time=2023-09-10T10:59:14.345+02:00 level=INFO msg=&#34;caught signal&#34; signal=terminated</samp></pre>
+</figure>
+
+<p>In contrast, sending a <code>SIGKILL</code> or <code>SIGQUIT</code> signal will continue to cause the application to exit immediately <em>without the signal being caught</em>, so you shouldn&rsquo;t see a <code>&quot;caught signal&quot;</code> message in the logs. For example, if you restart the application and issue a <code>SIGKILL</code>&hellip;</p>
+
+<figure class="code bash">
+<pre>$ pkill -SIGKILL api</pre>
+</figure>
+
+<p>The application should be terminated immediately, and the logs will look like this:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development
+signal: killed</samp></pre>
+</figure>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="11.01-sending-shutdown-signals.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="11.03-executing-the-shutdown.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "11.01-sending-shutdown-signals.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "11.03-executing-the-shutdown.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

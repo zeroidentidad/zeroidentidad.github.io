@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Parsing JSON requests &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; Parsing JSON requests</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="03.06-sending-error-messages.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="04.01-json-decoding.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 4.</div>
+			<h1 id="parsing-json-requests">Parsing JSON requests</h1>
+
+<p>So far we&rsquo;ve been looking at how to create and send JSON responses from our API, but in this next section of the book we&rsquo;re going to explore things from the other side and discuss how to <em>read and parse JSON requests</em> from clients.</p>
+
+<p>To help demonstrate this, we&rsquo;re going to start working on the <code>POST /v1/movies</code> endpoint and <code>createMovieHandler</code> that we set up earlier.</p>
+
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>URL Pattern</th>
+<th>Handler</th>
+<th>Action</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td>GET</td>
+<td>/v1/healthcheck</td>
+<td>healthcheckHandler</td>
+<td>Show application information</td>
+</tr>
+
+<tr>
+<td><strong>POST</strong></td>
+<td><strong>/v1/movies</strong></td>
+<td><strong>createMovieHandler</strong></td>
+<td><strong>Create a new movie</strong></td>
+</tr>
+
+<tr>
+<td>GET</td>
+<td>/v1/movies/:id</td>
+<td>showMovieHandler</td>
+<td>Show the details of a specific movie</td>
+</tr>
+</tbody>
+</table>
+<p>When a client calls this endpoint, we expect them to provide a JSON request body containing data for the movie they want to create in our system. So, for example, if a client wants to add a record for the movie <em>Moana</em> to our API, they would send a request body similar to this:</p>
+
+<figure class="code plain">
+<pre>{
+    &#34;title&#34;: &#34;Moana&#34;,
+    &#34;year&#34;: 2016,
+    &#34;runtime&#34;: 107,
+    &#34;genres&#34;: [&#34;animation&#34;, &#34;adventure&#34;]
+}</pre>
+</figure>
+
+<p>For now, we&rsquo;ll just focus on the reading, parsing and validation aspects of dealing with this JSON request body. Specifically, you&rsquo;ll learn:</p>
+
+<ul>
+<li><p>How to read a request body and decode it to a native Go value using the <code>encoding/json</code> package.</p></li>
+
+<li><p>How to deal with bad requests from clients and invalid JSON, and return clear, actionable, error messages.</p></li>
+
+<li><p>How to create a reusable helper package for validating data to ensure it meets your business rules.</p></li>
+
+<li><p>Different techniques for controlling and customizing how JSON is decoded.</p></li>
+</ul>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="03.06-sending-error-messages.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="04.01-json-decoding.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "03.06-sending-error-messages.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "04.01-json-decoding.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

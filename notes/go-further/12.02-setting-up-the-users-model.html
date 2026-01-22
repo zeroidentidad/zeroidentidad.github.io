@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Setting up the users model  &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="12.00-user-model-setup-and-registration.html">User model setup and registration</a> &rsaquo; Setting up the users model </span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="12.01-setting-up-the-users-database-table.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="12.03-registering-a-user.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 12.2.</div>
+			<h2 id="setting-up-the-users-model">Setting up the users model</h2>
+
+<p>Now that our database table is set up, we&rsquo;re going to update our <code>internal/data</code> package to contain a new <code>User</code> struct (to represent the data for an individual user), and create a <code>UserModel</code> type (which we will use to perform various SQL queries against our <code>users</code> table).</p>
+
+<p>If you&rsquo;re following along, go ahead and create an <code>internal/data/users.go</code> file to hold this new code:</p>
+
+<figure class="code bash">
+<pre>$ touch internal/data/users.go</pre>
+</figure>
+
+<p>Let&rsquo;s start by defining the <code>User</code> struct, along with some helper methods for setting and verifying the password for a user.</p>
+
+<p>As we mentioned earlier, in this project we will use bcrypt to hash a user&rsquo;s password before storing it in the database. So the first thing we need to do is install the <a href="https://pkg.go.dev/golang.org/x/crypto/bcrypt"><code>golang.org/x/crypto/bcrypt</code></a> package, which provides an easy-to-use Go implementation of the bcrypt algorithm.</p>
+
+<figure class="code bash">
+<pre>$ go get golang.org/x/crypto/bcrypt@latest
+<samp>go: downloading golang.org/x/crypto v0.41.0
+go get: added golang.org/x/crypto v0.41.0</samp></pre>
+</figure>
+
+<p>Then in the <code>internal/data/users.go</code> file, go ahead and create the <code>User</code> struct and helper methods like so:</p>
+
+<figure class="code go">
+<figcaption>File: internal/data/users.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">data</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;errors&#34;</span>
+    <span class="s">&#34;time&#34;</span>
+
+    <span class="s">&#34;golang.org/x/crypto/bcrypt&#34;</span>
+<span class="p">)</span>
+
+<span class="c1">// Define a User struct to represent an individual user. Importantly, notice how we are 
+</span><span class="c1"></span><span class="c1">// using the json:&#34;-&#34; struct tag to prevent the Password and Version fields from appearing 
+</span><span class="c1"></span><span class="c1">// in any output when we encode it to JSON. Also notice that the Password field uses the
+</span><span class="c1"></span><span class="c1">// custom password type defined below.
+</span><span class="c1"></span><span class="kd">type</span> <span class="nx">User</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">ID</span>        <span class="kt">int64</span>     <span class="s">`</span><span class="s">json:&#34;id&#34;</span><span class="s">`</span>
+    <span class="nx">CreatedAt</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Time</span> <span class="s">`</span><span class="s">json:&#34;created_at&#34;</span><span class="s">`</span>
+    <span class="nx">Name</span>      <span class="kt">string</span>    <span class="s">`</span><span class="s">json:&#34;name&#34;</span><span class="s">`</span>
+    <span class="nx">Email</span>     <span class="kt">string</span>    <span class="s">`</span><span class="s">json:&#34;email&#34;</span><span class="s">`</span>
+    <span class="nx">Password</span>  <span class="nx">password</span>  <span class="s">`</span><span class="s">json:&#34;-&#34;</span><span class="s">`</span>
+    <span class="nx">Activated</span> <span class="kt">bool</span>      <span class="s">`</span><span class="s">json:&#34;activated&#34;</span><span class="s">`</span>
+    <span class="nx">Version</span>   <span class="kt">int</span>       <span class="s">`</span><span class="s">json:&#34;-&#34;</span><span class="s">`</span>
+<span class="p">}</span>
+
+<span class="c1">// Create a custom password type which is a struct containing the plaintext and hashed 
+</span><span class="c1"></span><span class="c1">// versions of the password for a user. The plaintext field is a *pointer* to a string,
+</span><span class="c1"></span><span class="c1">// so that we&#39;re able to distinguish between a plaintext password not being present in 
+</span><span class="c1"></span><span class="c1">// the struct at all, versus a plaintext password which is the empty string &#34;&#34;.
+</span><span class="c1"></span><span class="kd">type</span> <span class="nx">password</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">plaintext</span> <span class="o">*</span><span class="kt">string</span>
+    <span class="nx">hash</span>      <span class="p">[</span><span class="p">]</span><span class="kt">byte</span>
+<span class="p">}</span>
+
+<span class="c1">// The Set() method calculates the bcrypt hash of a plaintext password, and stores both 
+</span><span class="c1"></span><span class="c1">// the hash and the plaintext versions in the struct.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">p</span> <span class="o">*</span><span class="nx">password</span><span class="p">)</span> <span class="nf">Set</span><span class="p">(</span><span class="nx">plaintextPassword</span> <span class="kt">string</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+    <span class="nx">hash</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">bcrypt</span><span class="p">.</span><span class="nf">GenerateFromPassword</span><span class="p">(</span><span class="p">[</span><span class="p">]</span><span class="nb">byte</span><span class="p">(</span><span class="nx">plaintextPassword</span><span class="p">)</span><span class="p">,</span> <span class="mi">12</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">err</span>
+    <span class="p">}</span>
+
+    <span class="nx">p</span><span class="p">.</span><span class="nx">plaintext</span> <span class="p">=</span> <span class="o">&amp;</span><span class="nx">plaintextPassword</span>
+    <span class="nx">p</span><span class="p">.</span><span class="nx">hash</span> <span class="p">=</span> <span class="nx">hash</span>
+
+    <span class="k">return</span> <span class="kc">nil</span>
+<span class="p">}</span>
+
+<span class="c1">// The Matches() method checks whether the provided plaintext password matches the 
+</span><span class="c1"></span><span class="c1">// hashed password stored in the struct, returning true if it matches and false 
+</span><span class="c1"></span><span class="c1">// otherwise.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">p</span> <span class="o">*</span><span class="nx">password</span><span class="p">)</span> <span class="nf">Matches</span><span class="p">(</span><span class="nx">plaintextPassword</span> <span class="kt">string</span><span class="p">)</span> <span class="p">(</span><span class="kt">bool</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">bcrypt</span><span class="p">.</span><span class="nf">CompareHashAndPassword</span><span class="p">(</span><span class="nx">p</span><span class="p">.</span><span class="nx">hash</span><span class="p">,</span> <span class="p">[</span><span class="p">]</span><span class="nb">byte</span><span class="p">(</span><span class="nx">plaintextPassword</span><span class="p">)</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">switch</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">bcrypt</span><span class="p">.</span><span class="nx">ErrMismatchedHashAndPassword</span><span class="p">)</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">false</span><span class="p">,</span> <span class="kc">nil</span>
+        <span class="k">default</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">false</span><span class="p">,</span> <span class="nx">err</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="kc">true</span><span class="p">,</span> <span class="kc">nil</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>We explained how the <code>golang.org/x/crypto/bcrypt</code> package works previously in <em>Let&rsquo;s Go</em>, but let&rsquo;s quickly recap the key points:</p>
+
+<ul>
+<li><p>The <a href="https://pkg.go.dev/golang.org/x/crypto/bcrypt#GenerateFromPassword"><code>bcrypt.GenerateFromPassword()</code></a> function generates a bcrypt hash of a password using a specific cost parameter (in the code above, we use a cost of <code>12</code>). The higher the cost, the slower and more computationally expensive it is to generate the hash. There is a balance to be struck here &mdash; we want the cost to be prohibitively expensive for attackers, but also not <em>so slow</em> that it harms the user experience of our API. This function returns a <em>hash string</em> in the format:</p>
+
+<figure class="code plain">
+<pre>$2a$[cost]$[22-character salt][31-character hash]</pre>
+</figure>
+</li>
+
+<li><p>The <a href="https://pkg.go.dev/golang.org/x/crypto/bcrypt#CompareHashAndPassword"><code>bcrypt.CompareHashAndPassword()</code></a> function works by re-hashing the provided password using the <em>same salt and cost parameter</em> that is in the hash string that we&rsquo;re comparing against. The re-hashed value is then checked against the original hash string using the <a href="https://golang.org/pkg/crypto/subtle/#ConstantTimeCompare"><code>subtle.ConstantTimeCompare()</code></a> function, which performs a comparison in constant time (to mitigate the risk of a timing attack). If they don&rsquo;t match, then it will return a <code>bcrypt.ErrMismatchedHashAndPassword</code> error.</p></li>
+</ul>
+
+<h3 id="adding-validation-checks">Adding validation checks</h3>
+
+<p>Let&rsquo;s move on and create some validation checks for our <code>User</code> struct. Specifically, we want to:</p>
+
+<ul>
+<li>Check that the <code>Name</code> field is not the empty string, and the value is less than 500 bytes long.</li>
+<li>Check that the <code>Email</code> field is not the empty string, and that it matches the regular expression for email addresses that we added in our <code>validator</code> package earlier in the book.</li>
+<li>If the <code>Password.plaintext</code> field is not <code>nil</code>, then check that the value is not the empty string and is between 8 and 72 bytes long.</li>
+<li>Check that the <code>Password.hash</code> field is never <code>nil</code>.</li>
+</ul>
+
+<aside class="hint"><p>
+<strong>Note:</strong> When creating a bcrypt hash the input is <a href="https://en.wikipedia.org/wiki/Bcrypt#Maximum_password_length">truncated to a maximum of 72 bytes</a>. So, if someone uses a very long password, it means that any bytes after that would effectively be ignored when creating the hash. To avoid any confusion for users, we&rsquo;ll simply enforce a hard maximum length of 72 bytes on the password in our validation checks. If you don&rsquo;t want to enforce a maximum length, you could <a href="https://security.stackexchange.com/questions/61595/is-it-good-practice-to-sha512-passwords-prior-to-passing-them-to-bcrypt">pre-hash the password</a> instead.
+</p></aside>
+
+<p>Additionally, we&rsquo;re going to want to use the email and plaintext password validation checks again independently later in the book, so we&rsquo;ll define those checks in some standalone functions.</p>
+
+<p>Go ahead and update the <code>internal/data/users.go</code> file like so:</p>
+
+<figure class="code go">
+<figcaption>File: internal/data/users.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">data</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;errors&#34;</span>
+    <span class="s">&#34;time&#34;</span>
+
+    <span class="s">&#34;greenlight.alexedwards.net/internal/validator&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>
+    <span class="s">&#34;golang.org/x/crypto/bcrypt&#34;</span>
+<span class="p">)</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="nf">ValidateEmail</span><span class="p">(</span><span class="nx">v</span> <span class="o">*</span><span class="nx">validator</span><span class="p">.</span><span class="nx">Validator</span><span class="p">,</span> <span class="nx">email</span> <span class="kt">string</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">v</span><span class="p">.</span><span class="nf">Check</span><span class="p">(</span><span class="nx">email</span> <span class="o">!=</span> <span class="s">&#34;&#34;</span><span class="p">,</span> <span class="s">&#34;email&#34;</span><span class="p">,</span> <span class="s">&#34;must be provided&#34;</span><span class="p">)</span>
+    <span class="nx">v</span><span class="p">.</span><span class="nf">Check</span><span class="p">(</span><span class="nx">validator</span><span class="p">.</span><span class="nf">Matches</span><span class="p">(</span><span class="nx">email</span><span class="p">,</span> <span class="nx">validator</span><span class="p">.</span><span class="nx">EmailRX</span><span class="p">)</span><span class="p">,</span> <span class="s">&#34;email&#34;</span><span class="p">,</span> <span class="s">&#34;must be a valid email address&#34;</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="kd">func</span> <span class="nf">ValidatePasswordPlaintext</span><span class="p">(</span><span class="nx">v</span> <span class="o">*</span><span class="nx">validator</span><span class="p">.</span><span class="nx">Validator</span><span class="p">,</span> <span class="nx">password</span> <span class="kt">string</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">v</span><span class="p">.</span><span class="nf">Check</span><span class="p">(</span><span class="nx">password</span> <span class="o">!=</span> <span class="s">&#34;&#34;</span><span class="p">,</span> <span class="s">&#34;password&#34;</span><span class="p">,</span> <span class="s">&#34;must be provided&#34;</span><span class="p">)</span>
+    <span class="nx">v</span><span class="p">.</span><span class="nf">Check</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="nx">password</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">8</span><span class="p">,</span> <span class="s">&#34;password&#34;</span><span class="p">,</span> <span class="s">&#34;must be at least 8 bytes long&#34;</span><span class="p">)</span>
+    <span class="nx">v</span><span class="p">.</span><span class="nf">Check</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="nx">password</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">72</span><span class="p">,</span> <span class="s">&#34;password&#34;</span><span class="p">,</span> <span class="s">&#34;must not be more than 72 bytes long&#34;</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="kd">func</span> <span class="nf">ValidateUser</span><span class="p">(</span><span class="nx">v</span> <span class="o">*</span><span class="nx">validator</span><span class="p">.</span><span class="nx">Validator</span><span class="p">,</span> <span class="nx">user</span> <span class="o">*</span><span class="nx">User</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">v</span><span class="p">.</span><span class="nf">Check</span><span class="p">(</span><span class="nx">user</span><span class="p">.</span><span class="nx">Name</span> <span class="o">!=</span> <span class="s">&#34;&#34;</span><span class="p">,</span> <span class="s">&#34;name&#34;</span><span class="p">,</span> <span class="s">&#34;must be provided&#34;</span><span class="p">)</span>
+    <span class="nx">v</span><span class="p">.</span><span class="nf">Check</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="nx">user</span><span class="p">.</span><span class="nx">Name</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">500</span><span class="p">,</span> <span class="s">&#34;name&#34;</span><span class="p">,</span> <span class="s">&#34;must not be more than 500 bytes long&#34;</span><span class="p">)</span>
+
+    <span class="c1">// Call the standalone ValidateEmail() helper.
+</span><span class="c1"></span>    <span class="nf">ValidateEmail</span><span class="p">(</span><span class="nx">v</span><span class="p">,</span> <span class="nx">user</span><span class="p">.</span><span class="nx">Email</span><span class="p">)</span>
+
+    <span class="c1">// If the plaintext password is not nil, call the standalone 
+</span><span class="c1"></span>    <span class="c1">// ValidatePasswordPlaintext() helper.
+</span><span class="c1"></span>    <span class="k">if</span> <span class="nx">user</span><span class="p">.</span><span class="nx">Password</span><span class="p">.</span><span class="nx">plaintext</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nf">ValidatePasswordPlaintext</span><span class="p">(</span><span class="nx">v</span><span class="p">,</span> <span class="o">*</span><span class="nx">user</span><span class="p">.</span><span class="nx">Password</span><span class="p">.</span><span class="nx">plaintext</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="c1">// If the password hash is ever nil, this will be due to a logic error in our 
+</span><span class="c1"></span>    <span class="c1">// codebase (probably because we forgot to set a password for the user). It&#39;s a 
+</span><span class="c1"></span>    <span class="c1">// useful sanity check to include here, but it&#39;s not a problem with the data 
+</span><span class="c1"></span>    <span class="c1">// provided by the client. So rather than adding an error to the validation map we 
+</span><span class="c1"></span>    <span class="c1">// panic instead.
+</span><span class="c1"></span>    <span class="k">if</span> <span class="nx">user</span><span class="p">.</span><span class="nx">Password</span><span class="p">.</span><span class="nx">hash</span> <span class="o">==</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nb">panic</span><span class="p">(</span><span class="s">&#34;missing password hash for user&#34;</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre>
+</figure>
+
+<h3 id="creating-the-usermodel">Creating the UserModel</h3>
+
+<p>The next step in this process is setting up a <code>UserModel</code> type which isolates the database interactions with our PostgreSQL <code>users</code> table.</p>
+
+<p>We&rsquo;ll follow the same pattern here that we used for our <code>MovieModel</code>, and implement the following three methods:</p>
+
+<ul>
+<li><code>Insert()</code> to create a new user record in the database.</li>
+<li><code>GetByEmail()</code> to retrieve the data for a user with a specific email address.</li>
+<li><code>Update()</code> to change the data for a specific user.</li>
+</ul>
+
+<p>Open up the <code>internal/data/users.go</code> file again, and add the following code:</p>
+
+<figure class="code go">
+<figcaption>File: internal/data/users.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">data</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;context&#34;</span>      <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;database/sql&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;errors&#34;</span>
+    <span class="s">&#34;time&#34;</span>
+
+    <span class="s">&#34;greenlight.alexedwards.net/internal/validator&#34;</span>
+
+    <span class="s">&#34;golang.org/x/crypto/bcrypt&#34;</span>
+<span class="p">)</span>
+
+<span class="c1">// Define a custom ErrDuplicateEmail error.
+</span><span class="c1"></span><span class="kd">var</span> <span class="p">(</span>
+    <span class="nx">ErrDuplicateEmail</span> <span class="p">=</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="s">&#34;duplicate email&#34;</span><span class="p">)</span>
+<span class="p">)</span>
+
+<span class="o">...</span>
+
+<span class="c1">// Create a UserModel struct which wraps the connection pool.
+</span><span class="c1"></span><span class="kd">type</span> <span class="nx">UserModel</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">DB</span> <span class="o">*</span><span class="nx">sql</span><span class="p">.</span><span class="nx">DB</span>
+<span class="p">}</span>
+
+<span class="c1">// Insert a new record in the database for the user. Note that the id, created_at and 
+</span><span class="c1"></span><span class="c1">// version fields are all automatically generated by our database, so we use the 
+</span><span class="c1"></span><span class="c1">// RETURNING clause to read them into the User struct after the insert, in the same way 
+</span><span class="c1"></span><span class="c1">// that we did when creating a movie.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="nx">UserModel</span><span class="p">)</span> <span class="nf">Insert</span><span class="p">(</span><span class="nx">user</span> <span class="o">*</span><span class="nx">User</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+    <span class="nx">query</span> <span class="o">:=</span> <span class="s">`</span><span class="s">
+</span><span class="s">        INSERT INTO users (name, email, password_hash, activated) 
+</span><span class="s">        VALUES ($1, $2, $3, $4)
+</span><span class="s">        RETURNING id, created_at, version</span><span class="s">`</span>
+
+    <span class="nx">args</span> <span class="o">:=</span> <span class="p">[</span><span class="p">]</span><span class="nx">any</span><span class="p">{</span><span class="nx">user</span><span class="p">.</span><span class="nx">Name</span><span class="p">,</span> <span class="nx">user</span><span class="p">.</span><span class="nx">Email</span><span class="p">,</span> <span class="nx">user</span><span class="p">.</span><span class="nx">Password</span><span class="p">.</span><span class="nx">hash</span><span class="p">,</span> <span class="nx">user</span><span class="p">.</span><span class="nx">Activated</span><span class="p">}</span>
+
+    <span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="mi">3</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">)</span>
+    <span class="k">defer</span> <span class="nf">cancel</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="c1">// If the table already contains a record with this email address, then when we try 
+</span><span class="c1"></span>    <span class="c1">// to perform the insert there will be a violation of the UNIQUE &#34;users_email_key&#34; 
+</span><span class="c1"></span>    <span class="c1">// constraint that we set up in the previous chapter. We check for this error 
+</span><span class="c1"></span>    <span class="c1">// specifically, and return a custom ErrDuplicateEmail error instead.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">m</span><span class="p">.</span><span class="nx">DB</span><span class="p">.</span><span class="nf">QueryRowContext</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">query</span><span class="p">,</span> <span class="nx">args</span><span class="o">...</span><span class="p">)</span><span class="p">.</span><span class="nf">Scan</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">user</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">user</span><span class="p">.</span><span class="nx">CreatedAt</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">user</span><span class="p">.</span><span class="nx">Version</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">switch</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span> <span class="o">==</span> <span class="s">`</span><span class="s">pq: duplicate key value violates unique constraint &#34;users_email_key&#34;</span><span class="s">`</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nx">ErrDuplicateEmail</span>
+        <span class="k">default</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nx">err</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="kc">nil</span>
+<span class="p">}</span>
+
+<span class="c1">// Retrieve the User details from the database based on the user&#39;s email address.
+</span><span class="c1"></span><span class="c1">// Because we have a UNIQUE constraint on the email column, this SQL query will only 
+</span><span class="c1"></span><span class="c1">// return one record (or none at all, in which case we return an ErrRecordNotFound error).
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="nx">UserModel</span><span class="p">)</span> <span class="nf">GetByEmail</span><span class="p">(</span><span class="nx">email</span> <span class="kt">string</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">User</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">query</span> <span class="o">:=</span> <span class="s">`</span><span class="s">
+</span><span class="s">        SELECT id, created_at, name, email, password_hash, activated, version
+</span><span class="s">        FROM users
+</span><span class="s">        WHERE email = $1</span><span class="s">`</span>
+
+    <span class="kd">var</span> <span class="nx">user</span> <span class="nx">User</span>
+
+    <span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="mi">3</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">)</span>
+    <span class="k">defer</span> <span class="nf">cancel</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">m</span><span class="p">.</span><span class="nx">DB</span><span class="p">.</span><span class="nf">QueryRowContext</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">query</span><span class="p">,</span> <span class="nx">email</span><span class="p">)</span><span class="p">.</span><span class="nf">Scan</span><span class="p">(</span>
+        <span class="o">&amp;</span><span class="nx">user</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span>
+        <span class="o">&amp;</span><span class="nx">user</span><span class="p">.</span><span class="nx">CreatedAt</span><span class="p">,</span>
+        <span class="o">&amp;</span><span class="nx">user</span><span class="p">.</span><span class="nx">Name</span><span class="p">,</span>
+        <span class="o">&amp;</span><span class="nx">user</span><span class="p">.</span><span class="nx">Email</span><span class="p">,</span>
+        <span class="o">&amp;</span><span class="nx">user</span><span class="p">.</span><span class="nx">Password</span><span class="p">.</span><span class="nx">hash</span><span class="p">,</span>
+        <span class="o">&amp;</span><span class="nx">user</span><span class="p">.</span><span class="nx">Activated</span><span class="p">,</span>
+        <span class="o">&amp;</span><span class="nx">user</span><span class="p">.</span><span class="nx">Version</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">switch</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">sql</span><span class="p">.</span><span class="nx">ErrNoRows</span><span class="p">)</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">ErrRecordNotFound</span>
+        <span class="k">default</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">err</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="o">&amp;</span><span class="nx">user</span><span class="p">,</span> <span class="kc">nil</span>
+<span class="p">}</span>
+
+<span class="c1">// Update the details for a specific user. Notice that we check against the version 
+</span><span class="c1"></span><span class="c1">// field to help prevent any race conditions during the request cycle, just like we did
+</span><span class="c1"></span><span class="c1">// when updating a movie. And we also check for a violation of the &#34;users_email_key&#34; 
+</span><span class="c1"></span><span class="c1">// constraint when performing the update, just like we did when inserting the user 
+</span><span class="c1"></span><span class="c1">// record originally.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="nx">UserModel</span><span class="p">)</span> <span class="nf">Update</span><span class="p">(</span><span class="nx">user</span> <span class="o">*</span><span class="nx">User</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+    <span class="nx">query</span> <span class="o">:=</span> <span class="s">`</span><span class="s">
+</span><span class="s">        UPDATE users 
+</span><span class="s">        SET name = $1, email = $2, password_hash = $3, activated = $4, version = version + 1
+</span><span class="s">        WHERE id = $5 AND version = $6
+</span><span class="s">        RETURNING version</span><span class="s">`</span>
+
+    <span class="nx">args</span> <span class="o">:=</span> <span class="p">[</span><span class="p">]</span><span class="nx">any</span><span class="p">{</span>
+        <span class="nx">user</span><span class="p">.</span><span class="nx">Name</span><span class="p">,</span>
+        <span class="nx">user</span><span class="p">.</span><span class="nx">Email</span><span class="p">,</span>
+        <span class="nx">user</span><span class="p">.</span><span class="nx">Password</span><span class="p">.</span><span class="nx">hash</span><span class="p">,</span>
+        <span class="nx">user</span><span class="p">.</span><span class="nx">Activated</span><span class="p">,</span>
+        <span class="nx">user</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span>
+        <span class="nx">user</span><span class="p">.</span><span class="nx">Version</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="mi">3</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">)</span>
+    <span class="k">defer</span> <span class="nf">cancel</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">m</span><span class="p">.</span><span class="nx">DB</span><span class="p">.</span><span class="nf">QueryRowContext</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">query</span><span class="p">,</span> <span class="nx">args</span><span class="o">...</span><span class="p">)</span><span class="p">.</span><span class="nf">Scan</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">user</span><span class="p">.</span><span class="nx">Version</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">switch</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span> <span class="o">==</span> <span class="s">`</span><span class="s">pq: duplicate key value violates unique constraint &#34;users_email_key&#34;</span><span class="s">`</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nx">ErrDuplicateEmail</span>
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">sql</span><span class="p">.</span><span class="nx">ErrNoRows</span><span class="p">)</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nx">ErrEditConflict</span>
+        <span class="k">default</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nx">err</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="kc">nil</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Hopefully that feels nice and straightforward &mdash; we&rsquo;re using the same code patterns that we did for the CRUD operations on our <code>movies</code> table earlier in the book.</p>
+
+<p>The only difference is that in some of the methods we&rsquo;re specifically checking for any errors due to a violation of our unique <code>users_email_key</code> constraint. As we&rsquo;ll see in the next chapter, by treating this as a special case we&rsquo;ll be able to respond to clients with a message to say that <em>&ldquo;this email address is already in use&rdquo;</em>, rather than sending them a <code>500 Internal Server Error</code> response like we normally would.</p>
+
+<p>To finish all this off, the final thing we need to do is update our <code>internal/data/models.go</code> file to include the new <code>UserModel</code> in our parent <code>Models</code> struct. Like so:</p>
+
+<figure class="code go">
+<figcaption>File: internal/data/models.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">data</span>
+
+<span class="o">...</span>
+
+<span class="kd">type</span> <span class="nx">Models</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">Movies</span> <span class="nx">MovieModel</span>
+    <span class="nx">Users</span>  <span class="nx">UserModel</span> <span class="c1">// Add a new Users field.
+</span><span class="c1"></span><span class="p">}</span>
+
+<span class="kd">func</span> <span class="nf">NewModels</span><span class="p">(</span><span class="nx">db</span> <span class="o">*</span><span class="nx">sql</span><span class="p">.</span><span class="nx">DB</span><span class="p">)</span> <span class="nx">Models</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="nx">Models</span><span class="p">{</span>
+        <span class="nx">Movies</span><span class="p">:</span> <span class="nx">MovieModel</span><span class="p">{</span><span class="nx">DB</span><span class="p">:</span> <span class="nx">db</span><span class="p">}</span><span class="p">,</span>
+        <span class="nx">Users</span><span class="p">:</span>  <span class="nx">UserModel</span><span class="p">{</span><span class="nx">DB</span><span class="p">:</span> <span class="nx">db</span><span class="p">}</span><span class="p">,</span> <span class="c1">// Initialize a new UserModel instance.
+</span><span class="c1"></span>    <span class="p">}</span>
+<span class="p">}</span></pre>
+</figure>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="12.01-setting-up-the-users-database-table.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="12.03-registering-a-user.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "12.01-setting-up-the-users-database-table.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "12.03-registering-a-user.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

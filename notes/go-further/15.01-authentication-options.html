@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Authentication options &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="15.00-authentication.html">Authentication</a> &rsaquo; Authentication options</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="15.00-authentication.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="15.02-generating-authentication-tokens.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 15.1.</div>
+			<h2 id="authentication-options">Authentication options</h2>
+
+<p>Before we get started on writing any code, let&rsquo;s talk about <em>how</em> we&rsquo;re going to authenticate requests to our API and find out which user a request is coming from.</p>
+
+<p>Choosing a high-level approach to API authentication can be tricky &mdash; there are many different options, and it&rsquo;s not always immediately clear which one is the right fit for your project. So in this chapter we&rsquo;ll discuss some of the most common approaches at a high level, talk through their relative pros and cons, and finish with some general guidelines about when they&rsquo;re appropriate to use.</p>
+
+<p>Specifically, the five approaches that we&rsquo;ll compare are:</p>
+
+<ul>
+<li>Basic authentication</li>
+<li>Stateful token authentication</li>
+<li>Stateless token authentication</li>
+<li>API key authentication</li>
+<li>OAuth 2.0 / OpenID Connect</li>
+</ul>
+
+<aside class="important"><p>
+<strong>Important:</strong> For all authentication methods that we&rsquo;re describing in this chapter, it&rsquo;s assumed that your API only communicates with clients over HTTPS.
+</p></aside>
+
+<h3 id="http-basic-authentication">HTTP basic authentication</h3>
+
+<p>Perhaps the simplest way to determine <em>who is making a request</em> to your API is to use HTTP basic authentication.</p>
+
+<p>With this method, the client includes an <code>Authorization</code> header with every request containing their credentials. The credentials need to be in the format <code>username:password</code> and base64 encoded. So, for example, to authenticate as <code>alice@example.com:pa55word</code> the client would send the following header:</p>
+
+<figure class="code plain">
+<pre>Authorization: Basic YWxpY2VAZXhhbXBsZS5jb206cGE1NXdvcmQ=</pre>
+</figure>
+
+<p>In your API, you can then extract the credentials from this header using Go&rsquo;s <a href="https://golang.org/pkg/net/http/#Request.BasicAuth"><code>Request.BasicAuth()</code></a> method, and verify that they&rsquo;re correct before continuing to process the request.</p>
+
+<p>A big plus of HTTP basic authentication is how simple it is for clients. They can just send the same header with every request &mdash; and HTTP basic authentication is supported out-of-the-box by most programming languages, web browsers, and tools such as <code>curl</code> and <code>wget</code>.</p>
+
+<p>It&rsquo;s often useful in the scenario where your API doesn&rsquo;t have &lsquo;real&rsquo; user accounts, but you want a quick and easy way to restrict access to it or protect it from prying eyes.</p>
+
+<p>For APIs with &lsquo;real&rsquo; user accounts and &mdash; in particular &mdash; hashed passwords, it&rsquo;s not such a great fit. Comparing the password provided by a client against a (slow) hashed password is a deliberately costly operation, and when using HTTP basic authentication you need to do that check for every request. That will create a lot of extra work for your API server and add significant latency to responses.</p>
+
+<p>But even then, basic authentication can still be a good choice if traffic to your API is very low and response speed is not important to you.</p>
+
+<h3 id="token-authentication">Token authentication</h3>
+
+<p>The high-level idea behind <em>token authentication</em> (also sometimes known as <em>bearer token authentication</em>) works like this:</p>
+
+<ol>
+<li><p>The client sends a request to your API containing their credentials (typically username or email address, and password).</p></li>
+
+<li><p>The API verifies that the credentials are correct, generates a <em>bearer token</em> which represents the user, and sends it back to the user. The token expires after a set period of time, after which the user will need to resubmit their credentials again to get a new token.</p></li>
+
+<li><p>For subsequent requests to the API, the client includes the token in an <code>Authorization</code> header like this:</p>
+
+<figure class="code plain">
+<pre>Authorization: Bearer &lt;token&gt;</pre>
+</figure>
+</li>
+
+<li><p>When your API receives this request, it checks that the token hasn&rsquo;t expired and examines the token value to determine who the user is.</p></li>
+</ol>
+
+<p>For APIs where user passwords are hashed (like ours), this approach is better than basic authentication because it means that the slow password check only has to be done periodically &mdash; either when creating a token for the first time or after a token has expired.</p>
+
+<p>The downside is that managing tokens can be complicated for clients &mdash; they will need to implement the necessary logic for caching tokens, monitoring and managing token expiry, and periodically generating new tokens.</p>
+
+<p>We can break down token authentication further into two sub-types: <em>stateful</em> and <em>stateless</em> token authentication. They are quite different in terms of their pros and cons, so let&rsquo;s discuss them both separately.</p>
+
+<h4 id="stateful-token-authentication">Stateful token authentication</h4>
+
+<p>In a stateful token approach, the value of the token is a high-entropy cryptographically-secure random string. This token &mdash; or a fast hash of it &mdash; is stored server-side in a database, alongside the user ID and an expiry time for the token.</p>
+
+<p>When the client sends back the token in subsequent requests, your application can look up the token in the database, check that it hasn&rsquo;t expired, and retrieve the corresponding user ID to find out who the request is coming from.</p>
+
+<p>The big advantage of this is that your API maintains control over the tokens &mdash; it&rsquo;s straightforward to revoke tokens on a per-token or per-user basis by deleting them from the database or marking them as expired.</p>
+
+<p>Conceptually it&rsquo;s also simple and robust &mdash; the security is provided by the token being &lsquo;unguessable&rsquo;, which is why it&rsquo;s important to use a high-entropy cryptographically-secure random value for the token.</p>
+
+<p>So, what are the downsides?</p>
+
+<p>Apart from the awkwardness for clients in having to manage tokens, it&rsquo;s difficult to find much to criticize about this approach. Perhaps the fact that it requires a database lookup is a negative &mdash; but in most cases you will need to make a database lookup to check the user&rsquo;s activation status or retrieve additional information about them <em>anyway</em>.</p>
+
+<h4 id="stateless-token-authentication">Stateless token authentication</h4>
+
+<p>In contrast, stateless tokens encode the user ID and expiry time <em>in the token itself</em>. The token is cryptographically signed to prevent tampering and (in some cases) encrypted to prevent the contents being read.</p>
+
+<p>There are a few different technologies that you can use to create stateless tokens. Encoding the information in a <a href="https://en.wikipedia.org/wiki/JSON_Web_Token">JWT</a> (JSON Web Token) is probably the most well-known approach, but <a href="https://developer.okta.com/blog/2019/10/17/a-thorough-introduction-to-paseto">PASETO</a>, <a href="https://branca.io/">Branca</a> and <a href="https://pkg.go.dev/golang.org/x/crypto/nacl/secretbox">nacl/secretbox</a> are viable alternatives too. Although the implementation details of these technologies are different, the overarching pros and cons in terms of authentication are similar.</p>
+
+<p>The main selling point of using stateless tokens for authentication is that the work to encode and decode the token can be done in memory, and all the information required to identify the user is contained within the token itself. There&rsquo;s no need to perform a database lookup to find out who a request is coming from.</p>
+
+<p>The primary downside of stateless tokens is that they can&rsquo;t easily be revoked once they are issued.</p>
+
+<p>In an emergency, you could effectively revoke <em>all</em> tokens by changing the secret used for signing your tokens (forcing all users to reauthenticate), or another workaround is to maintain a blocklist of revoked tokens in a database (although that defeats the &lsquo;stateless&rsquo; aspect of having stateless tokens).</p>
+
+<aside class="note"><p>
+<strong>Note:</strong> You should generally avoid storing additional information in a stateless token, such as a user&rsquo;s activation status or permissions, and using that as the basis for <em>authorization</em> checks. During the lifetime of the token, the information encoded into it will potentially become stale and out-of-sync with the real data in your system &mdash; and relying on stale data for authorization checks can easily lead to unexpected behavior for users and various security issues.
+</p></aside>
+
+<p>Finally, with JWTs in particular, the fact that they&rsquo;re highly configurable means that there are <em>lots of things you can get wrong</em>. The <a href="https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/">Critical vulnerabilities in JSON Web Token libraries</a> and <a href="https://curity.io/resources/learn/jwt-best-practices/">JWT Security Best Practices</a> articles provide a good introduction to the type of things you need to be careful of here.</p>
+
+<p>Because of these downsides, stateless tokens &mdash; and JWTs in particular &mdash; are generally not the best choice for managing authentication in most API applications.</p>
+
+<p>But they <em>can</em> be very useful in a scenario where you need <em>delegated authentication</em> &mdash; where the application <em>creating</em> the authentication token is different from the application <em>consuming</em> it, and those applications don&rsquo;t share any state (which means that using stateful tokens isn&rsquo;t an option). For instance, if you&rsquo;re building a system which has a microservice-style architecture behind the scenes, then a stateless token created by an &lsquo;authentication&rsquo; service can subsequently be passed to other services to identify the user.</p>
+
+<h3 id="api-key-authentication">API-key authentication</h3>
+
+<p>The idea behind API-key authentication is that a user has a non-expiring secret &lsquo;key&rsquo; associated with their account. This key should be a high-entropy cryptographically-secure random string, and a fast hash of the key (SHA256 or SHA512) should be stored alongside the corresponding user ID in your database.</p>
+
+<p>The user then passes their key with each request to your API in a header like this:</p>
+
+<figure class="code plain">
+<pre>Authorization: Key &lt;key&gt;</pre>
+</figure>
+
+<p>On receiving it, your API can regenerate the fast hash of the key and use it to look up the corresponding user ID from your database.</p>
+
+<p>Conceptually, this isn&rsquo;t a million miles away from the stateful token approach &mdash; the main difference is that the keys are permanent keys, rather than temporary tokens.</p>
+
+<p>On one hand, this is nice for the client as they can use the same key for every request and they don&rsquo;t need to write code to manage tokens or expiry. On the other hand, the user now has two long-lived secrets to manage which can potentially compromise their account: their password, and their API key.</p>
+
+<p>Supporting API keys also adds additional complexity to your API application &mdash; you&rsquo;ll need a way for users to regenerate their API key if they lose it or the key is compromised, and you may also wish to support multiple API keys for the same user, so they can use different keys for different purposes.</p>
+
+<p>It&rsquo;s also important to note that API keys themselves should only ever be communicated to users over a secure channel, and you should treat them with the same level of care that you would a user&rsquo;s password.</p>
+
+<h3 id="oauth-2-0-openid-connect">OAuth 2.0 / OpenID Connect</h3>
+
+<p>Another option is to leverage OAuth 2.0 for authentication. With this approach, information about your users (and their passwords) is stored by a third-party <em>identity provider</em> like Google or Facebook rather than yourself.</p>
+
+<p>The first thing to mention here is that <em>OAuth 2.0 is not an authentication protocol</em>, and you shouldn&rsquo;t really use it for authenticating users. The <a href="https://oauth.net/"><code>oauth.net</code></a> website has a great article <a href="https://oauth.net/articles/authentication/">explaining this</a>, and I highly recommend reading it.</p>
+
+<p>If you want to implement authentication checks against a third-party identity provider, you should use <a href="https://openid.net/connect/">OpenID Connect</a> (which is built directly on top of OAuth 2.0).</p>
+
+<p>There&rsquo;s a comprehensive overview of OpenID Connect <a href="https://connect2id.com/learn/openid-connect">here</a>, but at a very, very, high level it works like this:</p>
+
+<ul>
+<li>When you want to authenticate a request, you redirect the user to an &lsquo;authentication and consent&rsquo; form hosted by the identity provider.</li>
+<li>If the user consents, then the identity provider sends your API an <em>authorization code</em>.</li>
+<li>Your API then sends the authorization code to another endpoint provided by the identity provider. They verify the authorization code, and if it&rsquo;s valid they will send you a JSON response containing an <em>ID token</em>.</li>
+<li>This ID token is itself a JWT. You need to validate and decode this JWT to get the actual user information, which includes things like their email address, name, birth date, timezone etc.</li>
+<li>Now that you know who the user is, you can then implement a stateful or stateless authentication token pattern so that you don&rsquo;t have to go through the whole process for every subsequent request.</li>
+</ul>
+
+<p>Like all the other options we&rsquo;ve looked at, there are pros and cons to using OpenID Connect. The big plus is that you don&rsquo;t need to persistently store user information or passwords yourself. The big downside is that it&rsquo;s quite complex &mdash; although there are some helper packages like <a href="https://github.com/coreos/go-oidc"><code>coreos/go-oidc</code></a> which do a good job of masking that complexity and providing a simple interface for the OpenID Connect workflow that you can hook in to.</p>
+
+<p>It&rsquo;s also important to point out that using OpenID Connect requires all your users to have an account with the identity provider, and the &lsquo;authentication and consent&rsquo; step requires human interaction via a web browser &mdash; which is probably fine if your API is the back-end for a website, but not ideal if it is a &lsquo;standalone&rsquo; API with other computer programs as clients.</p>
+
+<h3 id="what-authentication-approach-should-i-use">What authentication approach should I use?</h3>
+
+<p>It&rsquo;s difficult to give blanket guidance on what authentication approach is best to use for your API. As with most things in programming, different tools are appropriate for different jobs.</p>
+
+<p>But as simple, rough, rules-of-thumb:</p>
+
+<ul>
+<li>If your API doesn&rsquo;t have &lsquo;real&rsquo; user accounts with slow password hashes, then HTTP basic authentication can be a good &mdash; and often overlooked &mdash; fit.</li>
+<li>If you don&rsquo;t want to store user passwords yourself, all your users have accounts with a third-party identity provider that supports OpenID Connect, and your API is the back-end for a website&hellip; then use OpenID Connect.</li>
+<li>If you require delegated authentication, such as when your API has a microservice architecture with different services for performing authentication and performing other tasks, then use stateless authentication tokens.</li>
+<li>Otherwise use API keys or stateful authentication tokens. In general:
+
+<ul>
+<li>Stateful authentication tokens are a nice fit for APIs that act as the back-end for a website or single-page application, as there is a natural moment when the user logs in where they can be exchanged for user credentials.</li>
+<li>In contrast, API keys can be better for more &lsquo;general purpose&rsquo; APIs because they&rsquo;re permanent and simpler for developers to use in their applications and scripts.</li>
+</ul></li>
+</ul>
+
+<p>In the rest of this book, we&rsquo;re going to implement authentication using the <em>stateful authentication token</em> pattern. In our case we&rsquo;ve already built a lot of the necessary logic for this as part of our <em>activation tokens</em> work.</p>
+
+<aside class="hint"><p>
+<strong>Note:</strong> Although I <em>really</em> don&rsquo;t recommend using JWTs unless you need some form of <em>delegated authentication</em>, I&rsquo;m aware that they hold a lot of mindshare in the developer community and are often used more widely than that.</p>
+
+<p>So, because of this, I&rsquo;ve also included <a href="21.03-authentication-with-json-web-tokens.html">an appendix</a> at the end of the book which explains how the <em>Greenlight</em> API can be adapted to use JWTs for stateless authentication.
+</p></aside>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="15.00-authentication.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="15.02-generating-authentication-tokens.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "15.00-authentication.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "15.02-generating-authentication-tokens.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

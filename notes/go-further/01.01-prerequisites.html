@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Prerequisites &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="01.00-introduction.html">Introduction</a> &rsaquo; Prerequisites</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="01.00-introduction.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="02.00-getting-started.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 1.1.</div>
+			<h2 id="prerequisites">Prerequisites</h2>
+
+<h3 id="background-knowledge">Background knowledge</h3>
+
+<p>This book is written as a follow up to <a href="https://lets-go.alexedwards.net/"><em>Let&rsquo;s Go</em></a>, and we&rsquo;ll leverage a lot of the information and code patterns from that book again here.</p>
+
+<p>If you&rsquo;ve already read and enjoyed <em>Let&rsquo;s Go</em>, then this book should be a good fit for you and the ideal next step in your learning. If you haven&rsquo;t, then I highly recommend starting with <em>Let&rsquo;s Go</em> first &mdash; especially if you&rsquo;re a newcomer to Go.</p>
+
+<p>You can read this as a standalone book, but please be aware that it is somewhat advanced &mdash; it doesn&rsquo;t explain the fundamentals in detail, and some topics (like testing) don&rsquo;t feature at all because they were covered heavily in the previous book. But if you&rsquo;re comfortable using Go and already have a decent amount of experience behind you, then this book may also be a good fit for you. Feel free to jump straight in.</p>
+
+<h3 id="go-1-25">Go 1.25</h3>
+
+<p>The information in this book is correct for the <a href="https://golang.org/doc/devel/release.html">latest major release of Go</a> (version 1.25), and you should install this if you&rsquo;d like to code along with the application build.</p>
+
+<p>If you&rsquo;ve already got Go installed, you can check the version number from your terminal by using the <code>go version</code> command. The output should look similar to this:</p>
+
+<figure class="code bash">
+<pre>$ go version
+<samp>go version go1.25.0 linux/amd64</samp></pre>
+</figure>
+
+<p>If you need to upgrade your version of Go, then please go ahead and do that now. The instructions for your operating system <a href="https://golang.org/doc/manage-install#uninstalling">can be found here</a>.</p>
+
+<h3 id="other-software">Other software</h3>
+
+<p>There are a few other bits of software that you should make sure are available on your computer if you want to follow along fully. They are:</p>
+
+<ul>
+<li><p>The <a href="https://curl.haxx.se/">curl</a> command-line tool for working with HTTP requests and responses from your terminal. On macOS and Linux machines it should be pre-installed or available in your software repositories. Otherwise, you can download the latest version <a href="https://curl.haxx.se/download.html">from here</a>.</p></li>
+
+<li><p>The <a href="https://github.com/rakyll/hey">hey</a> tool for running some basic load tests. You can install hey with the <code>go install</code> command:</p>
+
+<figure class="code bash">
+<pre>$ go install github.com/rakyll/hey@latest</pre>
+</figure>
+</li>
+
+<li><p>The <a href="https://git-scm.com/">git</a> version control system. Installation instructions for all operating systems can be <a href="https://git-scm.com/downloads">found here</a>.</p></li>
+
+<li><p>A web browser with good developer tools. I&rsquo;ll be using <a href="https://www.mozilla.org/en-US/firefox/new/">Firefox</a> in this book, but Chromium, Chrome or Microsoft Edge will work too.</p></li>
+
+<li><p>Your favorite text editor 😊</p></li>
+</ul>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="01.00-introduction.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="02.00-getting-started.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "01.00-introduction.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "02.00-getting-started.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

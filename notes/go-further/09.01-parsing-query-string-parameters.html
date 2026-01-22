@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Parsing query string parameters &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="09.00-filtering-sorting-and-pagination.html">Filtering, sorting, and pagination</a> &rsaquo; Parsing query string parameters</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="09.00-filtering-sorting-and-pagination.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="09.02-validating-query-string-parameters.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 9.1.</div>
+			<h2 id="parsing-query-string-parameters">Parsing query string parameters</h2>
+
+<p>Over the next few chapters, we&rsquo;re going to configure the <code>GET /v1/movies</code> endpoint so that a client can control which movie records are returned via <em>query string parameters</em>. For example:</p>
+
+<figure class="code plain">
+<pre>/v1/movies?title=godfather&amp;genres=crime,drama&amp;page=1&amp;page_size=5&amp;sort=-year</pre>
+</figure>
+
+<p>If a client sends a query string like this, it is essentially saying to our API: <em>&ldquo;please return the first 5 records where the movie title includes <code>godfather</code> and the genres include <code>crime</code> and <code>drama</code>, sorted by descending release year&rdquo;</em>.</p>
+
+<aside class="hint"><p>
+<strong>Note</strong>: In the <code>sort</code> parameter we will use the <code>-</code> character to denote descending sort order. So, for example, the parameter <code>sort=title</code> implies an ascending alphabetical sort on movie title, whereas <code>sort=-title</code> implies a descending sort.
+</p></aside>
+
+<p>So the first thing we&rsquo;re going to look at is <em>how to parse these query string parameters in our Go code</em>.</p>
+
+<p>As you can hopefully remember from <em>Let&rsquo;s Go</em>, we can retrieve the query string data from a request by calling the <a href="https://golang.org/pkg/net/url/#URL.Query"><code>r.URL.Query()</code></a> method. This returns a <a href="https://golang.org/pkg/net/url/#Values"><code>url.Values</code></a> type, which is basically a map holding the query string data.</p>
+
+<p>We can then extract values from this map using the <a href="https://golang.org/pkg/net/url/#Values.Get"><code>Get()</code></a> method, which will return the value for a specific key as a <code>string</code> type, or the empty string <code>&quot;&quot;</code> if no matching key exists in the query string.</p>
+
+<p>In our case, we&rsquo;ll need to carry out extra post-processing on some of these query string values too. Specifically:</p>
+
+<ul>
+<li>The <code>genres</code> parameter will potentially contain multiple <em>comma-separated values</em> &mdash; like <code>genres=crime,drama</code>. We will want to split these values apart and store them in a <code>[]string</code> slice.</li>
+<li>The <code>page</code> and <code>page_size</code> parameters will contain numbers, and we will want to convert these query string values into Go <code>int</code> types.</li>
+</ul>
+
+<p>In addition to that:</p>
+
+<ul>
+<li>There are some validation checks that we&rsquo;ll want to apply to the query string values, like making sure that <code>page</code> and <code>page_size</code> are not negative numbers.</li>
+<li>We want our application to set some sensible <em>default values</em> in case parameters like <code>page</code>, <code>page_size</code> and <code>sort</code> aren&rsquo;t provided by the client.</li>
+</ul>
+
+<h3 id="creating-helper-functions">Creating helper functions</h3>
+
+<p>To assist with this, we&rsquo;re going to create three new helper functions: <code>readString()</code>, <code>readInt()</code> and <code>readCSV()</code>. We&rsquo;ll use these helpers to extract and parse values from the query string, or return a default &lsquo;fallback&rsquo; value if necessary.</p>
+
+<p>Head to your <code>cmd/api/helpers.go</code> file and add the following code:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/helpers.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;encoding/json&#34;</span>
+    <span class="s">&#34;errors&#34;</span>
+    <span class="s">&#34;fmt&#34;</span>
+    <span class="s">&#34;io&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+    <span class="s">&#34;net/url&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;strconv&#34;</span>
+    <span class="s">&#34;strings&#34;</span>
+
+    <span class="s">&#34;greenlight.alexedwards.net/internal/validator&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>
+    <span class="s">&#34;github.com/julienschmidt/httprouter&#34;</span>
+<span class="p">)</span>
+
+<span class="o">...</span>
+
+<span class="c1">// The readString() helper returns a string value from the query string, or the provided
+</span><span class="c1"></span><span class="c1">// default value if no matching key could be found.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">readString</span><span class="p">(</span><span class="nx">qs</span> <span class="nx">url</span><span class="p">.</span><span class="nx">Values</span><span class="p">,</span> <span class="nx">key</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">defaultValue</span> <span class="kt">string</span><span class="p">)</span> <span class="kt">string</span> <span class="p">{</span>
+    <span class="c1">// Extract the value for a given key from the query string. If no key exists this
+</span><span class="c1"></span>    <span class="c1">// will return the empty string &#34;&#34;. 
+</span><span class="c1"></span>    <span class="nx">s</span> <span class="o">:=</span> <span class="nx">qs</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">key</span><span class="p">)</span>
+
+    <span class="c1">// If no key exists (or the value is empty) then return the default value.
+</span><span class="c1"></span>    <span class="k">if</span> <span class="nx">s</span> <span class="o">==</span> <span class="s">&#34;&#34;</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">defaultValue</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Otherwise return the string.
+</span><span class="c1"></span>    <span class="k">return</span> <span class="nx">s</span>
+<span class="p">}</span>
+
+<span class="c1">// The readCSV() helper reads a string value from the query string and then splits it 
+</span><span class="c1"></span><span class="c1">// into a slice on the comma character. If no matching key could be found, it returns
+</span><span class="c1"></span><span class="c1">// the provided default value.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">readCSV</span><span class="p">(</span><span class="nx">qs</span> <span class="nx">url</span><span class="p">.</span><span class="nx">Values</span><span class="p">,</span> <span class="nx">key</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">defaultValue</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span><span class="p">)</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span> <span class="p">{</span>
+    <span class="c1">// Extract the value from the query string.
+</span><span class="c1"></span>    <span class="nx">csv</span> <span class="o">:=</span> <span class="nx">qs</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">key</span><span class="p">)</span>
+
+    <span class="c1">// If no key exists (or the value is empty) then return the default value.
+</span><span class="c1"></span>    <span class="k">if</span> <span class="nx">csv</span> <span class="o">==</span> <span class="s">&#34;&#34;</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">defaultValue</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Otherwise parse the value into a []string slice and return it.
+</span><span class="c1"></span>    <span class="k">return</span> <span class="nx">strings</span><span class="p">.</span><span class="nf">Split</span><span class="p">(</span><span class="nx">csv</span><span class="p">,</span> <span class="s">&#34;,&#34;</span><span class="p">)</span>
+<span class="p">}</span>
+
+
+<span class="c1">// The readInt() helper reads a string value from the query string and converts it to an 
+</span><span class="c1"></span><span class="c1">// integer before returning. If no matching key could be found it returns the provided 
+</span><span class="c1"></span><span class="c1">// default value. If the value couldn&#39;t be converted to an integer, then we record an 
+</span><span class="c1"></span><span class="c1">// error message in the provided Validator instance. 
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">readInt</span><span class="p">(</span><span class="nx">qs</span> <span class="nx">url</span><span class="p">.</span><span class="nx">Values</span><span class="p">,</span> <span class="nx">key</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">defaultValue</span> <span class="kt">int</span><span class="p">,</span> <span class="nx">v</span> <span class="o">*</span><span class="nx">validator</span><span class="p">.</span><span class="nx">Validator</span><span class="p">)</span> <span class="kt">int</span> <span class="p">{</span>
+    <span class="c1">// Extract the value from the query string.
+</span><span class="c1"></span>    <span class="nx">s</span> <span class="o">:=</span> <span class="nx">qs</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">key</span><span class="p">)</span>
+
+    <span class="c1">// If no key exists (or the value is empty) then return the default value.
+</span><span class="c1"></span>    <span class="k">if</span> <span class="nx">s</span> <span class="o">==</span> <span class="s">&#34;&#34;</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">defaultValue</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Try to convert the value to an int. If this fails, add an error message to the 
+</span><span class="c1"></span>    <span class="c1">// validator instance and return the default value.
+</span><span class="c1"></span>    <span class="nx">i</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">strconv</span><span class="p">.</span><span class="nf">Atoi</span><span class="p">(</span><span class="nx">s</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">v</span><span class="p">.</span><span class="nf">AddError</span><span class="p">(</span><span class="nx">key</span><span class="p">,</span> <span class="s">&#34;must be an integer value&#34;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nx">defaultValue</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Otherwise, return the converted integer value.
+</span><span class="c1"></span>    <span class="k">return</span> <span class="nx">i</span>
+<span class="p">}</span></pre>
+</figure>
+
+<h3 id="adding-the-api-handler-and-route">Adding the API handler and route</h3>
+
+<p>Next up, let&rsquo;s create a new <code>listMoviesHandler</code> for our <code>GET /v1/movies</code> endpoint. For now, this handler will simply parse the request query string using the helpers we just made, and then dump the contents out in an HTTP response.</p>
+
+<p>If you&rsquo;re following along, go ahead and create the <code>listMoviesHandler</code> like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/movies.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">listMoviesHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// To keep things consistent with our other handlers, we&#39;ll define an input struct
+</span><span class="c1"></span>    <span class="c1">// to hold the expected values from the request query string.
+</span><span class="c1"></span>    <span class="kd">var</span> <span class="nx">input</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">Title</span>    <span class="kt">string</span>
+        <span class="nx">Genres</span>   <span class="p">[</span><span class="p">]</span><span class="kt">string</span>
+        <span class="nx">Page</span>     <span class="kt">int</span>
+        <span class="nx">PageSize</span> <span class="kt">int</span>
+        <span class="nx">Sort</span>     <span class="kt">string</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Initialize a new Validator instance.
+</span><span class="c1"></span>    <span class="nx">v</span> <span class="o">:=</span> <span class="nx">validator</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="c1">// Call r.URL.Query() to get the url.Values map containing the query string data.
+</span><span class="c1"></span>    <span class="nx">qs</span> <span class="o">:=</span> <span class="nx">r</span><span class="p">.</span><span class="nx">URL</span><span class="p">.</span><span class="nf">Query</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="c1">// Use our helpers to extract the title and genres query string values, falling back
+</span><span class="c1"></span>    <span class="c1">// to defaults of an empty string and an empty slice respectively if they are not 
+</span><span class="c1"></span>    <span class="c1">// provided by the client.
+</span><span class="c1"></span>    <span class="nx">input</span><span class="p">.</span><span class="nx">Title</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readString</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;title&#34;</span><span class="p">,</span> <span class="s">&#34;&#34;</span><span class="p">)</span>
+    <span class="nx">input</span><span class="p">.</span><span class="nx">Genres</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readCSV</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;genres&#34;</span><span class="p">,</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span><span class="p">{</span><span class="p">}</span><span class="p">)</span>
+
+    <span class="c1">// Get the page and page_size query string values as integers. Notice that we set 
+</span><span class="c1"></span>    <span class="c1">// the default page value to 1 and default page_size to 20, and that we pass the 
+</span><span class="c1"></span>    <span class="c1">// validator instance as the final argument here. 
+</span><span class="c1"></span>    <span class="nx">input</span><span class="p">.</span><span class="nx">Page</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readInt</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;page&#34;</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="nx">v</span><span class="p">)</span>
+    <span class="nx">input</span><span class="p">.</span><span class="nx">PageSize</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readInt</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;page_size&#34;</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="nx">v</span><span class="p">)</span>
+
+    <span class="c1">// Extract the sort query string value, falling back to &#34;id&#34; if it is not provided
+</span><span class="c1"></span>    <span class="c1">// by the client (which will imply an ascending sort on movie ID).
+</span><span class="c1"></span>    <span class="nx">input</span><span class="p">.</span><span class="nx">Sort</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readString</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;sort&#34;</span><span class="p">,</span> <span class="s">&#34;id&#34;</span><span class="p">)</span>
+
+    <span class="c1">// Check the Validator instance for any errors and use the failedValidationResponse()
+</span><span class="c1"></span>    <span class="c1">// helper to send the client a response if necessary. 
+</span><span class="c1"></span>    <span class="k">if</span> <span class="p">!</span><span class="nx">v</span><span class="p">.</span><span class="nf">Valid</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">failedValidationResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nx">Errors</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Dump the contents of the input struct in an HTTP response.
+</span><span class="c1"></span>    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Fprintf</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="s">&#34;%+v\n&#34;</span><span class="p">,</span> <span class="nx">input</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Then we need to create the <code>GET /v1/movies</code> route in our <code>cmd/api/routes.go</code> file, like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/routes.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">routes</span><span class="p">(</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span> <span class="p">{</span>
+    <span class="nx">router</span> <span class="o">:=</span> <span class="nx">httprouter</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nx">NotFound</span> <span class="p">=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">notFoundResponse</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nx">MethodNotAllowed</span> <span class="p">=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">methodNotAllowedResponse</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/healthcheck&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">healthcheckHandler</span><span class="p">)</span>
+
+    <span class="c1">// Add the route for the GET /v1/movies endpoint.
+</span><span class="c1"></span>    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/movies&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">listMoviesHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span> <span class="s">&#34;/v1/movies&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">createMovieHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">showMovieHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPatch</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">updateMovieHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodDelete</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">deleteMovieHandler</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="nx">app</span><span class="p">.</span><span class="nf">recoverPanic</span><span class="p">(</span><span class="nx">router</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>And with that, we&rsquo;re ready to see this in action!</p>
+
+<p>Go ahead and try sending a request to the <code>GET /v1/movies</code> endpoint containing the expected query string parameters, like below.</p>
+
+<aside class="important"><p>
+<strong>Important:</strong> When using curl to send a request containing more than one query string parameter, you <strong>must</strong> wrap the URL in quotes for it to work correctly.
+</p></aside>
+
+<figure class="code bash">
+<pre>$ curl &#34;localhost:4000/v1/movies?title=godfather&amp;genres=crime,drama&amp;page=1&amp;page_size=5&amp;sort=year&#34;
+<samp>{Title:godfather Genres:[crime drama] Page:1 PageSize:5 Sort:year}</samp></pre>
+</figure>
+
+<p>That&rsquo;s looking good &mdash; we can see that the values provided in our query string have all been parsed correctly and are included in the <code>input</code> struct.</p>
+
+<p>If you want, try making a request with <em>no</em> query string parameters. In this case, you should see that the values in the <code>input</code> struct take on the defaults we specified in our <code>listMoviesHandler</code> code. Like so:</p>
+
+<figure class="code bash">
+<pre>$ curl localhost:4000/v1/movies
+<samp>{Title: Genres:[] Page:1 PageSize:20 Sort:id}</samp></pre>
+</figure>
+
+<h3 id="creating-a-filters-struct">Creating a Filters struct</h3>
+
+<p>The <code>page</code>, <code>page_size</code> and <code>sort</code> query string parameters are things that you&rsquo;ll potentially want to use on other endpoints in your API too. So, to help make this easier, let&rsquo;s quickly split them out into a reusable <code>Filters</code> struct.</p>
+
+<p>If you&rsquo;re following along, go ahead and create a new <code>internal/data/filters.go</code> file:</p>
+
+<figure class="code bash">
+<pre>$ touch internal/data/filters.go </pre>
+</figure>
+
+<p>And then add the following code:</p>
+
+<figure class="code go">
+<figcaption>File: internal/data/filters.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">data</span>
+
+<span class="kd">type</span> <span class="nx">Filters</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">Page</span>     <span class="kt">int</span>
+    <span class="nx">PageSize</span> <span class="kt">int</span>
+    <span class="nx">Sort</span>     <span class="kt">string</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Once that&rsquo;s done, head back to your <code>listMoviesHandler</code> and update it to use the new <code>Filters</code> struct like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/movies.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">listMoviesHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Embed the new Filters struct.
+</span><span class="c1"></span>    <span class="kd">var</span> <span class="nx">input</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">Title</span>  <span class="kt">string</span>
+        <span class="nx">Genres</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span>
+        <span class="nx">data</span><span class="p">.</span><span class="nx">Filters</span>
+    <span class="p">}</span>
+
+    <span class="nx">v</span> <span class="o">:=</span> <span class="nx">validator</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">qs</span> <span class="o">:=</span> <span class="nx">r</span><span class="p">.</span><span class="nx">URL</span><span class="p">.</span><span class="nf">Query</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">input</span><span class="p">.</span><span class="nx">Title</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readString</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;title&#34;</span><span class="p">,</span> <span class="s">&#34;&#34;</span><span class="p">)</span>
+    <span class="nx">input</span><span class="p">.</span><span class="nx">Genres</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readCSV</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;genres&#34;</span><span class="p">,</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span><span class="p">{</span><span class="p">}</span><span class="p">)</span>
+
+    <span class="c1">// Read the page and page_size query string values into the embedded struct.
+</span><span class="c1"></span>    <span class="nx">input</span><span class="p">.</span><span class="nx">Filters</span><span class="p">.</span><span class="nx">Page</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readInt</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;page&#34;</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="nx">v</span><span class="p">)</span>
+    <span class="nx">input</span><span class="p">.</span><span class="nx">Filters</span><span class="p">.</span><span class="nx">PageSize</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readInt</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;page_size&#34;</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="nx">v</span><span class="p">)</span>
+    
+    <span class="c1">// Read the sort query string value into the embedded struct.
+</span><span class="c1"></span>    <span class="nx">input</span><span class="p">.</span><span class="nx">Filters</span><span class="p">.</span><span class="nx">Sort</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readString</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;sort&#34;</span><span class="p">,</span> <span class="s">&#34;id&#34;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="p">!</span><span class="nx">v</span><span class="p">.</span><span class="nf">Valid</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">failedValidationResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nx">Errors</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Fprintf</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="s">&#34;%+v\n&#34;</span><span class="p">,</span> <span class="nx">input</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>At this point, you should be able to run the API again and everything should continue to work like before.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="09.00-filtering-sorting-and-pagination.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="09.02-validating-query-string-parameters.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "09.00-filtering-sorting-and-pagination.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "09.02-validating-query-string-parameters.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

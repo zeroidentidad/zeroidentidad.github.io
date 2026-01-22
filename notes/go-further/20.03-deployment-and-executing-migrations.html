@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Deployment and executing migrations &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="20.00-deployment-and-hosting.html">Deployment and hosting</a> &rsaquo; Deployment and executing migrations</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="20.02-server-configuration-and-installing-software.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="20.04-running-the-api-as-a-background-service.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 20.3.</div>
+			<h2 id="deployment-and-executing-migrations">Deployment and executing migrations</h2>
+
+<p>At this point our droplet is set up with all the software and user accounts that we need, so let&rsquo;s move on to deploying and running our API application.</p>
+
+<p>At a very high level, our deployment process will consist of three actions:</p>
+
+<ol>
+<li>Copying the application binary and SQL migration files to the droplet.</li>
+<li>Executing the migrations against the PostgreSQL database on the droplet.</li>
+<li>Starting the application binary as a <em>background service</em>.</li>
+</ol>
+
+<p>For now, we&rsquo;ll just focus on steps 1 and 2, and tackle running our application as a <em>background service</em> in the next chapter.</p>
+
+<p>Let&rsquo;s begin by creating a new <code>make production/deploy/api</code> rule in our makefile, which we will use to execute these first two steps automatically. Like so:</p>
+
+<figure class="code shell">
+<figcaption>File: Makefile</figcaption>
+<pre>...
+
+<span class="c1"># ==================================================================================== #</span>
+<span class="c1"># PRODUCTION</span>
+<span class="c1"># ==================================================================================== #</span>
+
+<span class="nv">production_host_ip</span> <span class="o">=</span> <span class="s2">&#34;161.35.71.158&#34;</span>
+
+<span class="c1">## production/connect: connect to the production server</span>
+.PHONY: production/connect
+production/connect:
+	ssh greenlight@<span class="si">${</span><span class="nv">production_host_ip</span><span class="si">}</span>
+
+<span class="c1">## production/deploy/api: deploy the api to production</span>
+.PHONY: production/deploy/api
+production/deploy/api:
+	rsync -P ./bin/linux_amd64/api greenlight@<span class="si">${</span><span class="nv">production_host_ip</span><span class="si">}</span>:~
+	rsync -rP --delete ./migrations greenlight@<span class="si">${</span><span class="nv">production_host_ip</span><span class="si">}</span>:~
+	ssh -t greenlight@<span class="si">${</span><span class="nv">production_host_ip</span><span class="si">}</span> <span class="s1">&#39;migrate -path ~/migrations -database $$GREENLIGHT_DB_DSN up&#39;</span></pre>
+</figure>
+
+<p>Let&rsquo;s quickly break down what this new rule is doing.</p>
+
+<p>First, it runs the <code>rsync</code> command to copy the <code>./bin/linux_amd64/api</code> executable binary (the one specifically built for Linux) and the <code>./migrations</code> folder into the home directory for the <code>greenlight</code> user on the droplet.</p>
+
+<p>Then it uses the <code>ssh</code> command with the <code>-t</code> flag to run these database migrations on our droplet as the <code>greenlight</code> user with the following command:</p>
+
+<figure class="code plain">
+<pre>&#39;migrate -path ~/migrations -database $$GREENLIGHT_DB_DSN up&#39;</pre>
+</figure>
+
+<p>Because the <code>$</code> character has a special meaning in makefiles, we are <em>escaping it</em> in the command above by prefixing it with an <a href="https://til.hashrocket.com/posts/k3kjqxtppx-escape-dollar-sign-on-makefiles">additional dollar character</a> like <code>$$</code>. This means that the command that actually runs on our droplet will be <code>'migrate -path ~/migrations -database $GREENLIGHT_DB_DSN up'</code>, and in turn, the migration will be run <em>using the droplet environment variable</em> <code>GREENLIGHT_DB_DSN</code>.</p>
+
+<p>It&rsquo;s also important to note that we&rsquo;re surrounding this command with single quotes. If we used double quotes, it would be an <em>interpreted string</em> and we would need to use an additional escape character <code>\</code> like so:</p>
+
+<figure class="code plain">
+<pre>&#34;migrate -path ~/migrations -database \$$GREENLIGHT_DB_DSN up&#34;</pre>
+</figure>
+
+<p>Alright, let&rsquo;s try this out!</p>
+
+<p>Go ahead and execute the <code>make production/deploy/api</code> rule that we just made. You should see that all the files copy across successfully (this may take a minute or two to complete depending on your connection speed), and the migrations are then applied to your database. Like so:</p>
+
+<figure class="code bash">
+<pre>$ make production/deploy/api 
+<samp>rsync -rP --delete ./bin/linux_amd64/api greenlight@&#34;161.35.71.158&#34;:~
+api
+      7,618,560 100%  119.34kB/s    0:01:02 (xfr#1, to-chk=13/14)
+rsync -rP --delete ./migrations greenlight@&#34;161.35.71.158&#34;:~
+sending incremental file list
+migrations/
+migrations/000001_create_movies_table.down.sql
+             28 100%   27.34kB/s    0:00:00 (xfr#2, to-chk=11/14)
+migrations/000001_create_movies_table.up.sql
+            286 100%  279.30kB/s    0:00:00 (xfr#3, to-chk=10/14)
+migrations/000002_add_movies_check_constraints.down.sql
+            198 100%  193.36kB/s    0:00:00 (xfr#4, to-chk=9/14)
+migrations/000002_add_movies_check_constraints.up.sql
+            289 100%  282.23kB/s    0:00:00 (xfr#5, to-chk=8/14)
+migrations/000003_add_movies_indexes.down.sql
+             78 100%   76.17kB/s    0:00:00 (xfr#6, to-chk=7/14)
+migrations/000003_add_movies_indexes.up.sql
+            170 100%  166.02kB/s    0:00:00 (xfr#7, to-chk=6/14)
+migrations/000004_create_users_table.down.sql
+             27 100%   26.37kB/s    0:00:00 (xfr#8, to-chk=5/14)
+migrations/000004_create_users_table.up.sql
+            294 100%  287.11kB/s    0:00:00 (xfr#9, to-chk=4/14)
+migrations/000005_create_tokens_table.down.sql
+             28 100%   27.34kB/s    0:00:00 (xfr#10, to-chk=3/14)
+migrations/000005_create_tokens_table.up.sql
+            203 100%   99.12kB/s    0:00:00 (xfr#11, to-chk=2/14)
+migrations/000006_add_permissions.down.sql
+             73 100%   35.64kB/s    0:00:00 (xfr#12, to-chk=1/14)
+migrations/000006_add_permissions.up.sql
+            452 100%  220.70kB/s    0:00:00 (xfr#13, to-chk=0/14)
+ssh -t greenlight@&#34;161.35.71.158&#34; &#39;migrate -path ~/migrations -database $GREENLIGHT_DB_DSN up&#39;
+1/u create_movies_table (11.782733ms)
+2/u add_movies_check_constraints (23.109006ms)
+3/u add_movies_indexes (30.61223ms)
+4/u create_users_table (39.890662ms)
+5/u create_tokens_table (48.659641ms)
+6/u add_permissions (58.23243ms)
+Connection to 161.35.71.158 closed.</samp></pre>
+</figure>
+
+<p>Let&rsquo;s quickly connect to our droplet and verify that everything has worked.</p>
+
+<figure class="code bash">
+<pre>$ make production/connect 
+<samp>ssh greenlight@&#39;161.35.71.158&#39;
+Welcome to Ubuntu 20.04.2 LTS (GNU/Linux 5.4.0-65-generic x86_64)
+
+...</samp>
+greenlight@greenlight-production:~$ ls -R
+<samp>.:
+api  migrations
+
+./migrations:
+000001_create_movies_table.down.sql
+000001_create_movies_table.up.sql
+000002_add_movies_check_constraints.down.sql
+000002_add_movies_check_constraints.up.sql
+000003_add_movies_indexes.down.sql
+000003_add_movies_indexes.up.sql
+000004_create_users_table.down.sql
+000004_create_users_table.up.sql
+000005_create_tokens_table.down.sql
+000005_create_tokens_table.up.sql
+000006_add_permissions.down.sql
+000006_add_permissions.up.sql</samp></pre>
+</figure>
+
+<p>So far so good. We can see that the home directory of our <code>greenlight</code> user contains the <code>api</code> executable binary and a folder containing the migration files.</p>
+
+<p>Let&rsquo;s also connect to the database using <code>psql</code> and verify that the tables have been created by using the <code>\dt</code> meta command. Your output should look similar to this:</p>
+
+<figure class="code bash">
+<pre>greenlight@greenlight-production:~$ psql $GREENLIGHT_DB_DSN 
+<samp>psql (12.6 (Ubuntu 12.6-0ubuntu0.20.04.1))
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+Type &#34;help&#34; for help.</samp>
+
+greenlight=&gt; \dt
+ <samp>               List of relations
+ Schema |       Name        | Type  |   Owner    
+--------+-------------------+-------+------------
+ public | movies            | table | greenlight
+ public | permissions       | table | greenlight
+ public | schema_migrations | table | greenlight
+ public | tokens            | table | greenlight
+ public | users             | table | greenlight
+ public | users_permissions | table | greenlight
+(6 rows)</samp></pre>
+</figure>
+
+<h3 id="running-the-api">Running the API</h3>
+
+<p>While we&rsquo;re connected to the droplet, let&rsquo;s try running the <code>api</code> executable binary. We can&rsquo;t listen for incoming connections on port <code>80</code> because Caddy is already using this, so we&rsquo;ll listen on the unrestricted port <code>4000</code> instead.</p>
+
+<p>If you&rsquo;ve been following along, port <code>4000</code> on your droplet should currently be blocked by the firewall rules, so we&rsquo;ll need to relax this temporarily to allow incoming requests. Go ahead and do that like so:</p>
+
+<figure class="code bash">
+<pre>greenlight@greenlight-production:~$ sudo ufw allow 4000/tcp
+<samp>Rule added
+Rule added (v6)</samp></pre>
+</figure>
+
+<p>And then start the API with the following command:</p>
+
+<figure class="code bash">
+<pre>greenlight@greenlight-production:~$ ./api -port=4000 -db-dsn=$GREENLIGHT_DB_DSN -env=production
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development</samp></pre>
+</figure>
+
+<p>At this point you should be able to visit <code>http://&lt;your_droplet_ip&gt;:4000/v1/healthcheck</code> in your web browser and get a successful response from the healthcheck endpoint, similar to this:</p>
+
+<figure class="img">
+<img src="assets/img/20.03-01.png" alt="20.03-01.png" />
+</figure>
+
+<p>Lastly, head back to your SSH terminal window and press <code>Ctrl+C</code> to stop the API from running on your droplet. You should see it gracefully shut down like so:</p>
+
+<figure class="code bash">
+<pre>greenlight@greenlight-production:~$ /home/greenlight/api -port=4000 -db-dsn=$GREENLIGHT_DB_DSN -env=production
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development
+^Ctime=2023-09-10T10:59:14.722+02:00 level=INFO msg=&#34;shutting down server&#34; signal=terminated
+time=2023-09-10T10:59:14.722+02:00 level=INFO msg=&#34;completing background tasks&#34; addr=:4000
+time=2023-09-10T10:59:18.722+02:00 level=INFO msg=&#34;stopped server&#34; addr=:4000</samp></pre>
+</figure>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="20.02-server-configuration-and-installing-software.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="20.04-running-the-api-as-a-background-service.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "20.02-server-configuration-and-installing-software.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "20.04-running-the-api-as-a-background-service.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

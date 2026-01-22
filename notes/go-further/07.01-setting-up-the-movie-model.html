@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Setting up the movie model  &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="07.00-crud-operations.html">CRUD operations</a> &rsaquo; Setting up the movie model </span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="07.00-crud-operations.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="07.02-creating-a-new-movie.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 7.1.</div>
+			<h2 id="setting-up-the-movie-model">Setting up the movie model</h2>
+
+<p>In this chapter we&rsquo;re going to set up the skeleton code for our movie <em>database model</em>.</p>
+
+<p>If you don&rsquo;t like the term <em>model</em> then you might want to think of this as your <em>data access</em> or <em>storage</em> layer instead. But whatever you prefer to call it, the principle is the same &mdash; it will encapsulate all the code for reading and writing movie data to and from our PostgreSQL database.</p>
+
+<p>Let&rsquo;s head back to the <code>internal/data/movies.go</code> file and create a <code>MovieModel</code> struct type and some placeholder methods for performing basic CRUD (create, read, update and delete) actions against our <code>movies</code> database table.</p>
+
+<figure class="code go">
+<figcaption>File: internal/data/movies.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">data</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;database/sql&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;time&#34;</span>
+
+    <span class="s">&#34;greenlight.alexedwards.net/internal/validator&#34;</span>
+<span class="p">)</span>
+
+<span class="o">...</span>
+
+<span class="c1">// Define a MovieModel struct type which wraps a sql.DB connection pool.
+</span><span class="c1"></span><span class="kd">type</span> <span class="nx">MovieModel</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">DB</span> <span class="o">*</span><span class="nx">sql</span><span class="p">.</span><span class="nx">DB</span>
+<span class="p">}</span>
+
+<span class="c1">// Add a placeholder method for inserting a new record in the movies table.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="nx">MovieModel</span><span class="p">)</span> <span class="nf">Insert</span><span class="p">(</span><span class="nx">movie</span> <span class="o">*</span><span class="nx">Movie</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="kc">nil</span>
+<span class="p">}</span>
+
+<span class="c1">// Add a placeholder method for fetching a specific record from the movies table.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="nx">MovieModel</span><span class="p">)</span> <span class="nf">Get</span><span class="p">(</span><span class="nx">id</span> <span class="kt">int64</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="nx">Movie</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="kc">nil</span>
+<span class="p">}</span>
+
+<span class="c1">// Add a placeholder method for updating a specific record in the movies table.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="nx">MovieModel</span><span class="p">)</span> <span class="nf">Update</span><span class="p">(</span><span class="nx">movie</span> <span class="o">*</span><span class="nx">Movie</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="kc">nil</span>
+<span class="p">}</span>
+
+<span class="c1">// Add a placeholder method for deleting a specific record from the movies table.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="nx">MovieModel</span><span class="p">)</span> <span class="nf">Delete</span><span class="p">(</span><span class="nx">id</span> <span class="kt">int64</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="kc">nil</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>As an additional step, we&rsquo;re going to wrap our <code>MovieModel</code> in a parent <code>Models</code> struct. Doing this is totally optional, but it has the benefit of giving you a convenient single &lsquo;container&rsquo; which can hold and represent <em>all</em> your database models as your application grows.</p>
+
+<p>If you&rsquo;re following along, create a new <code>internal/data/models.go</code> file and add the following code:</p>
+
+<figure class="code bash">
+<pre>$ touch internal/data/models.go</pre>
+</figure>
+
+<figure class="code go">
+<figcaption>File: internal/data/models.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">data</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;database/sql&#34;</span>
+    <span class="s">&#34;errors&#34;</span>
+<span class="p">)</span>
+
+<span class="c1">// Define a custom ErrRecordNotFound error. We&#39;ll return this from our Get() method when
+</span><span class="c1"></span><span class="c1">// looking up a movie that doesn&#39;t exist in our database.
+</span><span class="c1"></span><span class="kd">var</span> <span class="p">(</span>
+    <span class="nx">ErrRecordNotFound</span> <span class="p">=</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="s">&#34;record not found&#34;</span><span class="p">)</span>
+<span class="p">)</span>
+
+<span class="c1">// Create a Models struct which wraps the MovieModel. We&#39;ll add other models to this,
+</span><span class="c1"></span><span class="c1">// like a UserModel and PermissionModel, as our build progresses.
+</span><span class="c1"></span><span class="kd">type</span> <span class="nx">Models</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">Movies</span> <span class="nx">MovieModel</span>
+<span class="p">}</span>
+
+<span class="c1">// For ease of use, we also add a New() method which returns a Models struct containing
+</span><span class="c1"></span><span class="c1">// the initialized MovieModel.
+</span><span class="c1"></span><span class="kd">func</span> <span class="nf">NewModels</span><span class="p">(</span><span class="nx">db</span> <span class="o">*</span><span class="nx">sql</span><span class="p">.</span><span class="nx">DB</span><span class="p">)</span> <span class="nx">Models</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="nx">Models</span><span class="p">{</span>
+        <span class="nx">Movies</span><span class="p">:</span> <span class="nx">MovieModel</span><span class="p">{</span><span class="nx">DB</span><span class="p">:</span> <span class="nx">db</span><span class="p">}</span><span class="p">,</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>And now, let&rsquo;s edit our <code>cmd/api/main.go</code> file so that the <code>Models</code> struct is initialized in our <code>main()</code> function, and then passed to our handlers as a dependency. Like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/main.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;context&#34;</span>
+    <span class="s">&#34;database/sql&#34;</span>
+    <span class="s">&#34;flag&#34;</span>
+    <span class="s">&#34;fmt&#34;</span>
+    <span class="s">&#34;log/slog&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+    <span class="s">&#34;os&#34;</span>
+    <span class="s">&#34;time&#34;</span>
+
+    <span class="s">&#34;greenlight.alexedwards.net/internal/data&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>
+    <span class="nx">_</span> <span class="s">&#34;github.com/lib/pq&#34;</span>
+<span class="p">)</span>
+
+<span class="o">...</span>
+
+<span class="c1">// Add a models field to hold our new Models struct.
+</span><span class="c1"></span><span class="kd">type</span> <span class="nx">application</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">config</span> <span class="nx">config</span>
+    <span class="nx">logger</span> <span class="o">*</span><span class="nx">slog</span><span class="p">.</span><span class="nx">Logger</span>
+    <span class="nx">models</span> <span class="nx">data</span><span class="p">.</span><span class="nx">Models</span>
+<span class="p">}</span>
+
+<span class="kd">func</span> <span class="nf">main</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">cfg</span> <span class="nx">config</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">port</span><span class="p">,</span> <span class="s">&#34;port&#34;</span><span class="p">,</span> <span class="mi">4000</span><span class="p">,</span> <span class="s">&#34;API server port&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">env</span><span class="p">,</span> <span class="s">&#34;env&#34;</span><span class="p">,</span> <span class="s">&#34;development&#34;</span><span class="p">,</span> <span class="s">&#34;Environment (development|staging|production)&#34;</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">dsn</span><span class="p">,</span> <span class="s">&#34;db-dsn&#34;</span><span class="p">,</span> <span class="nx">os</span><span class="p">.</span><span class="nf">Getenv</span><span class="p">(</span><span class="s">&#34;GREENLIGHT_DB_DSN&#34;</span><span class="p">)</span><span class="p">,</span> <span class="s">&#34;PostgreSQL DSN&#34;</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">maxOpenConns</span><span class="p">,</span> <span class="s">&#34;db-max-open-conns&#34;</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="s">&#34;PostgreSQL max open connections&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">maxIdleConns</span><span class="p">,</span> <span class="s">&#34;db-max-idle-conns&#34;</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="s">&#34;PostgreSQL max idle connections&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">DurationVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">maxIdleTime</span><span class="p">,</span> <span class="s">&#34;db-max-idle-time&#34;</span><span class="p">,</span> <span class="mi">15</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Minute</span><span class="p">,</span> <span class="s">&#34;PostgreSQL max connection idle time&#34;</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">Parse</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">logger</span> <span class="o">:=</span> <span class="nx">slog</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="nx">slog</span><span class="p">.</span><span class="nf">NewTextHandler</span><span class="p">(</span><span class="nx">os</span><span class="p">.</span><span class="nx">Stdout</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span><span class="p">)</span>
+
+    <span class="nx">db</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nf">openDB</span><span class="p">(</span><span class="nx">cfg</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="nx">os</span><span class="p">.</span><span class="nf">Exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="k">defer</span> <span class="nx">db</span><span class="p">.</span><span class="nf">Close</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">logger</span><span class="p">.</span><span class="nf">Info</span><span class="p">(</span><span class="s">&#34;database connection pool established&#34;</span><span class="p">)</span>
+
+    <span class="c1">// Use the data.NewModels() function to initialize a Models struct, passing in the 
+</span><span class="c1"></span>    <span class="c1">// connection pool as a parameter.
+</span><span class="c1"></span>    <span class="nx">app</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">application</span><span class="p">{</span>
+        <span class="nx">config</span><span class="p">:</span> <span class="nx">cfg</span><span class="p">,</span>
+        <span class="nx">logger</span><span class="p">:</span> <span class="nx">logger</span><span class="p">,</span>
+        <span class="nx">models</span><span class="p">:</span> <span class="nx">data</span><span class="p">.</span><span class="nf">NewModels</span><span class="p">(</span><span class="nx">db</span><span class="p">)</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="nx">srv</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="nx">http</span><span class="p">.</span><span class="nx">Server</span><span class="p">{</span>
+        <span class="nx">Addr</span><span class="p">:</span>         <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;:%d&#34;</span><span class="p">,</span> <span class="nx">cfg</span><span class="p">.</span><span class="nx">port</span><span class="p">)</span><span class="p">,</span>
+        <span class="nx">Handler</span><span class="p">:</span>      <span class="nx">app</span><span class="p">.</span><span class="nf">routes</span><span class="p">(</span><span class="p">)</span><span class="p">,</span>
+        <span class="nx">IdleTimeout</span><span class="p">:</span>  <span class="nx">time</span><span class="p">.</span><span class="nx">Minute</span><span class="p">,</span>
+        <span class="nx">ReadTimeout</span><span class="p">:</span>  <span class="mi">5</span> <span class="o">*</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">,</span>
+        <span class="nx">WriteTimeout</span><span class="p">:</span> <span class="mi">10</span> <span class="o">*</span> <span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">,</span>
+        <span class="nx">ErrorLog</span><span class="p">:</span>     <span class="nx">slog</span><span class="p">.</span><span class="nf">NewLogLogger</span><span class="p">(</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Handler</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="nx">slog</span><span class="p">.</span><span class="nx">LevelError</span><span class="p">)</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="nx">logger</span><span class="p">.</span><span class="nf">Info</span><span class="p">(</span><span class="s">&#34;starting server&#34;</span><span class="p">,</span> <span class="s">&#34;addr&#34;</span><span class="p">,</span> <span class="nx">srv</span><span class="p">.</span><span class="nx">Addr</span><span class="p">,</span> <span class="s">&#34;env&#34;</span><span class="p">,</span> <span class="nx">cfg</span><span class="p">.</span><span class="nx">env</span><span class="p">)</span>
+
+    <span class="nx">err</span> <span class="p">=</span> <span class="nx">srv</span><span class="p">.</span><span class="nf">ListenAndServe</span><span class="p">(</span><span class="p">)</span>
+    <span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">os</span><span class="p">.</span><span class="nf">Exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="o">...</span></pre>
+</figure>
+
+<p>If you want, you can try restarting the application at this point. You should find that the code compiles and runs successfully.</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development</samp></pre>
+</figure>
+
+<p>One of the nice things about this pattern is that the code to execute actions on our <code>movies</code> table will be very clear and readable from the perspective of our API handlers. For example, we&rsquo;ll be able to execute the <code>Insert()</code> method by simply writing:</p>
+
+<figure class="code go">
+<pre><span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Movies</span><span class="p">.</span><span class="nf">Insert</span><span class="p">(</span><span class="o">...</span><span class="p">)</span></pre>
+</figure>
+
+<p>The general structure is also easy to extend. When we create more database models in the future, all we have to do is include them in the <code>Models</code> struct and they will automatically be available to our API handlers.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="07.00-crud-operations.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="07.02-creating-a-new-movie.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "07.00-crud-operations.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "07.02-creating-a-new-movie.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

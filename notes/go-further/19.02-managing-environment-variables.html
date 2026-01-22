@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Managing environment variables &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="19.00-building-versioning-and-quality-control.html">Building, versioning and quality control</a> &rsaquo; Managing environment variables</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="19.01-creating-and-using-makefiles.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="19.03-quality-controlling-code.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 19.2.</div>
+			<h2 id="managing-environment-variables">Managing environment variables</h2>
+
+<p>Using the <code>make run/api</code> command to run our API application opens up an opportunity to tweak our command-line flags, and remove the default value for our database DSN from the <code>main.go</code> file. Like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/main.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="nf">main</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">cfg</span> <span class="nx">config</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">port</span><span class="p">,</span> <span class="s">&#34;port&#34;</span><span class="p">,</span> <span class="mi">4000</span><span class="p">,</span> <span class="s">&#34;API server port&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">env</span><span class="p">,</span> <span class="s">&#34;env&#34;</span><span class="p">,</span> <span class="s">&#34;development&#34;</span><span class="p">,</span> <span class="s">&#34;Environment (development|staging|production)&#34;</span><span class="p">)</span>
+
+    <span class="c1">// Use the empty string &#34;&#34; as the default value for the db-dsn command-line flag,
+</span><span class="c1"></span>    <span class="c1">// rather than os.Getenv(&#34;GREENLIGHT_DB_DSN&#34;) like we were previously.
+</span><span class="c1"></span>    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">dsn</span><span class="p">,</span> <span class="s">&#34;db-dsn&#34;</span><span class="p">,</span> <span class="s">&#34;&#34;</span><span class="p">,</span> <span class="s">&#34;PostgreSQL DSN&#34;</span><span class="p">)</span>
+
+    <span class="o">...</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Instead, we can update our makefile so that the DSN value from the <code>GREENLIGHT_DB_DSN</code> environment variable is passed in as part of the rule. If you&rsquo;re following along, please go ahead and update the <code>run/api</code> rule as follows:</p>
+
+<figure class="code shell">
+<figcaption>File: Makefile</figcaption>
+<pre>
+...
+
+<span class="c1">## run/api: run the cmd/api application</span>
+.PHONY: run/api
+run/api:
+	go run ./cmd/api -db-dsn<span class="o">=</span><span class="si">${</span><span class="nv">GREENLIGHT_DB_DSN</span><span class="si">}</span>
+
+...</pre>
+</figure>
+
+<p>This is a small change but a really nice one, because it means that the <em>default configuration values for our application no longer change depending on the operating environment</em>. The command-line flag values passed at runtime are the <em>sole</em> mechanism for configuring our application settings, and there are still no secrets hard-coded in our project files.</p>
+
+<p>During development running our application remains nice and easy &mdash; all we need to do is type <code>make run/api</code>, like so:</p>
+
+<figure class="code bash">
+<pre>$ make run/api 
+<samp>go run ./cmd/api -db-dsn=postgres://greenlight:pa55word@localhost/greenlight
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development</samp></pre>
+</figure>
+
+<aside class="hint"><p>
+<strong>Hint:</strong> If you&rsquo;re not comfortable with the DSN value (which contains a password) being displayed on your screen when you type <code>make run/api</code>, remember that you can use the <code>@</code> character in your makefile to suppress that command from being echoed.
+</p></aside>
+
+<h3 id="using-a-envrc-file">Using a .envrc file</h3>
+
+<p>If you like, you could also <em>remove</em> the <code>GREENLIGHT_DB_DSN</code> environment variable from your <code>$HOME/.profile</code> or <code>$HOME/.bashrc</code> files, and store it in a <code>.envrc</code> file in the root of your project directory instead.</p>
+
+<p>If you&rsquo;re following along, go ahead and create a new <code>.envrc</code> file like so:</p>
+
+<figure class="code bash">
+<pre>$ touch .envrc</pre>
+</figure>
+
+<figure class="code plain">
+<figcaption>File: .envrc</figcaption>
+<pre>export GREENLIGHT_DB_DSN=postgres://greenlight:pa55word@localhost/greenlight</pre>
+</figure>
+
+<p>You can then use a tool like <a href="https://direnv.net/">direnv</a> to automatically load the variables from the <code>.envrc</code> file into your current shell, or alternatively, you can add an <code>include</code> command at the top of your <code>Makefile</code> to load them instead. Like so:</p>
+
+<figure class="code shell">
+<figcaption>File: Makefile</figcaption>
+<pre><span class="c1"># Include variables from the .envrc file</span>
+include .envrc
+
+<span class="c1">## help: print this help message</span>
+.PHONY: <span class="nb">help</span>
+help:
+	@echo <span class="s1">&#39;Usage:&#39;</span>
+	@sed -n <span class="s1">&#39;s/^##//p&#39;</span> <span class="si">${</span><span class="nv">MAKEFILE_LIST</span><span class="si">}</span> <span class="p">|</span> column -t -s <span class="s1">&#39;:&#39;</span> <span class="p">|</span>  sed -e <span class="s1">&#39;s/^/ /&#39;</span>
+
+...</pre>
+</figure>
+
+<p>This approach is particularly convenient in projects where you need to make frequent changes to your environment variables, because it means that you can just edit the <code>.envrc</code> file without needing to reboot your computer or run <code>source</code> after each change.</p>
+
+<p>Another nice benefit of this approach is that it provides a degree of separation between variables if you&rsquo;re working on multiple projects on the same machine.</p>
+
+<aside class="important"><p>
+<strong>Important:</strong> If you use this approach and your <code>.envrc</code> file contains any secrets, you must be careful to not commit the file into a version control system (like Git or Mercurial).
+</p></aside>
+
+<p>In a few chapters&rsquo; time we&rsquo;ll start version controlling our codebase with Git, so let&rsquo;s preemptively add an ignore rule so that the <code>.envrc</code> file is never committed.</p>
+
+<figure class="code bash">
+<pre>$ echo &#39;.envrc&#39; &gt;&gt; .gitignore</pre>
+</figure>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="19.01-creating-and-using-makefiles.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="19.03-quality-controlling-code.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "19.01-creating-and-using-makefiles.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "19.03-quality-controlling-code.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

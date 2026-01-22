@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>SQL migrations &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; SQL migrations</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="05.03-configuring-the-database-connection-pool.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="06.01-an-overview-of-sql-migrations.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 6.</div>
+			<h1 id="sql-migrations">SQL migrations</h1>
+
+<p>Let’s get back to something a bit more concrete and tangible in this next section of the book, and take steps to create a <code>movies</code> table in our <code>greenlight</code> database.</p>
+
+<p>To do this, we could simply use the <code>psql</code> tool again and run the necessary <code>CREATE TABLE</code> statement against our database. But instead, we’re going to explore how to use <em>SQL migrations</em> to create the table (and more generally, to manage database schema changes throughout the project).</p>
+
+<p>You&rsquo;ll learn about:</p>
+
+<ul>
+<li><p>The high-level principles behind SQL migrations and why they are useful.</p></li>
+
+<li><p>How to use the command-line <a href="https://github.com/golang-migrate/migrate"><code>migrate</code></a> tool to programmatically manage changes to your database schema.</p></li>
+</ul>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="05.03-configuring-the-database-connection-pool.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="06.01-an-overview-of-sql-migrations.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "05.03-configuring-the-database-connection-pool.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "06.01-an-overview-of-sql-migrations.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

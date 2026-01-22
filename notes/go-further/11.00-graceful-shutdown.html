@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Graceful shutdown &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; Graceful shutdown</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="10.03-configuring-the-rate-limiters.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="11.01-sending-shutdown-signals.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 11.</div>
+			<h1 id="graceful-shutdown">Graceful shutdown</h1>
+
+<p>In this next section of the book we&rsquo;re going to talk about an important but often overlooked topic: <em>how to safely stop your running application</em>.</p>
+
+<p>At the moment, when we stop our API application (usually by pressing <code>Ctrl+C</code>) it is terminated <em>immediately</em> with no opportunity for in-flight HTTP requests to complete. This isn&rsquo;t ideal for two reasons:</p>
+
+<ul>
+<li>It means that clients won&rsquo;t receive responses to their in-flight requests &mdash; all they will experience is a hard closure of the HTTP connection.</li>
+<li>Any work being carried out by our handlers may be left in an incomplete state.</li>
+</ul>
+
+<p>We&rsquo;re going to mitigate these problems by adding <em>graceful shutdown</em> functionality to our application, so that in-flight HTTP requests have the opportunity to complete processing <em>before</em> the application is terminated.</p>
+
+<p>You&rsquo;ll learn about:</p>
+
+<ul>
+<li><p>Shutdown signals &mdash; what they are, how to send them, and how to listen for them in your API application.</p></li>
+
+<li><p>How to use these signals to trigger a graceful shutdown of the HTTP server using Go&rsquo;s <a href="https://golang.org/pkg/net/http/#Server.Shutdown"><code>Shutdown()</code></a> method.</p></li>
+</ul>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="10.03-configuring-the-rate-limiters.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="11.01-sending-shutdown-signals.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "10.03-configuring-the-rate-limiters.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "11.01-sending-shutdown-signals.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

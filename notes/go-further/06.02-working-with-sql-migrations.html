@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Working with SQL migrations &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="06.00-sql-migrations.html">SQL migrations</a> &rsaquo; Working with SQL migrations</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="06.01-an-overview-of-sql-migrations.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="07.00-crud-operations.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 6.2.</div>
+			<h2 id="working-with-sql-migrations">Working with SQL migrations</h2>
+
+<p>Now that the <code>migrate</code> tool is installed, let&rsquo;s illustrate how to use it by creating a new <code>movies</code> table in our database.</p>
+
+<p>The first thing we need to do is generate a pair of <em>migration files</em> using the <code>migrate create</code> command. If you&rsquo;re following along, go ahead and run the following command in your terminal:</p>
+
+<figure class="code bash">
+<pre>$ migrate create -seq -ext=.sql -dir=./migrations create_movies_table
+<samp>/home/alex/Projects/greenlight/migrations/000001_create_movies_table.up.sql
+/home/alex/Projects/greenlight/migrations/000001_create_movies_table.down.sql</samp></pre>
+</figure>
+
+<p>In this command:</p>
+
+<ul>
+<li>The <code>-seq</code> flag indicates that we want to use sequential numbering like <code>0001, 0002, ...</code> for the migration files (instead of a Unix timestamp, which is the default).</li>
+<li>The <code>-ext</code> flag indicates that we want to give the migration files the extension <code>.sql</code>.</li>
+<li>The <code>-dir</code> flag indicates that we want to store the migration files in the <code>./migrations</code> directory (which will be created automatically if it doesn&rsquo;t already exist).</li>
+<li>The name <code>create_movies_table</code> is a descriptive label that we give the migration files to signify their contents.</li>
+</ul>
+
+<p>If you look in your <code>migrations</code> directory, you should now see a pair of new &lsquo;up&rsquo; and &lsquo;down&rsquo; migration files like so:</p>
+
+<figure class="code plain">
+<pre>./migrations/
+├── 000001_create_movies_table.down.sql
+└── 000001_create_movies_table.up.sql</pre>
+</figure>
+
+<p>At the moment these two new files are completely empty. Let&rsquo;s edit the &lsquo;up&rsquo; migration file to contain the necessary <code>CREATE TABLE</code> statement for our <code>movies</code> table, like so:</p>
+
+<figure class="code sql">
+<figcaption>File: migrations/000001_create_movies_table.up.sql</figcaption>
+<pre><span class="k">CREATE</span> <span class="k">TABLE</span> <span class="k">IF</span> <span class="k">NOT</span> <span class="k">EXISTS</span> <span class="n">movies</span> <span class="p">(</span>
+    <span class="n">id</span> <span class="n">bigserial</span> <span class="k">PRIMARY</span> <span class="k">KEY</span><span class="p">,</span>  
+    <span class="n">created_at</span> <span class="k">timestamp</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="k">with</span> <span class="n">time</span> <span class="k">zone</span> <span class="k">NOT</span> <span class="k">NULL</span> <span class="k">DEFAULT</span> <span class="n">NOW</span><span class="p">(</span><span class="p">)</span><span class="p">,</span>
+    <span class="n">title</span> <span class="nb">text</span> <span class="k">NOT</span> <span class="k">NULL</span><span class="p">,</span>
+    <span class="k">year</span> <span class="nb">integer</span> <span class="k">NOT</span> <span class="k">NULL</span><span class="p">,</span>
+    <span class="n">runtime</span> <span class="nb">integer</span> <span class="k">NOT</span> <span class="k">NULL</span><span class="p">,</span>
+    <span class="n">genres</span> <span class="nb">text</span><span class="p">[</span><span class="p">]</span> <span class="k">NOT</span> <span class="k">NULL</span><span class="p">,</span>
+    <span class="k">version</span> <span class="nb">integer</span> <span class="k">NOT</span> <span class="k">NULL</span> <span class="k">DEFAULT</span> <span class="mi">1</span>
+<span class="p">)</span><span class="p">;</span></pre>
+</figure>
+
+<p>Notice here how the fields and types in this table are analogous to the fields and types in the <code>Movie</code> struct that we created earlier? This is important because it means we&rsquo;ll be able to easily map the data in each row of our <code>movies</code> table to a single <code>Movie</code> struct in our Go code.</p>
+
+<p>If you&rsquo;re not familiar with the different PostgreSQL data types in the SQL statement above, the <a href="https://www.postgresql.org/docs/current/datatype.html">official documentation</a> provides a comprehensive overview. But the most important things to point out are that:</p>
+
+<ul>
+<li>The <code>id</code> column has the type <a href="https://www.postgresql.org/docs/current/datatype-numeric.html#DATATYPE-NUMERIC-TABLE"><code>bigserial</code></a>, which is a 64-bit auto-incrementing integer starting at 1. This will be the primary key for the table.</li>
+<li>The <code>genres</code> column has the type <code>text[]</code> which is an <a href="https://www.postgresql.org/docs/current/arrays.html">array</a> of zero-or-more <code>text</code> values. It&rsquo;s important to note that arrays in PostgreSQL are themselves queryable and indexable, which is something that we&rsquo;ll demonstrate later in the book.</li>
+<li>You might remember from <em>Let&rsquo;s Go</em> that working with <code>NULL</code> values in Go can be awkward, and where possible it&rsquo;s easiest to just set <code>NOT NULL</code> constraints on every table column along with appropriate <code>DEFAULT</code> values &mdash; like we have above.</li>
+<li>For storing strings we&rsquo;re using the <code>text</code> type, instead of the alternative <code>varchar</code> or <code>varchar(n)</code> types. If you&rsquo;re interested, this <a href="https://www.depesz.com/2010/03/02/charx-vs-varcharx-vs-varchar-vs-text/">excellent blog post</a> explains why <code>text</code> is generally the best character type to use in PostgreSQL.</li>
+</ul>
+
+<p>Alright, let&rsquo;s move on to the &lsquo;down&rsquo; migration and add the SQL statements needed to reverse the &lsquo;up&rsquo; migration that we just wrote.</p>
+
+<figure class="code sql">
+<figcaption>File: migrations/000001_create_movies_table.down.sql</figcaption>
+<pre><span class="k">DROP</span> <span class="k">TABLE</span> <span class="k">IF</span> <span class="k">EXISTS</span> <span class="n">movies</span><span class="p">;</span></pre>
+</figure>
+
+<p>The <code>DROP TABLE</code> command in PostgreSQL always removes any indexes and constraints that exist for the target table, so this single statement is sufficient to reverse the &lsquo;up&rsquo;.</p>
+
+<p>Great, that&rsquo;s our first pair of migration files ready to go!</p>
+
+<p>While we are at it, let&rsquo;s also create a second pair of migration files containing <a href="https://www.postgresql.org/docs/current/ddl-constraints.html"><code>CHECK</code></a> constraints to enforce some of our business rules at the database-level. Specifically, we want to make sure that the <code>runtime</code> value is always greater than zero, the <code>year</code> value is between 1888 and the current year, and the <code>genres</code> array always contains between 1 and 5 items.</p>
+
+<p>Again, if you&rsquo;re following along, run the command below to create a second pair of migration files:</p>
+
+<figure class="code bash">
+<pre>$ migrate create -seq -ext=.sql -dir=./migrations add_movies_check_constraints
+<samp>/home/alex/Projects/greenlight/migrations/000002_add_movies_check_constraints.up.sql
+/home/alex/Projects/greenlight/migrations/000002_add_movies_check_constraints.down.sql</samp></pre>
+</figure>
+
+<p>And then add the following SQL statements to add and drop the <code>CHECK</code> constraints respectively:</p>
+
+<figure class="code sql">
+<figcaption>File: migrations/000002_add_movies_check_constraints.up.sql</figcaption>
+<pre><span class="k">ALTER</span> <span class="k">TABLE</span> <span class="n">movies</span> <span class="k">ADD</span> <span class="k">CONSTRAINT</span> <span class="n">movies_runtime_check</span> <span class="k">CHECK</span> <span class="p">(</span><span class="n">runtime</span> <span class="o">&gt;</span><span class="o">=</span> <span class="mi">0</span><span class="p">)</span><span class="p">;</span>
+
+<span class="k">ALTER</span> <span class="k">TABLE</span> <span class="n">movies</span> <span class="k">ADD</span> <span class="k">CONSTRAINT</span> <span class="n">movies_year_check</span> <span class="k">CHECK</span> <span class="p">(</span><span class="k">year</span> <span class="k">BETWEEN</span> <span class="mi">1888</span> <span class="k">AND</span> <span class="n">date_part</span><span class="p">(</span><span class="s1">&#39;</span><span class="s1">year</span><span class="s1">&#39;</span><span class="p">,</span> <span class="n">now</span><span class="p">(</span><span class="p">)</span><span class="p">)</span><span class="p">)</span><span class="p">;</span>
+
+<span class="k">ALTER</span> <span class="k">TABLE</span> <span class="n">movies</span> <span class="k">ADD</span> <span class="k">CONSTRAINT</span> <span class="n">genres_length_check</span> <span class="k">CHECK</span> <span class="p">(</span><span class="n">array_length</span><span class="p">(</span><span class="n">genres</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span> <span class="k">BETWEEN</span> <span class="mi">1</span> <span class="k">AND</span> <span class="mi">5</span><span class="p">)</span><span class="p">;</span></pre>
+</figure>
+
+<figure class="code sql">
+<figcaption>File: migrations/000002_add_movies_check_constraints.down.sql</figcaption>
+<pre><span class="k">ALTER</span> <span class="k">TABLE</span> <span class="n">movies</span> <span class="k">DROP</span> <span class="k">CONSTRAINT</span> <span class="k">IF</span> <span class="k">EXISTS</span> <span class="n">movies_runtime_check</span><span class="p">;</span>
+
+<span class="k">ALTER</span> <span class="k">TABLE</span> <span class="n">movies</span> <span class="k">DROP</span> <span class="k">CONSTRAINT</span> <span class="k">IF</span> <span class="k">EXISTS</span> <span class="n">movies_year_check</span><span class="p">;</span>
+
+<span class="k">ALTER</span> <span class="k">TABLE</span> <span class="n">movies</span> <span class="k">DROP</span> <span class="k">CONSTRAINT</span> <span class="k">IF</span> <span class="k">EXISTS</span> <span class="n">genres_length_check</span><span class="p">;</span></pre>
+</figure>
+
+<p>When we insert or update data in our <code>movies</code> table, if any of these checks fail our database driver will return an error similar to this:</p>
+
+<figure class="code bash">
+<pre>pq: new row for relation &#34;movies&#34; violates check constraint &#34;movies_year_check&#34;</pre>
+</figure>
+
+<aside class="hint"><p>
+<strong>Note:</strong> It&rsquo;s perfectly acceptable for a single migration file to contain multiple SQL statements, as we see in the two files above. In fact, we could have just included the <code>CHECK</code> constraints along with the <code>CREATE TABLE</code> statement in the first pair of migration files, but for the purpose of this book having them in a separate second migration helps us to illustrate how the <code>migrate</code> tool works.
+</p></aside>
+
+<h3 id="executing-the-migrations">Executing the migrations</h3>
+
+<p>Alright, now we&rsquo;re ready to run the two &lsquo;up&rsquo; migrations against our <code>greenlight</code> database.</p>
+
+<p>If you&rsquo;re following along, go ahead and use the following command to execute the migrations, passing in the database DSN from your environment variable. If everything is set up correctly, you should see some output confirming that the migrations have been executed successfully. Similar to this:</p>
+
+<figure class="code bash">
+<pre>$ migrate -path=./migrations -database=$GREENLIGHT_DB_DSN up
+<samp>1/u create_movies_table (38.19761ms)
+2/u add_movies_check_constraints (63.284269ms)</samp></pre>
+</figure>
+
+<aside class="important"><p>
+<strong>Important:</strong> If you are using PostgreSQL v15, you may get the error <code>error: pq: permission denied for schema public...</code> when running this command. If you do, this is because v15 revokes the <code>CREATE</code> permission from all users except a database owner. See <a href="https://stackoverflow.com/questions/74110708/postgres-15-permission-denied-for-schema-public">this StackOverflow post</a> for more information</p>
+
+<p>To get around this, set the database owner to the <code>greenlight</code> user:</p>
+
+<figure class="code sql">
+<pre><span class="k">ALTER</span> <span class="k">DATABASE</span> <span class="n">greenlight</span> <span class="k">OWNER</span> <span class="k">TO</span> <span class="n">greenlight</span><span class="p">;</span></pre>
+</figure>
+
+<p>If that still doesn&rsquo;t work, try explicitly granting the <code>CREATE</code> privileges to the <code>greenlight</code> user:</p>
+
+<figure class="code sql">
+<pre><span class="k">GRANT</span> <span class="k">CREATE</span> <span class="k">ON</span> <span class="k">DATABASE</span> <span class="n">greenlight</span> <span class="k">TO</span> <span class="n">greenlight</span><span class="p">;</span></pre>
+</figure>
+
+<p></p></aside>
+
+<p>At this point, it&rsquo;s worth opening a connection to your database and listing the tables with the <code>\dt</code> meta command:</p>
+
+<figure class="code bash">
+<pre>$ psql $GREENLIGHT_DB_DSN
+Password for user greenlight: 
+<samp>psql (15.4 (Ubuntu 15.4-1.pgdg22.04+1))
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+Type &#34;help&#34; for help.</samp>
+
+greenlight=&gt; \dt
+<samp>                List of relations
+ Schema |       Name        | Type  |   Owner    
+--------+-------------------+-------+------------
+ public | movies            | table | greenlight
+ public | schema_migrations | table | greenlight
+(2 rows)</samp></pre>
+</figure>
+
+<p>You should see that the <code>movies</code> table has been created, along with a <code>schema_migrations</code> table, both of which are owned by the <code>greenlight</code> user.</p>
+
+<p>The <code>schema_migrations</code> table is automatically generated by the <code>migrate</code> tool and used to track which migrations have been applied. Let&rsquo;s take a quick look inside it:</p>
+
+<figure class="code bash">
+<pre>greenlight=&gt; SELECT * FROM schema_migrations;
+<samp> version | dirty 
+---------+-------
+       2 | f
+(1 row)</samp></pre>
+</figure>
+
+<p>The <code>version</code> column here indicates that our migration files up to (and including) number <code>2</code> in the sequence have been executed against the database. The value of the <code>dirty</code> column is <code>false</code>, which indicates that the migration files were cleanly executed <em>without any errors</em> and the SQL statements they contain were successfully applied <em>in full</em>.</p>
+
+<p>If you like, you can also run the <code>\d</code> meta command on the <code>movies</code> table to see the structure of the table and confirm that the <code>CHECK</code> constraints were created correctly. Like so:</p>
+
+<figure class="code bash">
+<pre>greenlight-&gt; \d movies
+<samp>                                        Table &#34;public.movies&#34;
+   Column   |            Type             | Collation | Nullable |              Default               
+------------+-----------------------------+-----------+----------+------------------------------------
+ id         | bigint                      |           | not null | nextval(&#39;movies_id_seq&#39;::regclass)
+ created_at | timestamp(0) with time zone |           | not null | now()
+ title      | text                        |           | not null | 
+ year       | integer                     |           | not null | 
+ runtime    | integer                     |           | not null | 
+ genres     | text[]                      |           | not null | 
+ version    | integer                     |           | not null | 1
+Indexes:
+    &#34;movies_pkey&#34; PRIMARY KEY, btree (id)
+Check constraints:
+    &#34;genres_length_check&#34; CHECK (array_length(genres, 1) &gt;= 1 AND array_length(genres, 1) &lt;= 5)
+    &#34;movies_runtime_check&#34; CHECK (runtime &gt;= 0)
+    &#34;movies_year_check&#34; CHECK (year &gt;= 1888 AND year::double precision &lt;= date_part(&#39;year&#39;::text, now()))</samp></pre>
+</figure>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="migrating-to-a-specific-version">Migrating to a specific version</h4>
+
+<p>As an alternative to looking at the <code>schema_migrations</code> table, if you want to see which migration version your database is currently on you can run the <code>migrate</code> tool&rsquo;s <code>version</code> command, like so:</p>
+
+<figure class="code bash">
+<pre>$ migrate -path=./migrations -database=$EXAMPLE_DSN version
+<samp>2</samp></pre>
+</figure>
+
+<p>You can also migrate up or down to a specific version by using the <code>goto</code> command:</p>
+
+<figure class="code bash">
+<pre>$ migrate -path=./migrations -database=$EXAMPLE_DSN goto 1</pre>
+</figure>
+
+<h4 id="executing-down-migrations">Executing down migrations</h4>
+
+<p>You can use the <code>down</code> command to roll back by a specific number of migrations. For example, to roll back the <em>most recent migration</em> you would run:</p>
+
+<figure class="code bash">
+<pre>$ migrate -path=./migrations -database =$EXAMPLE_DSN down 1</pre>
+</figure>
+
+<p>Personally, I generally prefer to use the <code>goto</code> command to perform roll backs (as it&rsquo;s more explicit about the target version) and reserve use of the <code>down</code> command for rolling-back <em>all migrations</em>, like so:</p>
+
+<figure class="code bash">
+<pre>$ migrate -path=./migrations -database=$EXAMPLE_DSN down
+<samp>Are you sure you want to apply all down migrations? [y/N]
+y
+Applying all down migrations
+2/d create_bar_table (39.988791ms)
+1/d create_foo_table (59.460276ms)</samp></pre>
+</figure>
+
+<p>Another variant of this is the <code>drop</code> command, which will remove all tables from the database including the <code>schema_migrations</code> table &mdash; but the database itself will remain, <a href="https://github.com/golang-migrate/migrate/issues/193">along with anything else that has been created</a> like sequences and enums. Because of this, using <code>drop</code> can leave your database in a messy and unknown state, and it&rsquo;s generally better to stick with the <code>down</code> command if you want to roll back everything.</p>
+
+<h4 id="fixing-errors-in-sql-migrations">Fixing errors in SQL migrations</h4>
+
+<p>It&rsquo;s important to talk about what happens when you make a syntax error in your SQL migration files, because the behavior of the <code>migrate</code> tool can be a bit confusing to start with.</p>
+
+<p>When you run a migration that contains an error, all SQL statements up to the erroneous one will be applied and then the <code>migrate</code> tool will exit with a message describing the error. Similar to this:</p>
+
+<figure class="code bash">
+<pre>$ migrate -path=./migrations -database=$EXAMPLE_DSN up
+<samp>1/u create_foo_table (36.6328ms)
+2/u create_bar_table (71.835442ms)
+error: migration failed: syntax error at end of input in line 0: CREATE TABLE (details: pq: syntax error at end of input)</samp></pre>
+</figure>
+
+<p>If the migration file which failed contained multiple SQL statements, then it&rsquo;s possible that the migration file was <em>partially</em> applied before the error was encountered. In turn, this means that the database is in an unknown state as far as the <code>migrate</code> tool is concerned.</p>
+
+<p>Accordingly, the <code>version</code> field in the <code>schema_migrations</code> field will contain the number for the <em>failed migration</em> and the <code>dirty</code> field will be set to <code>true</code>. At this point, if you run another migration (even a &lsquo;down&rsquo; migration) you will get an error message similar to this:</p>
+
+<figure class="code bash">
+<pre>Dirty database version {X}. Fix and force version.</pre>
+</figure>
+
+<p>What you need to do is investigate the original error and figure out if the migration file which failed was partially applied. If it was, then you need to manually roll back the partially applied migration.</p>
+
+<p>Once that&rsquo;s done, then you must also &lsquo;force&rsquo; the <code>version</code> number in the <code>schema_migrations</code> table to the correct value. For example, to force the database version number to <code>1</code> you should use the <code>force</code> command like so:</p>
+
+<figure class="code bash">
+<pre>$ migrate -path=./migrations -database=$EXAMPLE_DSN force 1</pre>
+</figure>
+
+<p>Once you force the version, the database is considered &lsquo;clean&rsquo; and you should be able to run migrations again without any problem.</p>
+
+<h4 id="remote-migration-files">Remote migration files</h4>
+
+<p>The <code>migrate</code> tool also supports reading migration files from <em>remote sources</em> including Amazon S3 and GitHub repositories. For example:</p>
+
+<figure class="code bash">
+<pre>$ migrate -source=&#34;s3://&lt;bucket&gt;/&lt;path&gt;&#34; -database=$EXAMPLE_DSN up
+$ migrate -source=&#34;github://owner/repo/path#ref&#34; -database=$EXAMPLE_DSN up
+$ migrate -source=&#34;github://user:personal-access-token@owner/repo/path#ref&#34; -database=$EXAMPLE_DSN up</pre>
+</figure>
+
+<p>More information about this functionality and a full list of the supported remote resources can be <a href="https://github.com/golang-migrate/migrate#migration-sources">found here</a>.</p>
+
+<h4 id="running-migrations-on-application-startup">Running migrations on application startup</h4>
+
+<p>If you want, it is also possible to use the <a href="https://github.com/golang-migrate/migrate"><code>golang-migrate/migrate</code></a> Go package (not the command-line tool) to automatically execute your database migrations on application startup.</p>
+
+<p>We <em>won&rsquo;t</em> be using this approach in the book, so if you&rsquo;re following along please don&rsquo;t change your code. But roughly, the pattern looks like this:</p>
+
+<figure class="code go">
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;context&#34;</span>      
+    <span class="s">&#34;database/sql&#34;</span> 
+    <span class="s">&#34;flag&#34;</span>
+    <span class="s">&#34;fmt&#34;</span>
+    <span class="s">&#34;log&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+    <span class="s">&#34;os&#34;</span>
+    <span class="s">&#34;time&#34;</span>
+
+    <span class="s">&#34;github.com/golang-migrate/migrate/v4&#34;</span>                   <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;github.com/golang-migrate/migrate/v4/database/postgres&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>    <span class="nx">_</span> <span class="s">&#34;github.com/golang-migrate/migrate/v4/source/file&#34;</span>     <span class="c1">// New import
+</span><span class="c1"></span>    <span class="nx">_</span> <span class="s">&#34;github.com/lib/pq&#34;</span>
+<span class="p">)</span>
+
+<span class="kd">func</span> <span class="nf">main</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+    <span class="o">...</span>
+
+    <span class="nx">db</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nf">openDB</span><span class="p">(</span><span class="nx">cfg</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="nx">os</span><span class="p">.</span><span class="nf">Exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="p">}</span>
+    <span class="k">defer</span> <span class="nx">db</span><span class="p">.</span><span class="nf">Close</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">logger</span><span class="p">.</span><span class="nf">Info</span><span class="p">(</span><span class="s">&#34;database connection pool established&#34;</span><span class="p">)</span>
+
+    <span class="nx">migrationDriver</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">postgres</span><span class="p">.</span><span class="nf">WithInstance</span><span class="p">(</span><span class="nx">db</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">postgres</span><span class="p">.</span><span class="nx">Config</span><span class="p">{</span><span class="p">}</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="nx">os</span><span class="p">.</span><span class="nf">Exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="nx">migrator</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">migrate</span><span class="p">.</span><span class="nf">NewWithDatabaseInstance</span><span class="p">(</span><span class="s">&#34;file:///path/to/your/migrations&#34;</span><span class="p">,</span> <span class="s">&#34;postgres&#34;</span><span class="p">,</span> <span class="nx">migrationDriver</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="nx">os</span><span class="p">.</span><span class="nf">Exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="nx">err</span> <span class="p">=</span> <span class="nx">migrator</span><span class="p">.</span><span class="nf">Up</span><span class="p">(</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="o">&amp;&amp;</span> <span class="nx">err</span> <span class="o">!=</span> <span class="nx">migrate</span><span class="p">.</span><span class="nx">ErrNoChange</span> <span class="p">{</span>
+        <span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="nx">os</span><span class="p">.</span><span class="nf">Exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="p">}</span>
+    
+    <span class="nx">logger</span><span class="p">.</span><span class="nf">Info</span><span class="p">(</span><span class="s">&#34;database migrations applied&#34;</span><span class="p">)</span>
+
+    <span class="o">...</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Although this works &mdash; and it might initially seem appealing &mdash; tightly coupling the execution of migrations with your application source code can potentially be limiting and problematic in the longer term.</p>
+
+<p>The article <a href="https://pythonspeed.com/articles/schema-migrations-server-startup/">decoupling database migrations from server startup</a> provides a good discussion on this, and I recommend reading it if this is a topic that you’re interested in. It’s Python-focused, but don’t let that put you off — the same principles apply in Go applications too.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="06.01-an-overview-of-sql-migrations.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="07.00-crud-operations.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "06.01-an-overview-of-sql-migrations.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "07.00-crud-operations.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

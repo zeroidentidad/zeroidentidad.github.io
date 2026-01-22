@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Updating a movie &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="07.00-crud-operations.html">CRUD operations</a> &rsaquo; Updating a movie</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="07.03-fetching-a-movie.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="07.05-deleting-a-movie.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 7.4.</div>
+			<h2 id="updating-a-movie">Updating a movie</h2>
+
+<p>In this chapter, we&rsquo;ll continue building up our application and add a brand-new endpoint that allows clients to <em>update the data for a specific movie</em>.</p>
+
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>URL Pattern</th>
+<th>Handler</th>
+<th>Action</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td>GET</td>
+<td>/v1/healthcheck</td>
+<td>healthcheckHandler</td>
+<td>Show application information</td>
+</tr>
+
+<tr>
+<td>POST</td>
+<td>/v1/movies</td>
+<td>createMovieHandler</td>
+<td>Create a new movie</td>
+</tr>
+
+<tr>
+<td>GET</td>
+<td>/v1/movies/:id</td>
+<td>showMovieHandler</td>
+<td>Show the details of a specific movie</td>
+</tr>
+
+<tr>
+<td><strong>PUT</strong></td>
+<td><strong>/v1/movies/:id</strong></td>
+<td><strong>updateMovieHandler</strong></td>
+<td><strong>Update the details of a specific movie</strong></td>
+</tr>
+</tbody>
+</table>
+<p>More precisely, we&rsquo;ll set up the endpoint so that a client can edit the <code>title</code>, <code>year</code>, <code>runtime</code> and <code>genres</code> values for a movie. In our project the <code>id</code> and <code>created_at</code> values should never change once they&rsquo;ve been created, and the <code>version</code> value isn&rsquo;t something that the client should control, so we won&rsquo;t allow those fields to be edited.</p>
+
+<p>For now, we&rsquo;ll configure this endpoint so that it performs a <em>full replacement</em> of the values for a movie. This means that the client will need to provide values for <em>all</em> editable fields in their JSON request body&hellip; even if they only want to change one of them.</p>
+
+<p>For example, if a client wants to add the genre <code>sci-fi</code> to the movie <em>Black Panther</em> in our database, they would need to send a JSON request body which looks like this:</p>
+
+<figure class="code plain">
+<pre>{
+    &#34;title&#34;: &#34;Black Panther&#34;,
+    &#34;year&#34;: 2018,
+    &#34;runtime&#34;: &#34;134 mins&#34;,
+    &#34;genres&#34;: [
+            &#34;action&#34;,
+            &#34;adventure&#34;,
+            &#34;sci-fi&#34;
+    ]
+}</pre>
+</figure>
+
+<h3 id="executing-the-sql-query">Executing the SQL query</h3>
+
+<p>Let&rsquo;s start in our database model again, and edit the <code>Update()</code> method to execute the following SQL query:</p>
+
+<figure class="code plain">
+<pre>UPDATE movies 
+SET title = $1, year = $2, runtime = $3, genres = $4, version = version + 1
+WHERE id = $5
+RETURNING version</pre>
+</figure>
+
+<p>Notice here that we&rsquo;re incrementing the <code>version</code> value as part of the query. And then at the end we&rsquo;re using the <code>RETURNING</code> clause to return this new, incremented, <code>version</code> value.</p>
+
+<p>Like before, this query returns a single row of data so we&rsquo;ll also need to use Go&rsquo;s <code>QueryRow()</code> method to execute it. If you&rsquo;re following along, head back to your <code>internal/data/movies.go</code> file and fill in the <code>Update()</code> method like so:</p>
+
+<figure class="code go">
+<figcaption>File: internal/data/movies.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">data</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="nx">MovieModel</span><span class="p">)</span> <span class="nf">Update</span><span class="p">(</span><span class="nx">movie</span> <span class="o">*</span><span class="nx">Movie</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+    <span class="c1">// Declare the SQL query for updating the record and returning the new version
+</span><span class="c1"></span>    <span class="c1">// number.
+</span><span class="c1"></span>    <span class="nx">query</span> <span class="o">:=</span> <span class="s">`</span><span class="s">
+</span><span class="s">        UPDATE movies 
+</span><span class="s">        SET title = $1, year = $2, runtime = $3, genres = $4, version = version + 1
+</span><span class="s">        WHERE id = $5
+</span><span class="s">        RETURNING version</span><span class="s">`</span>
+
+    <span class="c1">// Create an args slice containing the values for the placeholder parameters.
+</span><span class="c1"></span>    <span class="nx">args</span> <span class="o">:=</span> <span class="p">[</span><span class="p">]</span><span class="nx">any</span><span class="p">{</span>
+        <span class="nx">movie</span><span class="p">.</span><span class="nx">Title</span><span class="p">,</span>
+        <span class="nx">movie</span><span class="p">.</span><span class="nx">Year</span><span class="p">,</span>
+        <span class="nx">movie</span><span class="p">.</span><span class="nx">Runtime</span><span class="p">,</span>
+        <span class="nx">pq</span><span class="p">.</span><span class="nf">Array</span><span class="p">(</span><span class="nx">movie</span><span class="p">.</span><span class="nx">Genres</span><span class="p">)</span><span class="p">,</span>
+        <span class="nx">movie</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Use the QueryRow() method to execute the query, passing in the args slice as a
+</span><span class="c1"></span>    <span class="c1">// variadic parameter and scanning the new version value into the movie struct.
+</span><span class="c1"></span>    <span class="k">return</span> <span class="nx">m</span><span class="p">.</span><span class="nx">DB</span><span class="p">.</span><span class="nf">QueryRow</span><span class="p">(</span><span class="nx">query</span><span class="p">,</span> <span class="nx">args</span><span class="o">...</span><span class="p">)</span><span class="p">.</span><span class="nf">Scan</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">movie</span><span class="p">.</span><span class="nx">Version</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="o">...</span></pre>
+</figure>
+
+<p>It&rsquo;s important to emphasize that &mdash; just like our <code>Insert()</code> method &mdash; the <code>Update()</code> method takes a pointer to a <code>Movie</code> struct as the input parameter and mutates it in-place again &mdash; this time updating it with the new version number only.</p>
+
+<h3 id="creating-the-api-handler">Creating the API handler</h3>
+
+<p>Now let&rsquo;s head back to our <code>cmd/api/movies.go</code> file and update it to include the brand-new <code>updateMovieHandler</code> method.</p>
+
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>URL Pattern</th>
+<th>Handler</th>
+<th>Action</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td>PUT</td>
+<td>/v1/movies/:id</td>
+<td>updateMovieHandler</td>
+<td>Update the details of a specific movie</td>
+</tr>
+</tbody>
+</table>
+<p>The nice thing about this handler is that the groundwork is already in place &mdash; our job here really just involves linking up the code and helper functions that we&rsquo;ve already written to handle the request.</p>
+
+<p>Specifically, we&rsquo;ll need to:</p>
+
+<ol>
+<li>Extract the movie ID from the URL using the <code>app.readIDParam()</code> helper.</li>
+<li>Fetch the corresponding movie record from the database using the <code>Get()</code> method that we made in the previous chapter.</li>
+<li>Read the JSON request body containing the updated movie data into an <code>input</code> struct.</li>
+<li>Copy the data across from the <code>input</code> struct to the movie record.</li>
+<li>Check that the updated movie record is valid using the <code>data.ValidateMovie()</code> function.</li>
+<li>Call the <code>Update()</code> method to store the updated movie record in our database.</li>
+<li>Write the updated movie data in a JSON response using the <code>app.writeJSON()</code> helper.</li>
+</ol>
+
+<p>So let&rsquo;s go ahead and do exactly that:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/movies.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">updateMovieHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Extract the movie ID from the URL.
+</span><span class="c1"></span>    <span class="nx">id</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readIDParam</span><span class="p">(</span><span class="nx">r</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">notFoundResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Fetch the existing movie record from the database, sending a 404 Not Found 
+</span><span class="c1"></span>    <span class="c1">// response to the client if we couldn&#39;t find a matching record.
+</span><span class="c1"></span>    <span class="nx">movie</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Movies</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">id</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">switch</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">data</span><span class="p">.</span><span class="nx">ErrRecordNotFound</span><span class="p">)</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">notFoundResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+        <span class="k">default</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="p">}</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Declare an input struct to hold the expected data from the client.
+</span><span class="c1"></span>    <span class="kd">var</span> <span class="nx">input</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">Title</span>   <span class="kt">string</span>       <span class="s">`</span><span class="s">json:&#34;title&#34;</span><span class="s">`</span>
+        <span class="nx">Year</span>    <span class="kt">int32</span>        <span class="s">`</span><span class="s">json:&#34;year&#34;</span><span class="s">`</span>
+        <span class="nx">Runtime</span> <span class="nx">data</span><span class="p">.</span><span class="nx">Runtime</span> <span class="s">`</span><span class="s">json:&#34;runtime&#34;</span><span class="s">`</span>
+        <span class="nx">Genres</span>  <span class="p">[</span><span class="p">]</span><span class="kt">string</span>     <span class="s">`</span><span class="s">json:&#34;genres&#34;</span><span class="s">`</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Read the JSON request body data into the input struct.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">input</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">badRequestResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Copy the values from the request body to the appropriate fields of the movie
+</span><span class="c1"></span>    <span class="c1">// record.
+</span><span class="c1"></span>    <span class="nx">movie</span><span class="p">.</span><span class="nx">Title</span> <span class="p">=</span> <span class="nx">input</span><span class="p">.</span><span class="nx">Title</span>
+    <span class="nx">movie</span><span class="p">.</span><span class="nx">Year</span> <span class="p">=</span> <span class="nx">input</span><span class="p">.</span><span class="nx">Year</span>
+    <span class="nx">movie</span><span class="p">.</span><span class="nx">Runtime</span> <span class="p">=</span> <span class="nx">input</span><span class="p">.</span><span class="nx">Runtime</span>
+    <span class="nx">movie</span><span class="p">.</span><span class="nx">Genres</span> <span class="p">=</span> <span class="nx">input</span><span class="p">.</span><span class="nx">Genres</span>
+
+    <span class="c1">// Validate the updated movie record, sending the client a 422 Unprocessable Entity
+</span><span class="c1"></span>    <span class="c1">// response if any checks fail.
+</span><span class="c1"></span>    <span class="nx">v</span> <span class="o">:=</span> <span class="nx">validator</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="nx">data</span><span class="p">.</span><span class="nf">ValidateMovie</span><span class="p">(</span><span class="nx">v</span><span class="p">,</span> <span class="nx">movie</span><span class="p">)</span><span class="p">;</span> <span class="p">!</span><span class="nx">v</span><span class="p">.</span><span class="nf">Valid</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">failedValidationResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nx">Errors</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Pass the updated movie record to our new Update() method.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Movies</span><span class="p">.</span><span class="nf">Update</span><span class="p">(</span><span class="nx">movie</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Write the updated movie record in a JSON response.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">writeJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusOK</span><span class="p">,</span> <span class="nx">envelope</span><span class="p">{</span><span class="s">&#34;movie&#34;</span><span class="p">:</span> <span class="nx">movie</span><span class="p">}</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Lastly, to finish this off, we also need to update our application routes to include the new endpoint. Like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/routes.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">routes</span><span class="p">(</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span> <span class="p">{</span>
+    <span class="nx">router</span> <span class="o">:=</span> <span class="nx">httprouter</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nx">NotFound</span> <span class="p">=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">notFoundResponse</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nx">MethodNotAllowed</span> <span class="p">=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">methodNotAllowedResponse</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/healthcheck&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">healthcheckHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span> <span class="s">&#34;/v1/movies&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">createMovieHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">showMovieHandler</span><span class="p">)</span>
+    <span class="c1">// Add the route for the PUT /v1/movies/:id endpoint.
+</span><span class="c1"></span>    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPut</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">updateMovieHandler</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="nx">app</span><span class="p">.</span><span class="nf">recoverPanic</span><span class="p">(</span><span class="nx">router</span><span class="p">)</span>
+<span class="p">}</span>
+</pre>
+</figure>
+
+<h3 id="using-the-new-endpoint">Using the new endpoint</h3>
+
+<p>And with that, we&rsquo;re now ready to try this out!</p>
+
+<p>To demonstrate, let&rsquo;s continue with the example we gave at the start of this chapter and update our record for <em>Black Panther</em> to include the genre <code>sci-fi</code>. As a reminder, the record currently looks like this:</p>
+
+<figure class="code bash">
+<pre>$ curl localhost:4000/v1/movies/2
+<samp>{
+    &#34;movie&#34;: {
+        &#34;id&#34;: 2,
+        &#34;title&#34;: &#34;Black Panther&#34;,
+        &#34;year&#34;: 2018,
+        &#34;runtime&#34;: &#34;134 mins&#34;,
+        &#34;genres&#34;: [
+            &#34;action&#34;,
+            &#34;adventure&#34;
+        ],
+        &#34;version&#34;: 1
+    }
+}</samp></pre>
+</figure>
+
+<p>To make the update to the genres field we can execute the following API call:</p>
+
+<figure class="code bash">
+<pre>$ BODY=&#39;{&#34;title&#34;:&#34;Black Panther&#34;,&#34;year&#34;:2018,&#34;runtime&#34;:&#34;134 mins&#34;,&#34;genres&#34;:[&#34;sci-fi&#34;,&#34;action&#34;,&#34;adventure&#34;]}&#39;
+$ curl -X PUT -d &#34;$BODY&#34; localhost:4000/v1/movies/2
+<samp>{
+    &#34;movie&#34;: {
+        &#34;id&#34;: 2,
+        &#34;title&#34;: &#34;Black Panther&#34;,
+        &#34;year&#34;: 2018,
+        &#34;runtime&#34;: &#34;134 mins&#34;,
+        &#34;genres&#34;: [
+            &#34;sci-fi&#34;,
+            &#34;action&#34;,
+            &#34;adventure&#34;
+        ],
+        &#34;version&#34;: 2
+    }
+}</samp></pre>
+</figure>
+
+<p>That&rsquo;s looking great &mdash; we can see from the response that the movie genres have been updated to include <code>&quot;sci-fi&quot;</code>, and the version number has been incremented to <code>2</code> like we would expect.</p>
+
+<p>You can also verify that the change has been persisted by making a <code>GET /v1/movies/2</code> request again, like so:</p>
+
+<figure class="code bash">
+<pre>$ curl localhost:4000/v1/movies/2
+<samp>{
+    &#34;movie&#34;: {
+        &#34;id&#34;: 2,
+        &#34;title&#34;: &#34;Black Panther&#34;,
+        &#34;year&#34;: 2018,
+        &#34;runtime&#34;: &#34;134 mins&#34;,
+        &#34;genres&#34;: [
+            &#34;sci-fi&#34;,
+            &#34;action&#34;,
+            &#34;adventure&#34;
+        ],
+        &#34;version&#34;: 2
+    }
+}</samp></pre>
+</figure>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="07.03-fetching-a-movie.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="07.05-deleting-a-movie.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "07.03-fetching-a-movie.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "07.05-deleting-a-movie.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

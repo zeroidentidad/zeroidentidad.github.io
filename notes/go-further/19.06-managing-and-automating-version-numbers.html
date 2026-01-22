@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Managing and automating version numbers &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="19.00-building-versioning-and-quality-control.html">Building, versioning and quality control</a> &rsaquo; Managing and automating version numbers</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="19.05-building-binaries.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="20.00-deployment-and-hosting.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 19.6.</div>
+			<h2 id="managing-and-automating-version-numbers">Managing and automating version numbers</h2>
+
+<p>Right at the start of this book, we hard-coded the version number for our application as the constant <code>&quot;1.0.0&quot;</code> in the <code>cmd/api/main.go</code> file.</p>
+
+<p>In this chapter, we&rsquo;re going to take steps to make it easier to view and manage this version number, and also explain how you can generate version numbers automatically based on Git commits and integrate them into your application.</p>
+
+<h3 id="displaying-the-version-number">Displaying the version number</h3>
+
+<p>Let&rsquo;s start by updating our application so that we can easily check the version number by running the binary with a <code>-version</code> command-line flag, similar to this:</p>
+
+<figure class="code bash">
+<pre>$ ./bin/api -version
+<samp>Version:        1.0.0</samp></pre>
+</figure>
+
+<p>Conceptually, this is fairly straightforward to implement. We need to define a boolean <code>version</code> command-line flag, check for this flag on startup, and then print out the version number and exit the application if necessary.</p>
+
+<p>If you&rsquo;re following along, go ahead and update your <code>cmd/api/main.go</code> file like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/main.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;context&#34;</span>
+    <span class="s">&#34;database/sql&#34;</span>
+    <span class="s">&#34;expvar&#34;</span>
+    <span class="s">&#34;flag&#34;</span>
+    <span class="s">&#34;fmt&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;log/slog&#34;</span>
+    <span class="s">&#34;os&#34;</span>
+    <span class="s">&#34;runtime&#34;</span>
+    <span class="s">&#34;strings&#34;</span>
+    <span class="s">&#34;sync&#34;</span>
+    <span class="s">&#34;time&#34;</span>
+
+    <span class="s">&#34;greenlight.alexedwards.net/internal/data&#34;</span>
+    <span class="s">&#34;greenlight.alexedwards.net/internal/mailer&#34;</span>
+
+    <span class="nx">_</span> <span class="s">&#34;github.com/lib/pq&#34;</span>
+<span class="p">)</span>
+
+<span class="kd">const</span> <span class="nx">version</span> <span class="p">=</span> <span class="s">&#34;1.0.0&#34;</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="nf">main</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">cfg</span> <span class="nx">config</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">port</span><span class="p">,</span> <span class="s">&#34;port&#34;</span><span class="p">,</span> <span class="mi">4000</span><span class="p">,</span> <span class="s">&#34;API server port&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">env</span><span class="p">,</span> <span class="s">&#34;env&#34;</span><span class="p">,</span> <span class="s">&#34;development&#34;</span><span class="p">,</span> <span class="s">&#34;Environment (development|staging|production)&#34;</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">dsn</span><span class="p">,</span> <span class="s">&#34;db-dsn&#34;</span><span class="p">,</span> <span class="s">&#34;&#34;</span><span class="p">,</span> <span class="s">&#34;PostgreSQL DSN&#34;</span><span class="p">)</span>
+    
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">maxOpenConns</span><span class="p">,</span> <span class="s">&#34;db-max-open-conns&#34;</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="s">&#34;PostgreSQL max open connections&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">maxIdleConns</span><span class="p">,</span> <span class="s">&#34;db-max-idle-conns&#34;</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="s">&#34;PostgreSQL max idle connections&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">DurationVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">db</span><span class="p">.</span><span class="nx">maxIdleTime</span><span class="p">,</span> <span class="s">&#34;db-max-idle-time&#34;</span><span class="p">,</span> <span class="mi">15</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Minute</span><span class="p">,</span> <span class="s">&#34;PostgreSQL max connection idle time&#34;</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">BoolVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">limiter</span><span class="p">.</span><span class="nx">enabled</span><span class="p">,</span> <span class="s">&#34;limiter-enabled&#34;</span><span class="p">,</span> <span class="kc">true</span><span class="p">,</span> <span class="s">&#34;Enable rate limiter&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">Float64Var</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">limiter</span><span class="p">.</span><span class="nx">rps</span><span class="p">,</span> <span class="s">&#34;limiter-rps&#34;</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="s">&#34;Rate limiter maximum requests per second&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">limiter</span><span class="p">.</span><span class="nx">burst</span><span class="p">,</span> <span class="s">&#34;limiter-burst&#34;</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="s">&#34;Rate limiter maximum burst&#34;</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">smtp</span><span class="p">.</span><span class="nx">host</span><span class="p">,</span> <span class="s">&#34;smtp-host&#34;</span><span class="p">,</span> <span class="s">&#34;sandbox.smtp.mailtrap.io&#34;</span><span class="p">,</span> <span class="s">&#34;SMTP host&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">IntVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">smtp</span><span class="p">.</span><span class="nx">port</span><span class="p">,</span> <span class="s">&#34;smtp-port&#34;</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="s">&#34;SMTP port&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">smtp</span><span class="p">.</span><span class="nx">username</span><span class="p">,</span> <span class="s">&#34;smtp-username&#34;</span><span class="p">,</span> <span class="s">&#34;a7420fc0883489&#34;</span><span class="p">,</span> <span class="s">&#34;SMTP username&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">smtp</span><span class="p">.</span><span class="nx">password</span><span class="p">,</span> <span class="s">&#34;smtp-password&#34;</span><span class="p">,</span> <span class="s">&#34;e75ffd0a3aa5ec&#34;</span><span class="p">,</span> <span class="s">&#34;SMTP password&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">StringVar</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">cfg</span><span class="p">.</span><span class="nx">smtp</span><span class="p">.</span><span class="nx">sender</span><span class="p">,</span> <span class="s">&#34;smtp-sender&#34;</span><span class="p">,</span> <span class="s">&#34;Greenlight &lt;no-reply@greenlight.alexedwards.net&gt;&#34;</span><span class="p">,</span> <span class="s">&#34;SMTP sender&#34;</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">Func</span><span class="p">(</span><span class="s">&#34;cors-trusted-origins&#34;</span><span class="p">,</span> <span class="s">&#34;Trusted CORS origins (space separated)&#34;</span><span class="p">,</span> <span class="kd">func</span><span class="p">(</span><span class="nx">val</span> <span class="kt">string</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+        <span class="nx">cfg</span><span class="p">.</span><span class="nx">cors</span><span class="p">.</span><span class="nx">trustedOrigins</span> <span class="p">=</span> <span class="nx">strings</span><span class="p">.</span><span class="nf">Fields</span><span class="p">(</span><span class="nx">val</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">nil</span>
+    <span class="p">}</span><span class="p">)</span>
+
+    <span class="c1">// Create a new version boolean flag with the default value of false.
+</span><span class="c1"></span>    <span class="nx">displayVersion</span> <span class="o">:=</span> <span class="nx">flag</span><span class="p">.</span><span class="nf">Bool</span><span class="p">(</span><span class="s">&#34;version&#34;</span><span class="p">,</span> <span class="kc">false</span><span class="p">,</span> <span class="s">&#34;Display version and exit&#34;</span><span class="p">)</span>
+
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">Parse</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="c1">// If the version flag value is true, then print out the version number and
+</span><span class="c1"></span>    <span class="c1">// immediately exit.
+</span><span class="c1"></span>    <span class="k">if</span> <span class="o">*</span><span class="nx">displayVersion</span> <span class="p">{</span>
+        <span class="nx">fmt</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;Version:\t%s\n&#34;</span><span class="p">,</span> <span class="nx">version</span><span class="p">)</span>
+        <span class="nx">os</span><span class="p">.</span><span class="nf">Exit</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="o">...</span>
+<span class="p">}</span>
+
+<span class="o">...</span>
+</pre>
+</figure>
+
+<p>OK, let&rsquo;s try this out. Go ahead and rebuild the executable binaries using <code>make build/api</code>, then run the <code>./bin/api</code> binary with the <code>-version</code> flag.</p>
+
+<p>You should find that it prints out the version number and then exits, similar to this:</p>
+
+<figure class="code bash">
+<pre>$ make build/api 
+<samp>Building cmd/api...
+go build -ldflags=&#34;-s&#34; -o=&#34;./bin/api&#34; ./cmd/api
+GOOS=linux GOARCH=amd64 go build -ldflags=&#34;-s&#34; -o=&#34;./bin/linux_amd64/api&#34; ./cmd/api</samp>
+
+$ ./bin/api -version
+<samp>Version:        1.0.0</samp></pre>
+</figure>
+
+<aside class="hint"><p>
+<strong>Remember:</strong> Boolean command-line flags <em>without a value</em> are interpreted as having the value <code>true</code>. So running our application with <code>-version</code> is the same as running it with <code>-version=true</code>.
+</p></aside>
+
+<h3 id="automated-version-numbering-with-git">Automated version numbering with Git</h3>
+
+<aside class="important"><p>
+<strong>Important:</strong> This part of the book is only really relevant if you use Git or a similar version control system. If you don&rsquo;t, then that&rsquo;s absolutely fine and you can skip ahead to the next chapter with no issues.
+</p></aside>
+
+<p>Go embeds <em>version control</em> information in your executable binaries when you run <code>go build</code> on a <code>main</code> package that is tracked with Git, Mercurial, Fossil, or Bazaar.</p>
+
+<p>There are two ways to access this version control information &mdash; either by using the <code>go version -m</code> command on your binary, or from within your application code itself by calling <a href="https://pkg.go.dev/runtime/debug#ReadBuildInfo"><code>debug.ReadBuildInfo()</code></a>.</p>
+
+<p>Let&rsquo;s take a look at both approaches.</p>
+
+<p>If you&rsquo;re following along (and haven&rsquo;t done it already), please go ahead and initialize a new Git repository in the root of your project directory:</p>
+
+<figure class="code bash">
+<pre>$ git init
+<samp>Initialized empty Git repository in /home/alex/Projects/greenlight/.git/</samp></pre>
+</figure>
+
+<p>Then make a new commit containing all the files in your project directory, like so:</p>
+
+<figure class="code bash">
+<pre>$ git add .
+$ git commit -m &#34;Initial commit&#34;</pre>
+</figure>
+
+<p>If you look at your commit history using the <a href="https://git-scm.com/docs/git-log"><code>git log</code></a> command, you&rsquo;ll see the <em>hash</em> for this commit.</p>
+
+<figure class="code bash">
+<pre>$ git log
+<samp>commit 59bdb76fda0c15194ce18afae5d4875237f05ea9 (HEAD -&gt; master)
+Author: Alex Edwards &lt;alex@alexedwards.net&gt;
+Date:   Wed Feb 19 19:01:34 2025 +0100
+
+    Initial commit</samp></pre>
+</figure>
+
+<p>In my case, the commit hash is <code>59bdb76fda0c15194ce18afae5d4875237f05ea9</code> &mdash; but yours will very likely be a different value.</p>
+
+<p>Next, run <code>make build</code> again to generate a new binary and then use the <code>go version -m</code> command on it. Like so:</p>
+
+<figure class="code bash">
+<pre>$ make build/api 
+<samp>Building cmd/api...
+go build -ldflags=&#34;-s&#34; -o=./bin/api ./cmd/api
+GOOS=linux GOARCH=amd64 go build -ldflags=&#34;-s&#34; -o=./bin/linux_amd64/api ./cmd/api</samp>
+
+$ go version -m ./bin/api 
+<samp>./bin/api: go1.25.0
+        path    greenlight.alexedwards.net/cmd/api
+        mod     greenlight.alexedwards.net      v0.0.0-20250219190134-59bdb76fda0c
+        dep     github.com/julienschmidt/httprouter     v1.3.0
+        dep     github.com/lib/pq       v1.10.9
+        dep     github.com/tomasen/realip       v0.0.0-20180522021738-f0c99a92ddce
+        dep     github.com/wneessen/go-mail     v0.6.2
+        dep     golang.org/x/crypto     v0.41.0
+        dep     golang.org/x/text       v0.22.0
+        dep     golang.org/x/time       v0.12.0
+        build   -buildmode=exe
+        build   -compiler=gc
+        build   -ldflags=-s
+        build   CGO_ENABLED=1
+        build   CGO_CFLAGS=
+        build   CGO_CPPFLAGS=
+        build   CGO_CXXFLAGS=
+        build   CGO_LDFLAGS=
+        build   GOARCH=amd64
+        build   GOOS=linux
+        build   GOAMD64=v1
+        build   vcs=git
+        build   vcs.revision=59bdb76fda0c15194ce18afae5d4875237f05ea9
+        build   vcs.time=2025-02-19T19:01:34Z
+        build   vcs.modified=false</samp></pre>
+</figure>
+
+<p>The output from <code>go version -m</code> shows us some interesting information about the binary. We can see the version of Go that it was built with (<code>go1.25.0</code> in my case), the module dependencies, and information about the build settings &mdash; including the linker flags used and the OS and architecture it was built for.</p>
+
+<p>However, the things that we&rsquo;re most interested in right now are the <code>mod</code> line and the <code>vcs</code> build settings at the bottom.</p>
+
+<ul>
+<li><code>vcs=git</code> tells us that the version control system being used is Git.</li>
+<li><code>vcs.revision</code> is the hash for the latest Git commit.</li>
+<li><code>vcs.time</code> is the time that this commit was made.</li>
+<li><code>vcs.modified</code> tells us whether the code tracked by the Git repository has been modified since the commit was made. A value of <code>false</code> indicates that the code has not been modified, meaning that the binary was built using the <em>exact code from the <code>vcs.revision</code> commit</em>. A value of <code>true</code> indicates that the version control repository was &lsquo;dirty&rsquo; when the binary was built &mdash; and the code used to build the binary may not be the exact code from the <code>vcs.revision</code> commit.</li>
+</ul>
+
+<p>The line <code>mod greenlight.alexedwards.net v0.0.0-20250219190134-59bdb76fda0c</code> tells us that the main module in the compiled binary is <code>greenlight.alexedwards.net</code> and that the module has the version <code>v0.0.0-20250219190134-59bdb76fda0c</code>.</p>
+
+<aside class="important"><p>
+<strong>Important</strong>: <code>v0.0.0-20250219190134-59bdb76fda0c</code> is a <a href="https://go.dev/ref/mod#pseudo-versions">pseudo-version</a> generated automatically by Go. Because we haven&rsquo;t (yet) used <code>git tag</code> to tag a commit with a specific semantic version number, it starts with the <em>base version</em> <code>v0.0.0</code>, followed by the timestamp that the latest commit was made, and then the first 12 characters of the latest commit hash.
+</p></aside>
+
+<p>As I mentioned briefly above, all the information that you see in the <code>go version -m</code> output is also available to you at runtime. More specifically, you can access it by calling the <code>debug.ReadBuildInfo()</code> function, which will return a <a href="https://pkg.go.dev/runtime/debug#BuildInfo"><code>debug.BuildInfo</code></a> struct that contains essentially the same information that we saw when running the <code>go version -m</code> command</p>
+
+<p>Let&rsquo;s leverage this and adapt our <code>main.go</code> file so that the <code>version</code> value is set to the pseudo-version that we&rsquo;ve just discussed, rather than the hardcoded constant <code>&quot;1.0.0&quot;</code>.</p>
+
+<p>To assist with this, we&rsquo;ll create a small <code>internal/vcs</code> package containing a <code>Version()</code> function, like so:</p>
+
+<figure class="code bash">
+<pre>$ mkdir internal/vcs
+$ touch internal/vcs/vcs.go</pre>
+</figure>
+
+<figure class="code go">
+<figcaption>File: internal/vcs/vcs.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">vcs</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+	<span class="s">&#34;fmt&#34;</span>
+	<span class="s">&#34;runtime/debug&#34;</span>
+<span class="p">)</span>
+
+<span class="kd">func</span> <span class="nf">Version</span><span class="p">(</span><span class="p">)</span> <span class="kt">string</span> <span class="p">{</span>
+    <span class="c1">// Use debug.ReadBuildInfo() to retrieve a debug.BuildInfo struct. If this is available,
+</span><span class="c1"></span>    <span class="c1">// the ok value will be true, and we return the pseudo-version contained in the
+</span><span class="c1"></span>    <span class="c1">// Main.Version field.
+</span><span class="c1"></span>    <span class="nx">bi</span><span class="p">,</span> <span class="nx">ok</span> <span class="o">:=</span> <span class="nx">debug</span><span class="p">.</span><span class="nf">ReadBuildInfo</span><span class="p">(</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">ok</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">bi</span><span class="p">.</span><span class="nx">Main</span><span class="p">.</span><span class="nx">Version</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="s">&#34;&#34;</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Now that&rsquo;s in place, let&rsquo;s head back to our <code>main.go</code> file and update it to set the version number using this new <code>vcs.Version()</code> function:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/main.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;context&#34;</span>
+    <span class="s">&#34;database/sql&#34;</span>
+    <span class="s">&#34;expvar&#34;</span>
+    <span class="s">&#34;flag&#34;</span>
+    <span class="s">&#34;fmt&#34;</span>
+    <span class="s">&#34;log/slog&#34;</span>
+    <span class="s">&#34;os&#34;</span>
+    <span class="s">&#34;runtime&#34;</span>
+    <span class="s">&#34;strings&#34;</span>
+    <span class="s">&#34;sync&#34;</span>
+    <span class="s">&#34;time&#34;</span>
+
+    <span class="s">&#34;greenlight.alexedwards.net/internal/data&#34;</span>
+    <span class="s">&#34;greenlight.alexedwards.net/internal/mailer&#34;</span>
+    <span class="s">&#34;greenlight.alexedwards.net/internal/vcs&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>
+    <span class="nx">_</span> <span class="s">&#34;github.com/lib/pq&#34;</span>
+<span class="p">)</span>
+
+<span class="c1">// Make version a variable (rather than a constant) and set its value to vcs.Version().
+</span><span class="c1"></span><span class="kd">var</span> <span class="p">(</span>
+    <span class="nx">version</span> <span class="p">=</span> <span class="nx">vcs</span><span class="p">.</span><span class="nf">Version</span><span class="p">(</span><span class="p">)</span>
+<span class="p">)</span>
+
+<span class="o">...</span></pre>
+</figure>
+
+<p>Alright, let&rsquo;s try this out. Go ahead and rebuild the binary again&hellip;</p>
+
+<figure class="code bash">
+<pre>$ make build/api 
+<samp>Building cmd/api...
+go build -ldflags=&#34;-s&#34; -o=./bin/api ./cmd/api
+GOOS=linux GOARCH=amd64 go build -ldflags=&#34;-s&#34; -o=./bin/linux_amd64/api ./cmd/api</samp></pre>
+</figure>
+
+<p>And then run it with the <code>-version</code> flag:</p>
+
+<figure class="code bash">
+<pre>$ ./bin/api -version
+<samp>Version:        v0.0.0-20250219190134-59bdb76fda0c+dirty</samp></pre>
+</figure>
+
+<p>Great! That&rsquo;s now reporting the pseudo-version number contained in the binary. But because we&rsquo;ve changed the codebase since the previous commit, the pseudo-version now has the <code>+dirty</code> suffix to indicate that the codebase has uncommitted changes.</p>
+
+<p>Let&rsquo;s fix that by committing our recent changes&hellip;</p>
+
+<figure class="code bash">
+<pre>$ git add .
+$ git commit -m &#34;Generate version number automatically&#34;</pre>
+</figure>
+
+<p>And when you rebuild the binary and check the version number again you should see a new version number without the <code>+dirty</code> suffix, similar to this:</p>
+
+<figure class="code bash">
+<pre>$ make build/api 
+<samp>Building cmd/api...
+go build -ldflags=&#34;-s&#34; -o=./bin/api ./cmd/api
+GOOS=linux GOARCH=amd64 go build -ldflags=&#34;-s&#34; -o=./bin/linux_amd64/api ./cmd/api</samp>
+
+$ ./bin/api -version
+<samp>Version:        v0.0.0-20250221115919-f79a5dbadf36</samp></pre>
+</figure>
+
+<aside class="important"><p>
+<strong>Important:</strong> Version control information is only embedded in a binary by default when you run <code>go build</code>. It is never embedded when you use <code>go run</code>, and is only embedded when using <code>go test</code> if you use the <code>-buildvcs=true</code> flag. You can see this behavior in action if you use <code>go run</code> in conjunction with our <code>-version</code> flag; no version control information is embedded and the pseudo-version reported has the value <code>(devel)</code>.</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api/ -version
+<samp>Version:        (devel)</samp></pre>
+</figure>
+
+<p></p></aside>
+
+<h4 id="tagging-releases">Tagging releases</h4>
+
+<p>In some projects you may want to annotate certain Git commits with a semantic version number <a href="https://git-scm.com/book/en/v2/Git-Basics-Tagging">tag</a>, often to denote a formal release.</p>
+
+<p>To illustrate this, let’s add the <code>v1.0.0</code> tag to our latest commit like so:</p>
+
+<figure class="code bash">
+<pre>$ git tag v1.0.0
+$ git log
+<samp>commit f79a5dbadf3665b825aef58b27406920ac6382d7 (HEAD -&gt; master, tag: v1.0.0)
+Author: Alex Edwards &lt;alex@alexedwards.net&gt;
+Date:   Fri Feb 21 12:59:19 2025 +0100
+
+    Generate version number automatically
+
+...</samp></pre>
+</figure>
+
+<p>If you rebuild the application and check the version again, you should see that it now reports <code>v1.0.0</code> as the version, instead of the automatically generated pseudo-version.</p>
+
+<figure class="code bash">
+<pre>$ make build/api 
+$ ./bin/api -version
+<samp>Version:        v1.0.0</samp></pre>
+</figure>
+
+<p>Now, just to illustrate what happens next, let&rsquo;s make another (empty) commit to our codebase.</p>
+
+<figure class="code bash">
+<pre>$ git commit --allow-empty -m &#34;Empty commit&#34;
+<samp>[master 5370944] Empty commit</samp></pre>
+</figure>
+
+<p>At this point, our <em>base version</em> is still <code>v1.0.0</code>, but we are <em>ahead of the commit</em> that we tagged as <code>v1.0.0</code>. So now Go will no longer report <code>v1.0.0</code> as the version, and instead will go back reporting a pseudo-version again.</p>
+
+<p>When you rebuild the application and check it, you should see that the version looks a bit like this:</p>
+
+<figure class="code bash">
+<pre>$ make build/api 
+$ ./bin/api -version
+<samp>Version:        v1.0.1-0.20250221122119-5370944738f9</samp></pre>
+</figure>
+
+<p>The timestamp and commit hash are those of the latest commit, just like before. But we can also see that the semantic version number part is <code>v1.0.1-0</code>, which is a little bit weird at first glance.</p>
+
+<p>What&rsquo;s happening here is that Go is applying the following rule: <em>if you have the base version <code>vX.Y.Z</code>, but your latest commits are ahead of it, then the start of the pseudo-version will be in the format <code>vX.Y.(Z+1)-0</code></em>. For more information about the rationale behind this, please see the <a href="https://go.dev/ref/mod#pseudo-versions">Go Modules Reference</a>.</p>
+
+<p>So all in all, this is really good. We&rsquo;ve got a version number that is automatically generated based on our Git history and embedded in our binary, and it&rsquo;s easy to identify exactly what code a particular binary contains or a running application is using &mdash; all we need to do is run the binary with the <code>-version</code> flag, or call the healthcheck endpoint, and then cross-reference the version number against the Git repository history.</p>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="reporting-just-the-commit-timestamp-and-hash">Reporting just the commit timestamp and hash</h4>
+
+<p>If you aren&rsquo;t tagging commits, and want to use just the latest commit timestamp and hash as your version number, you can loop through the <code>debug.BuildInfo.Settings</code> field to extract the <code>vcs.time</code>, <code>vcs.revision</code> and <code>vcs.modified</code> values and create your own version string. Like so:</p>
+
+<figure class="code go">
+<pre><span class="kd">func</span> <span class="nf">Version</span><span class="p">(</span><span class="p">)</span> <span class="kt">string</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="p">(</span>
+        <span class="nx">time</span>     <span class="kt">string</span>
+        <span class="nx">revision</span> <span class="kt">string</span>
+        <span class="nx">modified</span> <span class="kt">bool</span>
+    <span class="p">)</span>
+
+    <span class="nx">bi</span><span class="p">,</span> <span class="nx">ok</span> <span class="o">:=</span> <span class="nx">debug</span><span class="p">.</span><span class="nf">ReadBuildInfo</span><span class="p">(</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">ok</span> <span class="p">{</span>
+        <span class="k">for</span> <span class="nx">_</span><span class="p">,</span> <span class="nx">s</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">bi</span><span class="p">.</span><span class="nx">Settings</span> <span class="p">{</span>
+            <span class="k">switch</span> <span class="nx">s</span><span class="p">.</span><span class="nx">Key</span> <span class="p">{</span>
+            <span class="k">case</span> <span class="s">&#34;vcs.time&#34;</span><span class="p">:</span>
+                <span class="nx">time</span> <span class="p">=</span> <span class="nx">s</span><span class="p">.</span><span class="nx">Value</span>
+            <span class="k">case</span> <span class="s">&#34;vcs.revision&#34;</span><span class="p">:</span>
+                <span class="nx">revision</span> <span class="p">=</span> <span class="nx">s</span><span class="p">.</span><span class="nx">Value</span>
+            <span class="k">case</span> <span class="s">&#34;vcs.modified&#34;</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nx">s</span><span class="p">.</span><span class="nx">Value</span> <span class="o">==</span> <span class="s">&#34;true&#34;</span> <span class="p">{</span>
+                    <span class="nx">modified</span> <span class="p">=</span> <span class="kc">true</span>
+                <span class="p">}</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="k">if</span> <span class="nx">modified</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;%s-%s+dirty&#34;</span><span class="p">,</span> <span class="nx">time</span><span class="p">,</span> <span class="nx">revision</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;%s-%s&#34;</span><span class="p">,</span> <span class="nx">time</span><span class="p">,</span> <span class="nx">revision</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Using this would result in version numbers that look similar to this:</p>
+
+<figure class="code plain">
+<pre>2025-02-21T10:16:24Z-1c9b6ff48ea800acdf4f5c6f5c3b62b98baf2bd7+dirty</pre>
+</figure>
+
+<h4 id="using-linker-flags">Using linker flags</h4>
+
+<p>Prior to Go 1.18 the idiomatic way to manage version numbers automatically was to &lsquo;burn-in&rsquo; the version number when building the binary using the <code>-X</code> linker flag. Using <code>debug.ReadBuildInfo()</code> is now the preferred method, but the old approach can still be useful if you need to set the version number to something that isn&rsquo;t available via <code>debug.ReadBuildInfo()</code>.</p>
+
+<p>For example, if you wanted to set the version number to the value of a <code>VERSION</code> environment variable <em>on the machine building the binary</em>, you could use the <code>-X</code> linker flag to &lsquo;burn-in&rsquo; this value to the <code>main.version</code> variable. Like so:</p>
+
+<figure class="code shell">
+<figcaption>File: Makefile</figcaption>
+<pre>
+...
+
+<span class="c1">## build/api: build the cmd/api application</span>
+.PHONY: build/api
+build/api:
+    @echo <span class="s1">&#39;Building cmd/api...&#39;</span>
+    go build -ldflags<span class="o">=</span><span class="s1">&#39;-s -X main.version=${VERSION}&#39;</span> -o<span class="o">=</span>./bin/api ./cmd/api
+    <span class="nv">GOOS</span><span class="o">=</span>linux <span class="nv">GOARCH</span><span class="o">=</span>amd64 go build -ldflags<span class="o">=</span><span class="s1">&#39;-s -X main.version=${VERSION}&#39;</span> -o<span class="o">=</span>./bin/linux_amd64/api ./cmd/api</pre>
+</figure>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="19.05-building-binaries.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="20.00-deployment-and-hosting.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "19.05-building-binaries.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "20.00-deployment-and-hosting.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

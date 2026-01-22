@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>User model setup and registration &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; User model setup and registration</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="11.03-executing-the-shutdown.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="12.01-setting-up-the-users-database-table.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 12.</div>
+			<h1 id="user-model-setup-and-registration">User model setup and registration</h1>
+
+<p>In the upcoming sections of this book, we&rsquo;re going to shift our focus towards <em>users</em>: registering them, activating them, authenticating them, and restricting access to our API endpoints depending on the permissions that they have.</p>
+
+<p>But before we can do these things, we need to lay some groundwork. Specifically, we need to:</p>
+
+<ul>
+<li><p>Create a new <code>users</code> table in PostgreSQL for storing our user data.</p></li>
+
+<li><p>Create a <code>UserModel</code> which contains the code for interacting with our <code>users</code> table, validating user data, and hashing user passwords.</p></li>
+
+<li><p>Develop a <code>POST /v1/users</code> endpoint which can be used to register new users in our application.</p></li>
+</ul>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="11.03-executing-the-shutdown.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="12.01-setting-up-the-users-database-table.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "11.03-executing-the-shutdown.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "12.01-setting-up-the-users-database-table.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

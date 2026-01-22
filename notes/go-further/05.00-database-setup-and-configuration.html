@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Database setup and configuration &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; Database setup and configuration</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="04.05-validating-json-input.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="05.01-setting-up-postgresql.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 5.</div>
+			<h1 id="database-setup-and-configuration">Database setup and configuration</h1>
+
+<p>In this next section of the book, we&rsquo;re going to move forward with our project build and set up a SQL database to persistently store our movie data.</p>
+
+<p>Unlike the first <em>Let&rsquo;s Go</em> book (where we used MySQL as our database), this time we&rsquo;re going to use <a href="https://www.postgresql.org/">PostgreSQL</a>. It&rsquo;s open-source, very reliable and has some helpful modern features &mdash; including support for array and JSON data types, full-text search, and geospatial queries. We&rsquo;ll use a couple of these modern PostgreSQL features as we progress through our build.</p>
+
+<p>In this sectionm you&rsquo;ll learn:</p>
+
+<ul>
+<li><p>How to install and set up PostgreSQL on your local machine.</p></li>
+
+<li><p>How to use the <a href="https://www.postgresql.org/docs/current/app-psql.html"><code>psql</code></a> interactive tool to create databases, PostgreSQL extensions and user accounts.</p></li>
+
+<li><p>How to initialize a database connection pool in Go and configure its settings to improve performance and stability.</p></li>
+</ul>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="04.05-validating-json-input.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="05.01-setting-up-postgresql.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "04.05-validating-json-input.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "05.01-setting-up-postgresql.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

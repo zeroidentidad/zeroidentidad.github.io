@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Sending JSON responses &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; Sending JSON responses</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="02.03-api-endpoints-and-restful-routing.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="03.01-fixed-format-json.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 3.</div>
+			<h1 id="sending-json-responses">Sending JSON responses</h1>
+
+<p>In this section of the book, we&rsquo;re going to update our API handlers so that they return JSON responses instead of just plain text.</p>
+
+<p>JSON (which is an acronym for <em>JavaScript Object Notation</em>) is a human-readable text format that can be used to represent structured data. As an example, in our project a movie could be represented with the following JSON:</p>
+
+<figure class="code plain">
+<pre>{
+    &#34;id&#34;: 123,
+    &#34;title&#34;: &#34;Casablanca&#34;,
+    &#34;runtime&#34;: 102,
+    &#34;genres&#34;: [
+            &#34;drama&#34;,
+            &#34;romance&#34;,
+            &#34;war&#34;
+    ],
+    &#34;version&#34;: 1
+}</pre>
+</figure>
+
+<p>To give you a <em>very</em> quick overview of the JSON syntax&hellip;</p>
+
+<ul>
+<li>The parentheses <code>{}</code> define a <em>JSON object</em>, which is made up of comma-separated key-value pairs.</li>
+<li>The keys must be strings, and the values can be either strings, numbers, booleans, other JSON objects, or an <em>array</em> of any of those things (enclosed by <code>[]</code>).</li>
+<li>Strings must be surrounded by double quotes <code>&quot;</code> (rather than single quotes <code>'</code>) and boolean values are either <code>true</code> or <code>false</code>.</li>
+<li>Outside of a string, whitespace characters in JSON <em>do not</em> carry any significance &mdash; it would be perfectly valid for us to represent the same movie using the following JSON instead:</li>
+</ul>
+
+<figure class="code plain">
+<pre>{&#34;id&#34;:123,&#34;title&#34;:&#34;Casablanca&#34;,&#34;runtime&#34;:102,&#34;genres&#34;:[&#34;drama&#34;,&#34;romance&#34;,&#34;war&#34;],&#34;version&#34;:1}</pre>
+</figure>
+
+<p>If you&rsquo;ve not used JSON at all before, then <a href="https://towardsdatascience.com/an-introduction-to-json-c9acb464f43e">this beginner’s guide</a> provides a comprehensive introduction and I recommend reading it before continuing.</p>
+
+<p>In this section of the book you&rsquo;ll learn:</p>
+
+<ul>
+<li><p>How to send JSON responses from your REST API (including error responses).</p></li>
+
+<li><p>How to encode native Go types into JSON using the <a href="https://golang.org/pkg/encoding/json/"><code>encoding/json</code></a> package.</p></li>
+
+<li><p>Different techniques for customizing how Go tpes are encoded to JSON &mdash; first by using struct tags, and then by leveraging the <a href="https://golang.org/pkg/encoding/json/#Marshaler"><code>json.Marshaler</code></a> interface.</p></li>
+
+<li><p>How to create a reusable helper for sending JSON responses, which will ensure that all your API responses have a sensible and consistent structure.</p></li>
+</ul>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="02.03-api-endpoints-and-restful-routing.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="03.01-fixed-format-json.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "02.03-api-endpoints-and-restful-routing.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "03.01-fixed-format-json.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

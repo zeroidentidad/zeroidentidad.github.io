@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Optimistic concurrency control &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="08.00-advanced-crud-operations.html">Advanced CRUD operations</a> &rsaquo; Optimistic concurrency control</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="08.01-handling-partial-updates.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="08.03-managing-sql-query-timeouts.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 8.2.</div>
+			<h2 id="optimistic-concurrency-control">Optimistic concurrency control</h2>
+
+<p>The eagle-eyed among you might have noticed a small problem in our <code>updateMovieHandler</code> &mdash; there is a <a href="https://stackoverflow.com/questions/34510/what-is-a-race-condition">race condition</a> if two clients try to update the same movie record at exactly the same time.</p>
+
+<p>To illustrate this, let&rsquo;s pretend that we have two clients using our API: Alice and Bob. Alice wants to correct the runtime value for <em>The Breakfast Club</em> to 97 mins, and Bob wants to add the genre &lsquo;comedy&rsquo; to the same movie.</p>
+
+<p>Now imagine that Alice and Bob send these two update requests at <em>exactly</em> the same time. As we explained in <em>Let&rsquo;s Go</em>, Go&rsquo;s <code>http.Server</code> handles each HTTP request in a separate goroutine, so when this happens the code in our <code>updateMovieHandler</code> will be running concurrently in two different goroutines.</p>
+
+<p>Let&rsquo;s step through what could potentially happen in this scenario:</p>
+
+<ol>
+<li>Alice&rsquo;s goroutine calls <code>app.models.Movies.Get()</code> to retrieve a copy of the movie record (which has version number <code>N</code>).</li>
+<li>Bob&rsquo;s goroutine calls <code>app.models.Movies.Get()</code> to retrieve a copy of the movie record (which also has version <code>N</code>).</li>
+<li>Alice&rsquo;s goroutine changes the runtime to 97 minutes in its copy of the movie record.</li>
+<li>Bob&rsquo;s goroutine updates the genres to include &lsquo;comedy&rsquo; in its copy of the movie record.</li>
+<li>Alice&rsquo;s goroutine calls <code>app.models.Movies.Update()</code> with its copy of the movie record. The movie record is written to the database and the version number is incremented to <code>N+1</code>.</li>
+<li>Bob&rsquo;s goroutine calls <code>app.models.Movies.Update()</code> with its copy of the movie record. The movie record is written to the database and the version number is incremented to <code>N+2</code>.</li>
+</ol>
+
+<p>Despite making two separate updates, only Bob&rsquo;s update will be reflected in the database at the end because the two goroutines were <em>racing</em> each other to make the change. Alice&rsquo;s update to the movie runtime will be lost when Bob&rsquo;s update overwrites it with the old runtime value retrieved during step 2 in the list above. And this happens silently &mdash; there&rsquo;s nothing to inform either Alice or Bob of the problem.</p>
+
+<aside class="hint"><p>
+<strong>Note:</strong> This specific type of race condition is known as a <em>data race</em>. Data races can occur when two or more goroutines try to use a piece of shared data (in this example the movie record) at the same time, but the result of their operations is dependent on the exact order that the scheduler executes their instructions.
+</p></aside>
+
+<h3 id="preventing-the-data-race">Preventing the data race</h3>
+
+<p>Now we understand that the data race exists and why it&rsquo;s happening, <em>how can we prevent it?</em></p>
+
+<p>There are a couple of options, but the simplest and cleanest approach in this case is to use a form of <a href="https://stackoverflow.com/questions/129329/optimistic-vs-pessimistic-locking/129397#129397">optimistic locking</a> based on the <code>version</code> number in our movie record.</p>
+
+<p>The fix works like this:</p>
+
+<ol>
+<li>Alice and Bob&rsquo;s goroutines both call <code>app.models.Movies.Get()</code> to retrieve a copy of the movie record. Both of these copies have the version number <code>N</code>.</li>
+<li>Alice and Bob&rsquo;s goroutines make their respective changes to the movie record.</li>
+<li>Alice and Bob&rsquo;s goroutines call <code>app.models.Movies.Update()</code> with their copies of the movie record. But the update is only executed <em>if the version number in the database is still <code>N</code></em>. If it has changed, then we don&rsquo;t execute the update and send the client an error message instead.</li>
+</ol>
+
+<p>This means that the first update request that reaches our database will succeed, and whoever is making the second update will receive an error message instead of having their change applied.</p>
+
+<p>To make this work, we&rsquo;ll need to change the SQL statement for updating a movie so that it looks like this:</p>
+
+<figure class="code plain">
+<pre>UPDATE movies 
+SET title = $1, year = $2, runtime = $3, genres = $4, version = version + 1
+WHERE id = $5 AND version = $6
+RETURNING version</pre>
+</figure>
+
+<p>Notice that in the <code>WHERE</code> clause we&rsquo;re now looking for a record with a specific ID <em>and a specific version number</em>?</p>
+
+<p>If no matching record can be found, this query will result in a <code>sql.ErrNoRows</code> error and we know that the version number has been changed (or the record has been deleted completely). Either way, it&rsquo;s a form of <em>edit conflict</em> and we can use this as a trigger to send the client an appropriate error response.</p>
+
+<h3 id="implementing-optimistic-locking">Implementing optimistic locking</h3>
+
+<p>OK, that&rsquo;s enough theory&hellip; let&rsquo;s put this into practice!</p>
+
+<p>We&rsquo;ll start by creating a custom <code>ErrEditConflict</code> error that we can return from our database models in the event of a conflict. We&rsquo;ll use this later in the book when working with user records too, so it makes sense to define it in the <code>internal/data/models.go</code> file like so:</p>
+
+<figure class="code go">
+<figcaption>File: internal/data/models.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">data</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;database/sql&#34;</span>
+    <span class="s">&#34;errors&#34;</span>
+<span class="p">)</span>
+
+<span class="kd">var</span> <span class="p">(</span>
+    <span class="nx">ErrRecordNotFound</span> <span class="p">=</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="s">&#34;record not found&#34;</span><span class="p">)</span>
+    <span class="nx">ErrEditConflict</span>   <span class="p">=</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="s">&#34;edit conflict&#34;</span><span class="p">)</span>
+<span class="p">)</span>
+
+<span class="o">...</span></pre>
+</figure>
+
+<p>Next, let&rsquo;s update our database model&rsquo;s <code>Update()</code> method to execute the new SQL query and manage the situation where a matching record couldn&rsquo;t be found.</p>
+
+<figure class="code go">
+<figcaption>File: internal/data/movies.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">data</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="nx">MovieModel</span><span class="p">)</span> <span class="nf">Update</span><span class="p">(</span><span class="nx">movie</span> <span class="o">*</span><span class="nx">Movie</span><span class="p">)</span> <span class="kt">error</span> <span class="p">{</span>
+    <span class="c1">// Add the &#39;AND version = $6&#39; clause to the SQL query.
+</span><span class="c1"></span>    <span class="nx">query</span> <span class="o">:=</span> <span class="s">`</span><span class="s">
+</span><span class="s">        UPDATE movies 
+</span><span class="s">        SET title = $1, year = $2, runtime = $3, genres = $4, version = version + 1
+</span><span class="s">        WHERE id = $5 AND version = $6
+</span><span class="s">        RETURNING version</span><span class="s">`</span>
+
+    <span class="nx">args</span> <span class="o">:=</span> <span class="p">[</span><span class="p">]</span><span class="nx">any</span><span class="p">{</span>
+        <span class="nx">movie</span><span class="p">.</span><span class="nx">Title</span><span class="p">,</span>
+        <span class="nx">movie</span><span class="p">.</span><span class="nx">Year</span><span class="p">,</span>
+        <span class="nx">movie</span><span class="p">.</span><span class="nx">Runtime</span><span class="p">,</span>
+        <span class="nx">pq</span><span class="p">.</span><span class="nf">Array</span><span class="p">(</span><span class="nx">movie</span><span class="p">.</span><span class="nx">Genres</span><span class="p">)</span><span class="p">,</span>
+        <span class="nx">movie</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span>
+        <span class="nx">movie</span><span class="p">.</span><span class="nx">Version</span><span class="p">,</span> <span class="c1">// Add the expected movie version.
+</span><span class="c1"></span>    <span class="p">}</span>
+
+    <span class="c1">// Execute the SQL query. If no matching row could be found, we know the movie 
+</span><span class="c1"></span>    <span class="c1">// version has changed (or the record has been deleted) and we return our custom
+</span><span class="c1"></span>    <span class="c1">// ErrEditConflict error.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">m</span><span class="p">.</span><span class="nx">DB</span><span class="p">.</span><span class="nf">QueryRow</span><span class="p">(</span><span class="nx">query</span><span class="p">,</span> <span class="nx">args</span><span class="o">...</span><span class="p">)</span><span class="p">.</span><span class="nf">Scan</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">movie</span><span class="p">.</span><span class="nx">Version</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">switch</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">sql</span><span class="p">.</span><span class="nx">ErrNoRows</span><span class="p">)</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nx">ErrEditConflict</span>
+        <span class="k">default</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nx">err</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="kc">nil</span>
+<span class="p">}</span>
+
+<span class="o">...</span></pre>
+</figure>
+
+<p>Next let&rsquo;s head to our <code>cmd/api/errors.go</code> file and create a new <code>editConflictResponse()</code> helper. We want this to send a <code>409 Conflict</code> response, along with a plain-English error message that explains the problem to the client.</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/errors.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">editConflictResponse</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">message</span> <span class="o">:=</span> <span class="s">&#34;unable to update the record due to an edit conflict, please try again&#34;</span>
+    <span class="nx">app</span><span class="p">.</span><span class="nf">errorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusConflict</span><span class="p">,</span> <span class="nx">message</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>And then as the final step, we need to change our <code>updateMovieHandler</code> so that it checks for an <code>ErrEditConflict</code> error and calls the <code>editConflictResponse()</code> helper if necessary. Like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/movies.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">updateMovieHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    
+    <span class="o">...</span>
+
+    <span class="c1">// Intercept any ErrEditConflict error and call the new editConflictResponse()
+</span><span class="c1"></span>    <span class="c1">// helper.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Movies</span><span class="p">.</span><span class="nf">Update</span><span class="p">(</span><span class="nx">movie</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">switch</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">data</span><span class="p">.</span><span class="nx">ErrEditConflict</span><span class="p">)</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">editConflictResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+        <span class="k">default</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="p">}</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">writeJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusOK</span><span class="p">,</span> <span class="nx">envelope</span><span class="p">{</span><span class="s">&#34;movie&#34;</span><span class="p">:</span> <span class="nx">movie</span><span class="p">}</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>At this point, our <code>updateMovieHandler</code> should now be safe from the race condition that we&rsquo;ve been talking about. If two goroutines are executing the code at the same time, the first update will succeed, and the second will fail because the <code>version</code> number in the database no longer matches the expected value.</p>
+
+<p>Let&rsquo;s try this out by using the <a href="https://man7.org/linux/man-pages/man1/xargs.1.html"><code>xargs</code></a> command to send a bunch of concurrent requests to our endpoint. Assuming that your computer executes the requests closely enough together, you should find that some requests succeed but the others now fail with a <code>409 Conflict</code> status code. Like so:</p>
+
+<figure class="code bash">
+<pre>$ xargs -I % -P8 curl -X PATCH -d &#39;{&#34;runtime&#34;: &#34;97 mins&#34;}&#39; &#34;localhost:4000/v1/movies/4&#34; &lt; &lt;(printf &#39;%s\n&#39; {1..8})
+<samp> {
+    &#34;movie&#34;: {
+        &#34;id&#34;: 4,
+        &#34;title&#34;: &#34;Breakfast Club&#34;,
+        &#34;year&#34;: 1985,
+        &#34;runtime&#34;: &#34;97 mins&#34;,
+        &#34;genres&#34;: [
+            &#34;drama&#34;
+        ],
+        &#34;version&#34;: 4
+    }
+}
+{
+    &#34;error&#34;: &#34;unable to update the record due to an edit conflict, please try again&#34;
+}
+{
+    &#34;error&#34;: &#34;unable to update the record due to an edit conflict, please try again&#34;
+}
+{
+    &#34;error&#34;: &#34;unable to update the record due to an edit conflict, please try again&#34;
+}
+{
+    &#34;error&#34;: &#34;unable to update the record due to an edit conflict, please try again&#34;
+}
+{
+    &#34;error&#34;: &#34;unable to update the record due to an edit conflict, please try again&#34;
+}
+{
+    &#34;error&#34;: &#34;unable to update the record due to an edit conflict, please try again&#34;
+}
+{
+    &#34;movie&#34;: {
+        &#34;id&#34;: 4,
+        &#34;title&#34;: &#34;Breakfast Club&#34;,
+        &#34;year&#34;: 1985,
+        &#34;runtime&#34;: &#34;97 mins&#34;,
+        &#34;genres&#34;: [
+            &#34;drama&#34;
+        ],
+        &#34;version&#34;: 5
+    }
+}</samp></pre>
+</figure>
+
+<p>Bringing this to a close, the race condition that we&rsquo;ve been demonstrating in this chapter is fairly innocuous. But in other applications this exact class of race condition can have much more serious consequences &mdash; such as when updating the stock level for a product in an online store, or updating the balance of an account.</p>
+
+<p>As I mentioned briefly in <em>Let&rsquo;s Go</em>, it&rsquo;s good to get into the habit of thinking about race conditions whenever you write code, and structure your applications to either manage them or avoid them completely &mdash; no matter how innocuous they might seem.</p>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="round-trip-locking">Round-trip locking</h4>
+
+<p>One of the nice things about the optimistic locking pattern that we&rsquo;ve used here is that you can extend it so the client passes the version number that <em>they expect</em> in an <code>If-Match</code> or <code>X-Expected-Version</code> header.</p>
+
+<p>In certain applications, this can be useful to help the client ensure they are not sending <em>their update request</em> based on outdated information.</p>
+
+<p>Very roughly, you could implement this by adding a check to your <code>updateMovieHandler</code> like so:</p>
+
+<figure class="code go">
+<pre><span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">updateMovieHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">id</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readIDParam</span><span class="p">(</span><span class="nx">r</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">notFoundResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="nx">movie</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Movies</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">id</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">switch</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">data</span><span class="p">.</span><span class="nx">ErrRecordNotFound</span><span class="p">)</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">notFoundResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+        <span class="k">default</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="p">}</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// If the request contains a X-Expected-Version header, verify that the movie 
+</span><span class="c1"></span>    <span class="c1">// version in the database matches the expected version specified in the header.
+</span><span class="c1"></span>    <span class="k">if</span> <span class="nx">r</span><span class="p">.</span><span class="nx">Header</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="s">&#34;X-Expected-Version&#34;</span><span class="p">)</span> <span class="o">!=</span> <span class="s">&#34;&#34;</span> <span class="p">{</span>
+        <span class="k">if</span> <span class="nx">strconv</span><span class="p">.</span><span class="nf">Itoa</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="nx">movie</span><span class="p">.</span><span class="nx">Version</span><span class="p">)</span><span class="p">)</span> <span class="o">!=</span> <span class="nx">r</span><span class="p">.</span><span class="nx">Header</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="s">&#34;X-Expected-Version&#34;</span><span class="p">)</span> <span class="p">{</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">editConflictResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+            <span class="k">return</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="o">...</span>
+<span class="p">}</span></pre>
+</figure>
+
+<h4 id="locking-on-other-fields-or-types">Locking on other fields or types</h4>
+
+<p>Using an incrementing integer <code>version</code> number as the basis for an optimistic lock is safe and computationally cheap. I&rsquo;d recommend using this approach unless you have a specific reason not to.</p>
+
+<p>As an alternative, you could use a <code>last_updated</code> timestamp as the basis for the lock. But this is less safe &mdash; there&rsquo;s the theoretical possibility that two clients could update a record at exactly the same time, and using a timestamp also introduces the risk of further problems if your server&rsquo;s clock is wrong or becomes wrong over time.</p>
+
+<p>If it&rsquo;s important to you that the version identifier isn&rsquo;t guessable, then a good option is to use a high-entropy random string such as a UUID in the <code>version</code> field. PostgreSQL has a <a href="https://www.postgresql.org/docs/current/datatype-uuid.html">UUID type</a> and the <a href="https://www.postgresqltutorial.com/postgresql-uuid/"><code>uuid-ossp</code></a> extension which you could use for this purpose like so:</p>
+
+<figure class="code plain">
+<pre>UPDATE movies 
+SET title = $1, year = $2, runtime = $3, genres = $4, version = uuid_generate_v4()
+WHERE id = $5 AND version = $6
+RETURNING version</pre>
+</figure>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="08.01-handling-partial-updates.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="08.03-managing-sql-query-timeouts.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "08.01-handling-partial-updates.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "08.03-managing-sql-query-timeouts.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

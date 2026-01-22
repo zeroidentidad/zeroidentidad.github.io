@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Preflight CORS requests &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="17.00-cross-origin-requests.html">Cross-origin requests</a> &rsaquo; Preflight CORS requests</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="17.03-simple-cors-requests.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="18.00-metrics.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 17.4.</div>
+			<h2 id="preflight-cors-requests">Preflight CORS requests</h2>
+
+<p>The cross-origin request that we made from JavaScript in the previous chapter is known as a <em>simple</em> cross-origin request. Broadly speaking, cross-origin requests are classified as &lsquo;simple&rsquo; when <em>all</em> the following conditions are met:</p>
+
+<ul>
+<li>The request HTTP method is one of the three CORS-safe methods: <code>HEAD</code>, <code>GET</code> or <code>POST</code>.</li>
+<li>The request headers are all either <a href="https://developer.mozilla.org/en-US/docs/Glossary/Forbidden_header_name">forbidden headers</a> or one of the four CORS-safe headers:
+
+<ul>
+<li><code>Accept</code></li>
+<li><code>Accept-Language</code></li>
+<li><code>Content-Language</code></li>
+<li><code>Content-Type</code></li>
+</ul></li>
+<li>The value for the <code>Content-Type</code> header (if set) is one of:
+
+<ul>
+<li><code>application/x-www-form-urlencoded</code></li>
+<li><code>multipart/form-data</code></li>
+<li><code>text/plain</code></li>
+</ul></li>
+</ul>
+
+<p>When a cross-origin request doesn&rsquo;t meet these conditions, the web browser will trigger an initial &lsquo;preflight&rsquo; request <em>before sending the real request</em>. The purpose of this preflight request is to determine whether the <em>real</em> cross-origin request will be permitted or not.</p>
+
+<h3 id="demonstrating-a-preflight-request">Demonstrating a preflight request</h3>
+
+<p>To help demonstrate how preflight requests work and what we need to do to deal with them, let&rsquo;s create another example webpage under the <code>cmd/examples/cors/</code> directory.</p>
+
+<p>We&rsquo;ll set up this webpage so it makes a request to our <code>POST /v1/tokens/authentication</code> endpoint. When calling this endpoint we&rsquo;ll include an email address and password in a JSON request body, along with a <code>Content-Type: application/json</code> header. And because the header <code>Content-Type: application/json</code> isn&rsquo;t allowed in a &lsquo;simple&rsquo; cross-origin request, this should trigger a preflight request to our API.</p>
+
+<p>Go ahead and create a new file at <code>cmd/examples/cors/preflight/main.go</code>:</p>
+
+<figure class="code bash">
+<pre>$ mkdir -p cmd/examples/cors/preflight
+$ touch cmd/examples/cors/preflight/main.go</pre>
+</figure>
+
+<p>And add the code below, which follows a very similar pattern to the one we used a couple of chapters ago.</p>
+
+<figure class="code go">
+<figcaption>File: cmd/examples/cors/preflight/main.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;flag&#34;</span>
+    <span class="s">&#34;log&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+<span class="p">)</span>
+
+<span class="c1">// Define a string constant containing the HTML for the webpage. This consists of a &lt;h1&gt;
+</span><span class="c1"></span><span class="c1">// header tag, and some JavaScript which calls our POST /v1/tokens/authentication
+</span><span class="c1"></span><span class="c1">// endpoint and writes the response body inside the &lt;div id=&#34;output&#34;&gt;&lt;/div&gt; tag.
+</span><span class="c1"></span><span class="kd">const</span> <span class="nx">html</span> <span class="p">=</span> <span class="s">`</span><span class="s">
+</span><span class="s">&lt;!DOCTYPE html&gt;
+</span><span class="s">&lt;html lang=&#34;en&#34;&gt;
+</span><span class="s">&lt;head&gt;
+</span><span class="s">    &lt;meta charset=&#34;UTF-8&#34;&gt;
+</span><span class="s">&lt;/head&gt;
+</span><span class="s">&lt;body&gt;
+</span><span class="s">    &lt;h1&gt;Preflight CORS&lt;/h1&gt;
+</span><span class="s">    &lt;div id=&#34;output&#34;&gt;&lt;/div&gt;
+</span><span class="s">    &lt;script&gt;
+</span><span class="s">        document.addEventListener(&#39;DOMContentLoaded&#39;, function() </span><span class="s">{</span><span class="s">
+</span><span class="s">            fetch(&#34;http://localhost:4000/v1/tokens/authentication&#34;, </span><span class="s">{</span><span class="s">
+</span><span class="s">                method: &#34;POST&#34;,
+</span><span class="s">                headers: </span><span class="s">{</span><span class="s">
+</span><span class="s">                    &#39;Content-Type&#39;: &#39;application/json&#39;
+</span><span class="s">                },
+</span><span class="s">                body: JSON.stringify(</span><span class="s">{</span><span class="s">
+</span><span class="s">                    email: &#39;alice@example.com&#39;,
+</span><span class="s">                    password: &#39;pa55word&#39;
+</span><span class="s">                })
+</span><span class="s">            }).then(
+</span><span class="s">                function (response) </span><span class="s">{</span><span class="s">
+</span><span class="s">                    response.text().then(function (text) </span><span class="s">{</span><span class="s">
+</span><span class="s">                        document.getElementById(&#34;output&#34;).innerHTML = text;
+</span><span class="s">                    });
+</span><span class="s">                }, 
+</span><span class="s">                function(err) </span><span class="s">{</span><span class="s">
+</span><span class="s">                    document.getElementById(&#34;output&#34;).innerHTML = err;
+</span><span class="s">                }
+</span><span class="s">            );
+</span><span class="s">        });
+</span><span class="s">    &lt;/script&gt;
+</span><span class="s">&lt;/body&gt;
+</span><span class="s">&lt;/html&gt;</span><span class="s">`</span>
+
+<span class="kd">func</span> <span class="nf">main</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">addr</span> <span class="o">:=</span> <span class="nx">flag</span><span class="p">.</span><span class="nf">String</span><span class="p">(</span><span class="s">&#34;addr&#34;</span><span class="p">,</span> <span class="s">&#34;:9000&#34;</span><span class="p">,</span> <span class="s">&#34;Server address&#34;</span><span class="p">)</span>
+    <span class="nx">flag</span><span class="p">.</span><span class="nf">Parse</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">log</span><span class="p">.</span><span class="nf">Printf</span><span class="p">(</span><span class="s">&#34;starting server on %s&#34;</span><span class="p">,</span> <span class="o">*</span><span class="nx">addr</span><span class="p">)</span>
+
+    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">ListenAndServe</span><span class="p">(</span><span class="o">*</span><span class="nx">addr</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">w</span><span class="p">.</span><span class="nf">Write</span><span class="p">(</span><span class="p">[</span><span class="p">]</span><span class="nb">byte</span><span class="p">(</span><span class="nx">html</span><span class="p">)</span><span class="p">)</span>
+    <span class="p">}</span><span class="p">)</span><span class="p">)</span>
+    <span class="nx">log</span><span class="p">.</span><span class="nf">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>If you&rsquo;re following along, go ahead and run this application:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/examples/cors/preflight
+<samp>2021/04/17 18:47:55 starting server on :9000</samp></pre>
+</figure>
+
+<p>Then open a second terminal window and start our regular API application at the same time with <code>http://localhost:9000</code> as a trusted origin:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api -cors-trusted-origins=&#34;http://localhost:9000&#34;
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development</samp></pre>
+</figure>
+
+<p>Once both are running, open your web browser and navigate to <a href="http://localhost:9000"><code>http://localhost:9000</code></a>. If you look at the console log in your developer tools, you should see a message similar to this:</p>
+
+<blockquote>
+<p>Cross-Origin Request Blocked: The Same Origin Policy disallows reading the remote resource at http://localhost:4000/v1/tokens/authentication. (Reason: header ‘content-type’ is not allowed according to header ‘Access-Control-Allow-Headers’ from CORS preflight response).</p>
+</blockquote>
+
+<figure class="img">
+<img src="assets/img/17.04-01.png" alt="17.04-01.png" />
+</figure>
+
+<p>We can see that there are two requests here marked as &lsquo;blocked&rsquo; by the browser:</p>
+
+<ul>
+<li>An <code>OPTIONS /v1/tokens/authentication</code> request (this is the preflight request).</li>
+<li>A <code>POST /v1/tokens/authentication</code> request (this is the &lsquo;real&rsquo; request).</li>
+</ul>
+
+<p>Let&rsquo;s take a closer look at the preflight request in the network tab of the developer tools:</p>
+
+<figure class="img">
+<img src="assets/img/17.04-02.png" alt="17.04-02.png" />
+</figure>
+
+<p>The interesting thing here is the preflight request headers. They might look slightly different for you depending on the browser you&rsquo;re using, but broadly they should look something like this:</p>
+
+<figure class="code plain">
+<pre>Accept: */* 
+Accept-Encoding: gzip, deflate
+Accept-Language: en-US,en;q=0.5
+Access-Control-Request-Headers: content-type
+Access-Control-Request-Method: POST
+Cache-Control: no-cache
+Connection: keep-alive
+Host: localhost:4000
+Origin: http://localhost:9000
+Pragma: no-cache
+Referer: http://localhost:9000/
+User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:86.0) Gecko/20100101 Firefox/86.0</pre>
+</figure>
+
+<p>There are three headers here which are relevant to CORS:</p>
+
+<ul>
+<li><code>Origin</code> &mdash; As we saw previously, this lets our API know what origin the preflight request is coming from.</li>
+<li><code>Access-Control-Request-Method</code> &mdash; This lets our API know what HTTP method will be used for the real request (in this case, we can see that the real request will be a <code>POST</code>).</li>
+<li><code>Access-Control-Request-Headers</code> &mdash; This lets our API know what HTTP headers will be sent with the real request (in this case we can see that the real request will include a <code>content-type</code> header).</li>
+</ul>
+
+<p>It&rsquo;s important to note that <code>Access-Control-Request-Headers</code> won&rsquo;t list <em>all</em> the headers that the real request will use. Only headers that are <em>not</em> <a href="https://developer.mozilla.org/en-US/docs/Glossary/CORS-safelisted_request_header">CORS-safe</a> or <a href="https://developer.mozilla.org/en-US/docs/Glossary/Forbidden_header_name">forbidden</a> will be listed. If there are no such headers, then <code>Access-Control-Request-Headers</code> may be omitted from the preflight request entirely.</p>
+
+<h3 id="responding-to-preflight-requests">Responding to preflight requests</h3>
+
+<p>In order to respond to a preflight request, the first thing we need to do is identify that it <em>is</em> a preflight request &mdash; rather than just a regular (possibly even cross-origin) <code>OPTIONS</code> request.</p>
+
+<p>To do that, we can leverage the fact that preflight requests always have three components: the HTTP method <code>OPTIONS</code>, an <code>Origin</code> header, and an <code>Access-Control-Request-Method</code> header. If any one of these pieces is missing, we know that it is not a preflight request.</p>
+
+<p>Once we identify that it is a preflight request, we need to send a <code>200 OK</code> response with some special headers to let the browser know whether or not it&rsquo;s OK for the real request to proceed. These are:</p>
+
+<ul>
+<li>An <code>Access-Control-Allow-Origin</code> response header, which reflects the value of the preflight request&rsquo;s <code>Origin</code> header (just like in the previous chapter).</li>
+<li>An <code>Access-Control-Allow-Methods</code> header listing the HTTP methods that can be used in real cross-origin requests to the URL.</li>
+<li>An <code>Access-Control-Allow-Headers</code> header listing the request headers that can be included in real cross-origin requests to the URL.</li>
+</ul>
+
+<p>In our case, we could set the following response headers to allow cross-origin requests for <em>all of our endpoints</em>:</p>
+
+<figure class="code plain">
+<pre>Access-Control-Allow-Origin: &lt;reflected trusted origin&gt;
+Access-Control-Allow-Methods: OPTIONS, PUT, PATCH, DELETE 
+Access-Control-Allow-Headers: Authorization, Content-Type</pre>
+</figure>
+
+<aside class="important"><p>
+<strong>Important:</strong> When responding to a preflight request it&rsquo;s not necessary to include the CORS-safe methods <code>HEAD</code>, <code>GET</code> or <code>POST</code> in the <code>Access-Control-Allow-Methods</code> header. Likewise, it&rsquo;s not necessary to include forbidden or CORS-safe headers in <code>Access-Control-Allow-Headers</code>.
+</p></aside>
+
+<p>When the web browser receives these headers, it compares the values to the method and (case-insensitive) headers that it wants to use in the real request. If the method or any of the headers are not allowed, then the browser will block the real request.</p>
+
+<h3 id="updating-our-middleware">Updating our middleware</h3>
+
+<p>Let&rsquo;s put this into action and update our <code>enableCORS()</code> middleware so it intercepts and responds to any preflight requests. Specifically, we want to:</p>
+
+<ol>
+<li>Set a <code>Vary: Access-Control-Request-Method</code> header on all responses, as the response will be different depending on whether or not this header exists in the request.</li>
+<li>Check whether the request is a preflight cross-origin request or not. If it&rsquo;s not, then we should allow the request to proceed as normal.</li>
+<li>Otherwise, if it is a preflight cross-origin request, then we should add the <code>Access-Control-Allow-Methods</code> and <code>Access-Control-Allow-Headers</code> headers as described above and send a <code>200 OK</code> response.</li>
+</ol>
+
+<p>Go ahead and update the <code>cmd/api/middleware.go</code> file like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/middleware.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">enableCORS</span><span class="p">(</span><span class="nx">next</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">w</span><span class="p">.</span><span class="nf">Header</span><span class="p">(</span><span class="p">)</span><span class="p">.</span><span class="nf">Add</span><span class="p">(</span><span class="s">&#34;Vary&#34;</span><span class="p">,</span> <span class="s">&#34;Origin&#34;</span><span class="p">)</span>
+
+        <span class="c1">// Add the &#34;Vary: Access-Control-Request-Method&#34; header.
+</span><span class="c1"></span>        <span class="nx">w</span><span class="p">.</span><span class="nf">Header</span><span class="p">(</span><span class="p">)</span><span class="p">.</span><span class="nf">Add</span><span class="p">(</span><span class="s">&#34;Vary&#34;</span><span class="p">,</span> <span class="s">&#34;Access-Control-Request-Method&#34;</span><span class="p">)</span>
+
+        <span class="nx">origin</span> <span class="o">:=</span> <span class="nx">r</span><span class="p">.</span><span class="nx">Header</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="s">&#34;Origin&#34;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nx">origin</span> <span class="o">!=</span> <span class="s">&#34;&#34;</span> <span class="p">{</span>
+            <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="k">range</span> <span class="nx">app</span><span class="p">.</span><span class="nx">config</span><span class="p">.</span><span class="nx">cors</span><span class="p">.</span><span class="nx">trustedOrigins</span> <span class="p">{</span>
+                <span class="k">if</span> <span class="nx">origin</span> <span class="o">==</span> <span class="nx">app</span><span class="p">.</span><span class="nx">config</span><span class="p">.</span><span class="nx">cors</span><span class="p">.</span><span class="nx">trustedOrigins</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span> <span class="p">{</span>
+                    <span class="nx">w</span><span class="p">.</span><span class="nf">Header</span><span class="p">(</span><span class="p">)</span><span class="p">.</span><span class="nf">Set</span><span class="p">(</span><span class="s">&#34;Access-Control-Allow-Origin&#34;</span><span class="p">,</span> <span class="nx">origin</span><span class="p">)</span>
+
+                    <span class="c1">// Check if the request has the HTTP method OPTIONS and contains the
+</span><span class="c1"></span>                    <span class="c1">// &#34;Access-Control-Request-Method&#34; header. If it does, then we treat
+</span><span class="c1"></span>                    <span class="c1">// it as a preflight request.
+</span><span class="c1"></span>                    <span class="k">if</span> <span class="nx">r</span><span class="p">.</span><span class="nx">Method</span> <span class="o">==</span> <span class="nx">http</span><span class="p">.</span><span class="nx">MethodOptions</span> <span class="o">&amp;&amp;</span> <span class="nx">r</span><span class="p">.</span><span class="nx">Header</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="s">&#34;Access-Control-Request-Method&#34;</span><span class="p">)</span> <span class="o">!=</span> <span class="s">&#34;&#34;</span> <span class="p">{</span>
+                        <span class="c1">// Set the necessary preflight response headers, as discussed
+</span><span class="c1"></span>                        <span class="c1">// previously.
+</span><span class="c1"></span>                        <span class="nx">w</span><span class="p">.</span><span class="nf">Header</span><span class="p">(</span><span class="p">)</span><span class="p">.</span><span class="nf">Set</span><span class="p">(</span><span class="s">&#34;Access-Control-Allow-Methods&#34;</span><span class="p">,</span> <span class="s">&#34;OPTIONS, PUT, PATCH, DELETE&#34;</span><span class="p">)</span>
+                        <span class="nx">w</span><span class="p">.</span><span class="nf">Header</span><span class="p">(</span><span class="p">)</span><span class="p">.</span><span class="nf">Set</span><span class="p">(</span><span class="s">&#34;Access-Control-Allow-Headers&#34;</span><span class="p">,</span> <span class="s">&#34;Authorization, Content-Type&#34;</span><span class="p">)</span>
+
+                        <span class="c1">// Write the headers along with a 200 OK status and return from
+</span><span class="c1"></span>                        <span class="c1">// the middleware with no further action.
+</span><span class="c1"></span>                        <span class="nx">w</span><span class="p">.</span><span class="nf">WriteHeader</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">StatusOK</span><span class="p">)</span>
+                        <span class="k">return</span>
+                    <span class="p">}</span>
+
+                    <span class="k">break</span>
+                <span class="p">}</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+
+        <span class="nx">next</span><span class="p">.</span><span class="nf">ServeHTTP</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+    <span class="p">}</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>There are a couple of additional things to point out here:</p>
+
+<ul>
+<li><p>When we respond to a preflight request we deliberately send the HTTP status <code>200 OK</code> rather than <code>204 No Content</code> &mdash; even though there is no response body. This is because certain browser versions <a href="https://stackoverflow.com/a/58794243">may not support</a> <code>204 No Content</code> responses and subsequently block the real request.</p></li>
+
+<li><p>If you allow the <code>Authorization</code> header in cross-origin requests, like we are in the code above, it&rsquo;s important to not set the wildcard <code>Access-Control-Allow-Origin: *</code> header or reflect the <code>Origin</code> header without checking against a list of trusted origins. Otherwise, this would leave your service vulnerable to a distributed brute-force attack against any authentication credentials that are passed in that header.</p></li>
+</ul>
+
+<p>OK, let&rsquo;s try this out. Restart your API, again setting <code>http://localhost:9000</code> as a trusted origin like so:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api -cors-trusted-origins=&#34;http://localhost:9000&#34;
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development</samp></pre>
+</figure>
+
+<p>Then open <a href="http://localhost:9000">http://localhost:9000</a> in your browser again. This time you should see that the cross-origin <code>fetch()</code> to <code>POST /v1/tokens/authentication</code> succeeds, and you now get an authentication token in the response. Similar to this:</p>
+
+<figure class="img">
+<img src="assets/img/17.04-03.png" alt="17.04-03.png" />
+</figure>
+
+<aside class="hint"><p>
+<strong>Note:</strong> If you look at the details for the preflight request, you should see that our new CORS headers have been set on the preflight response, shown by the red arrow in the screenshot above.
+</p></aside>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="caching-preflight-responses">Caching preflight responses</h4>
+
+<p>If you want, you can also add an <code>Access-Control-Max-Age</code> header to your preflight responses. This indicates the number of seconds that the information provided by the <code>Access-Control-Allow-Methods</code> and <code>Access-Control-Allow-Headers</code> headers can be cached by the browser.</p>
+
+<p>For example, to allow the values to be cached for 60 seconds you can set the following header on your preflight response:</p>
+
+<figure class="code plain">
+<pre>Access-Control-Max-Age: 60</pre>
+</figure>
+
+<p>If you don&rsquo;t set an <code>Access-Control-Max-Age</code> header, current versions of Chrome/Chromium and Firefox will default to caching these preflight response values for 5 seconds. Older versions or other browsers may have different defaults, or not cache the values at all.</p>
+
+<p>Setting a long <code>Access-Control-Max-Age</code> duration might seem like an appealing way to reduce requests to your API &mdash; and it is! But you also need to be careful. Not all browsers provide a way to clear the preflight cache, so if you send back the wrong headers the user will be stuck with them until the cache expires.</p>
+
+<p>If you want to disable caching altogether, you can set the value to <code>-1</code>:</p>
+
+<figure class="code plain">
+<pre>Access-Control-Max-Age: -1</pre>
+</figure>
+
+<p>It&rsquo;s also important to be aware that browsers may impose a hard maximum on how long the headers can be cached for. The <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Max-Age#directives">MDN documentation</a> says:</p>
+
+<blockquote>
+<ul>
+<li>Firefox caps this at 24 hours (86400 seconds).</li>
+<li>Chromium (prior to v76) caps at 10 minutes (600 seconds).</li>
+<li>Chromium (starting in v76) caps at 2 hours (7200 seconds).</li>
+</ul>
+</blockquote>
+
+<h4 id="preflight-wildcards">Preflight wildcards</h4>
+
+<p>If you have a complex or rapidly changing API then it might be awkward to maintain a hard-coded safelist of methods and headers for the preflight response. You might think: <em>I just want to allow all HTTP methods and headers for cross-origin requests</em>.</p>
+
+<p>In this case, both the <code>Access-Control-Allow-Methods</code> and <code>Access-Control-Allow-Headers</code> headers allow you to use a wildcard <code>*</code> character like so:</p>
+
+<figure class="code plain">
+<pre>Access-Control-Allow-Methods: *
+Access-Control-Allow-Headers: *</pre>
+</figure>
+
+<p>But using these comes with some important caveats:</p>
+
+<ul>
+<li><p>Wildcards in these headers are currently only supported by <a href="https://caniuse.com/mdn-http_headers_access-control-allow-methods_wildcard">95% of browsers</a>. Any browsers which don&rsquo;t support them will block the preflight request.</p></li>
+
+<li><p>The <code>Authorization</code> header cannot be wildcarded. Instead, you will need to include this explicitly in the header like <code>Access-Control-Allow-Headers: Authorization, *</code>.</p></li>
+
+<li><p>Wildcards are not supported for credentialed requests (those with cookies or HTTP basic authentication). For these, the character <code>*</code> will be treated as the literal string <code>&quot;*&quot;</code>, rather than as a wildcard.</p></li>
+</ul>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="17.03-simple-cors-requests.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="18.00-metrics.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "17.03-simple-cors-requests.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "18.00-metrics.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

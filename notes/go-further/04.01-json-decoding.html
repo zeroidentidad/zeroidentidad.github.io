@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>JSON decoding &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="04.00-parsing-json-requests.html">Parsing JSON requests</a> &rsaquo; JSON decoding</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="04.00-parsing-json-requests.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="04.02-managing-bad-requests.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 4.1.</div>
+			<h2 id="json-decoding">JSON decoding</h2>
+
+<p>Just like JSON encoding, there are two approaches that you can take to <em>decode</em> JSON into a native Go value: using a <a href="https://golang.org/pkg/encoding/json/#Decoder"><code>json.Decoder</code></a> type or using the <a href="https://golang.org/pkg/encoding/json/#Unmarshal"><code>json.Unmarshal()</code></a> function.</p>
+
+<p>Both approaches have their pros and cons, but for the purpose of decoding JSON from an HTTP request body, using <code>json.Decoder</code> is generally the best choice. It&rsquo;s more efficient than <code>json.Unmarshal()</code>, requires less code, and offers some helpful settings that you can use to tweak its behavior.</p>
+
+<p>It&rsquo;s easiest to demonstrate how <code>json.Decoder</code> works with code, rather than words, so let&rsquo;s jump straight in and update our <code>createMovieHandler</code> like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/movies.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;encoding/json&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;fmt&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+    <span class="s">&#34;time&#34;</span>
+
+    <span class="s">&#34;greenlight.alexedwards.net/internal/data&#34;</span>
+<span class="p">)</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">createMovieHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Declare an anonymous struct to hold the information that we expect to be in the 
+</span><span class="c1"></span>    <span class="c1">// HTTP request body (note that the field names and types in the struct are a subset
+</span><span class="c1"></span>    <span class="c1">// of the Movie struct that we created earlier). This struct will be our *target 
+</span><span class="c1"></span>    <span class="c1">// decode destination*.
+</span><span class="c1"></span>    <span class="kd">var</span> <span class="nx">input</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">Title</span>   <span class="kt">string</span>   <span class="s">`</span><span class="s">json:&#34;title&#34;</span><span class="s">`</span>
+        <span class="nx">Year</span>    <span class="kt">int32</span>    <span class="s">`</span><span class="s">json:&#34;year&#34;</span><span class="s">`</span>
+        <span class="nx">Runtime</span> <span class="kt">int32</span>    <span class="s">`</span><span class="s">json:&#34;runtime&#34;</span><span class="s">`</span>
+        <span class="nx">Genres</span>  <span class="p">[</span><span class="p">]</span><span class="kt">string</span> <span class="s">`</span><span class="s">json:&#34;genres&#34;</span><span class="s">`</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Initialize a new json.Decoder instance which reads from the request body, and 
+</span><span class="c1"></span>    <span class="c1">// then use the Decode() method to decode the body contents into the input struct. 
+</span><span class="c1"></span>    <span class="c1">// Importantly, notice that when we call Decode() we pass a *pointer* to the input 
+</span><span class="c1"></span>    <span class="c1">// struct as the target decode destination. If there was an error during decoding,
+</span><span class="c1"></span>    <span class="c1">// we use our generic errorResponse() helper to send a 400 Bad Request response
+</span><span class="c1"></span>    <span class="c1">// with the error message to the client.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="o">:=</span> <span class="nx">json</span><span class="p">.</span><span class="nf">NewDecoder</span><span class="p">(</span><span class="nx">r</span><span class="p">.</span><span class="nx">Body</span><span class="p">)</span><span class="p">.</span><span class="nf">Decode</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">input</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">errorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusBadRequest</span><span class="p">,</span> <span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Dump the contents of the input struct in an HTTP response.
+</span><span class="c1"></span>    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Fprintf</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="s">&#34;%+v\n&#34;</span><span class="p">,</span> <span class="nx">input</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="o">...</span></pre>
+</figure>
+
+<p>There are a few important and interesting things about this code to point out:</p>
+
+<ul>
+<li><p>When calling <code>Decode()</code> you must pass a <em>non-nil pointer</em> as the target decode destination. If you don&rsquo;t use a pointer, it will return a <a href="https://golang.org/pkg/encoding/json/#InvalidUnmarshalError"><code>json.InvalidUnmarshalError</code></a> error at runtime.</p></li>
+
+<li><p>If the target decode destination is a struct &mdash; like in our case &mdash; the struct fields must be exported (start with a capital letter). Just like with encoding, they need to be exported so that they&rsquo;re visible to the <code>encoding/json</code> package.</p></li>
+
+<li><p>When decoding a JSON object into a struct, the key-value pairs in the JSON are mapped to the struct fields based on the struct tag names. If there is no matching struct tag, Go will attempt to decode the value into a field that matches the key name (exact matches are preferred, but it will fall back to a case-insensitive match). <em>Any JSON key-value pairs which cannot be successfully mapped to the struct fields will be silently ignored</em>.</p></li>
+
+<li><p>There is no need to close <code>r.Body</code> after it has been read. This will be done automatically by Go&rsquo;s <code>http.Server</code>, so you don&rsquo;t have to.</p></li>
+</ul>
+
+<p>OK, let&rsquo;s take this for a spin.</p>
+
+<p>Fire up the application, then open a second terminal window and make a request to the <code>POST /v1/movies</code> endpoint with a valid JSON request body containing some movie data. You should see a response similar to this:</p>
+
+<figure class="code bash">
+<pre><samp># Create a BODY variable containing the JSON data that we want to send.</samp>
+$ BODY=&#39;{&#34;title&#34;:&#34;Moana&#34;,&#34;year&#34;:2016,&#34;runtime&#34;:107, &#34;genres&#34;:[&#34;animation&#34;,&#34;adventure&#34;]}&#39;
+
+<samp># Use the -d flag to send the contents of the BODY variable as the HTTP request body.
+# Note that curl will default to sending a POST request when the -d flag is used.</samp>
+$ curl -i -d &#34;$BODY&#34; localhost:4000/v1/movies
+<samp>HTTP/1.1 200 OK
+Date: Tue, 06 Apr 2021 17:13:46 GMT
+Content-Length: 65
+Content-Type: text/plain; charset=utf-8
+
+{Title:Moana Year:2016 Runtime:107 Genres:[animation adventure]}</samp></pre>
+</figure>
+
+<p>Great! That seems to have worked well. We can see from the data dumped in the response that the values we provided in the request body have been decoded into the appropriate fields of our <code>input</code> struct.</p>
+
+<h3 id="zero-values">Zero values</h3>
+
+<p>Let&rsquo;s take a quick look at what happens if we omit a particular key-value pair in our JSON request body. For example, let&rsquo;s make a request with no <code>year</code> in the JSON, like so:</p>
+
+<figure class="code bash">
+<pre>$ BODY=&#39;{&#34;title&#34;:&#34;Moana&#34;,&#34;runtime&#34;:107, &#34;genres&#34;:[&#34;animation&#34;,&#34;adventure&#34;]}&#39;
+$ curl -d &#34;$BODY&#34; localhost:4000/v1/movies
+<samp>{Title:Moana Year:0 Runtime:107 Genres:[animation adventure]}</samp></pre>
+</figure>
+
+<p>As you might have guessed, when we do this the <code>Year</code> field in our <code>input</code> struct is left with its zero value (which happens to be <code>0</code> because the <code>Year</code> field is an <code>int32</code> type).</p>
+
+<p>This leads to an interesting question: how can you tell the difference between a client <em>not providing a key-value pair</em>, and <em>providing a key-value pair but deliberately setting it to its zero value</em>? Like this:</p>
+
+<figure class="code bash">
+<pre>$ BODY=&#39;{&#34;title&#34;:&#34;Moana&#34;,&#34;year&#34;:0,&#34;runtime&#34;:107, &#34;genres&#34;:[&#34;animation&#34;,&#34;adventure&#34;]}&#39;
+$ curl -d &#34;$BODY&#34; localhost:4000/v1/movies
+<samp>{Title:Moana Year:0 Runtime:107 Genres:[animation adventure]}</samp></pre>
+</figure>
+
+<p>The end result is the same, despite the different HTTP requests, and it&rsquo;s not immediately obvious how to tell the difference between the two scenarios. We&rsquo;ll circle back to this topic later in the book, but for now, it&rsquo;s worth just being aware of this behavior.</p>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="supported-destination-types">Supported destination types</h4>
+
+<p>It&rsquo;s important to mention that certain JSON types can only be successfully decoded to certain Go types. For example, if you have the JSON string <code>&quot;foo&quot;</code> it can be decoded into a Go <code>string</code>, but trying to decode it into a Go <code>int</code> or <code>bool</code> will result in an error at runtime (as we&rsquo;ll demonstrate in the next chapter).</p>
+
+<p>The following table shows the supported target decode destinations for the different JSON types:</p>
+
+<table>
+<thead>
+<tr>
+<th>JSON type</th>
+<th>⇒</th>
+<th>Supported Go types</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td>JSON boolean</td>
+<td>⇒</td>
+<td><code>bool</code></td>
+</tr>
+
+<tr>
+<td>JSON string</td>
+<td>⇒</td>
+<td><code>string</code></td>
+</tr>
+
+<tr>
+<td>JSON number</td>
+<td>⇒</td>
+<td><code>int*</code>, <code>uint*</code>, <code>float*</code>, <code>rune</code></td>
+</tr>
+
+<tr>
+<td>JSON array</td>
+<td>⇒</td>
+<td><code>array</code>, <code>slice</code></td>
+</tr>
+
+<tr>
+<td>JSON object</td>
+<td>⇒</td>
+<td><code>struct</code>, <code>map</code></td>
+</tr>
+</tbody>
+</table>
+
+<h4 id="using-the-json-unmarshal-function">Using the json.Unmarshal function</h4>
+
+<p>As we mentioned at the start of this chapter, it&rsquo;s also possible to use the <a href="https://golang.org/pkg/encoding/json/#Unmarshal"><code>json.Unmarshal()</code></a> function to decode an HTTP request body.</p>
+
+<p>For example, you could use it in a handler like this:</p>
+
+<figure class="code go">
+<pre><span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">exampleHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">input</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">Foo</span> <span class="kt">string</span> <span class="s">`</span><span class="s">json:&#34;foo&#34;</span><span class="s">`</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Use io.ReadAll() to read the entire request body into a []byte slice.
+</span><span class="c1"></span>    <span class="nx">body</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">io</span><span class="p">.</span><span class="nf">ReadAll</span><span class="p">(</span><span class="nx">r</span><span class="p">.</span><span class="nx">Body</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+    
+    <span class="c1">// Use the json.Unmarshal() function to decode the JSON in the []byte slice to the
+</span><span class="c1"></span>    <span class="c1">// input struct. Again, notice that we are using a *pointer* to the input
+</span><span class="c1"></span>    <span class="c1">// struct as the decode destination.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="nx">json</span><span class="p">.</span><span class="nf">Unmarshal</span><span class="p">(</span><span class="nx">body</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">input</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">errorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusBadRequest</span><span class="p">,</span> <span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="nx">fmt</span><span class="p">.</span><span class="nf">Fprintf</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="s">&#34;%+v\n&#34;</span><span class="p">,</span> <span class="nx">input</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="o">...</span></pre>
+</figure>
+
+<p>Using this approach is fine &mdash; the code works, and it&rsquo;s clear and simple. But it doesn&rsquo;t offer any benefits over and above the <code>json.Decoder</code> approach that we&rsquo;re already taking.</p>
+
+<p>Not only is the code marginally more verbose, but it&rsquo;s also less efficient. If we <a href="https://gist.github.com/alexedwards/d3d44ef77efb91a6e16048f60e72c57d">benchmark the relative performance</a> for this particular use case, we can see that using <code>json.Unmarshal()</code> requires about 80% more memory (B/op) than <code>json.Decoder</code>, as well as being a tiny bit slower (ns/op).</p>
+
+<figure class="code bash">
+<pre>$ go test -run=^$ -bench=. -benchmem -count=3 -benchtime=5s
+<samp>goos: linux
+goarch: amd64
+BenchmarkUnmarshal-8      528088      9543 ns/op     2992 B/op     20 allocs/op
+BenchmarkUnmarshal-8      554365     10469 ns/op     2992 B/op     20 allocs/op
+BenchmarkUnmarshal-8      537139     10531 ns/op     2992 B/op     20 allocs/op
+BenchmarkDecoder-8        811063      8644 ns/op     1664 B/op     21 allocs/op
+BenchmarkDecoder-8        672088      8529 ns/op     1664 B/op     21 allocs/op
+BenchmarkDecoder-8       1000000      7573 ns/op     1664 B/op     21 allocs/op</samp></pre>
+</figure>
+
+<h4 id="additional-json-decoding-nuances">Additional JSON decoding nuances</h4>
+
+<p>There are a few JSON decoding nuances that are important or interesting to know about, but which don&rsquo;t fit nicely into the main content of this book. I&rsquo;ve included <a href="21.05-json-decoding-nuances.html">this appendix</a> which explains and demonstrates them in detail.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="04.00-parsing-json-requests.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="04.02-managing-bad-requests.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "04.00-parsing-json-requests.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "04.02-managing-bad-requests.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

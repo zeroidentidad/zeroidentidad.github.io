@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Server configuration and installing software &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="20.00-deployment-and-hosting.html">Deployment and hosting</a> &rsaquo; Server configuration and installing software</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="20.01-creating-a-digital-ocean-droplet.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="20.03-deployment-and-executing-migrations.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 20.2.</div>
+			<h2 id="server-configuration-and-installing-software">Server configuration and installing software</h2>
+
+<p>Now that our Ubuntu Linux droplet has been successfully commissioned, we need to do some housekeeping to secure the server and get it ready to use. Rather than do this manually, in this chapter we&rsquo;re going to create a reusable script to automate these setup tasks.</p>
+
+<aside class="hint"><p>
+<strong>Note:</strong> In this chapter we&rsquo;ll use a regular bash script to perform the setup tasks, but if you&rsquo;re happy using a configuration management tool such as <a href="https://www.ansible.com/">Ansible</a>, then please feel free to implement the same setup process using that instead.
+</p></aside>
+
+<p>At a high level, we want our setup script to do the following things:</p>
+
+<ul>
+<li><p>Update all packages on the server, including applying security updates.</p></li>
+
+<li><p>Set the server timezone (in my case I&rsquo;ll set it to <code>Europe/Berlin</code>) and install support for all <a href="https://help.ubuntu.com/community/Locale">locales</a>.</p></li>
+
+<li><p>Create a <code>greenlight</code> user on the server, which we can use for day-to-day maintenance and for running our API application (rather than using the all-powerful <code>root</code> user account). We should also add the <code>greenlight</code> user to the <code>sudo</code> group, so that it can perform actions as <code>root</code> if necessary.</p></li>
+
+<li><p>Copy the <code>root</code> user’s <code>$HOME/.ssh</code> directory into the <code>greenlight</code> user&rsquo;s home directory. This will enable us to authenticate as the <code>greenlight</code> user using the same SSH key pair that we used to authenticate as the <code>root</code> user. We should also force the <code>greenlight</code> user to set a new password the first time they log in.</p></li>
+
+<li><p>Configure firewall settings to only permit traffic on ports <code>22</code> (SSH), <code>80</code> (HTTP) and <code>443</code> (HTTPS). We&rsquo;ll also install <a href="https://www.fail2ban.org/wiki/index.php/Main_Page">fail2ban</a> to automatically temporarily ban an IP address if it makes too many failed SSH login attempts.</p></li>
+
+<li><p>Install PostgreSQL. We&rsquo;ll also create the <code>greenlight</code> database and user, and create a system-wide <code>GREENLIGHT_DB_DSN</code> environment variable for connecting to the database.</p></li>
+
+<li><p>Install the <code>migrate</code> tool, using the <a href="https://github.com/golang-migrate/migrate/releases">pre-built binaries</a> from GitHub, in exactly the same way that we did earlier in the book.</p></li>
+
+<li><p>Install Caddy by following the <a href="https://caddyserver.com/docs/install#debian-ubuntu-raspbian">official installation instructions</a> for Ubuntu.</p></li>
+
+<li><p>Reboot the droplet.</p></li>
+</ul>
+
+<p>If you&rsquo;re following along, create a new <code>remote/setup</code> folder in your project directory and add a script file called <code>01.sh</code>, like so:</p>
+
+<figure class="code bash">
+<pre>$ mkdir -p remote/setup
+$ touch remote/setup/01.sh</pre>
+</figure>
+
+<p>Then add the following code:</p>
+
+<figure class="code shell">
+<figcaption>File: remote/setup/01.sh</figcaption>
+<pre><span class="cp">#!/bin/bash
+</span><span class="cp"></span><span class="nb">set</span> -eu
+
+<span class="c1"># ==================================================================================== #</span>
+<span class="c1"># VARIABLES</span>
+<span class="c1"># ==================================================================================== #</span>
+
+<span class="c1"># Set the timezone for the server. A full list of available timezones can be found by</span> 
+<span class="c1"># running timedatectl list-timezones.</span>
+<span class="nv">TIMEZONE</span><span class="o">=</span>Europe/Berlin
+
+<span class="c1"># Set the name of the new user to create.</span>
+<span class="nv">USERNAME</span><span class="o">=</span>greenlight
+
+<span class="c1"># Prompt to enter a password for the PostgreSQL greenlight user (rather than hard-coding</span>
+<span class="c1"># a password in this script).</span>
+<span class="nb">read</span> -p <span class="s2">&#34;Enter password for greenlight DB user: &#34;</span> DB_PASSWORD
+
+<span class="c1"># Force all output to be presented in en_US for the duration of this script. This avoids</span>  
+<span class="c1"># any &#34;setting locale failed&#34; errors while this script is running, before we have</span> 
+<span class="c1"># installed support for all locales. Do not change this setting!</span>
+<span class="nb">export</span> <span class="nv">LC_ALL</span><span class="o">=</span>en_US.UTF-8 
+
+<span class="c1"># ==================================================================================== #</span>
+<span class="c1"># SCRIPT LOGIC</span>
+<span class="c1"># ==================================================================================== #</span>
+
+<span class="c1"># Enable the &#34;universe&#34; repository.</span>
+add-apt-repository --yes universe
+
+<span class="c1"># Update all software packages.</span>
+apt update
+
+<span class="c1"># Set the system timezone and install all locales.</span>
+timedatectl set-timezone <span class="si">${</span><span class="nv">TIMEZONE</span><span class="si">}</span>
+apt --yes install locales-all
+
+<span class="c1"># Add the new user (and give them sudo privileges).</span>
+useradd --create-home --shell <span class="s2">&#34;/bin/bash&#34;</span> --groups sudo <span class="s2">&#34;</span><span class="si">${</span><span class="nv">USERNAME</span><span class="si">}</span><span class="s2">&#34;</span>
+
+<span class="c1"># Force a password to be set for the new user the first time they log in.</span>
+passwd --delete <span class="s2">&#34;</span><span class="si">${</span><span class="nv">USERNAME</span><span class="si">}</span><span class="s2">&#34;</span>
+chage --lastday <span class="m">0</span> <span class="s2">&#34;</span><span class="si">${</span><span class="nv">USERNAME</span><span class="si">}</span><span class="s2">&#34;</span>
+
+<span class="c1"># Copy the SSH keys from the root user to the new user.</span>
+rsync --archive --chown<span class="o">=</span><span class="si">${</span><span class="nv">USERNAME</span><span class="si">}</span>:<span class="si">${</span><span class="nv">USERNAME</span><span class="si">}</span> /root/.ssh /home/<span class="si">${</span><span class="nv">USERNAME</span><span class="si">}</span>
+
+<span class="c1"># Configure the firewall to allow SSH, HTTP and HTTPS traffic.</span>
+ufw allow <span class="m">22</span>
+ufw allow <span class="m">80</span>/tcp
+ufw allow <span class="m">443</span>/tcp
+ufw --force <span class="nb">enable</span>
+
+<span class="c1"># Install fail2ban.</span>
+apt --yes install fail2ban
+
+<span class="c1"># Install the migrate CLI tool.</span>
+curl -L https://github.com/golang-migrate/migrate/releases/download/v4.14.1/migrate.linux-amd64.tar.gz <span class="p">|</span> tar xvz
+mv migrate.linux-amd64 /usr/local/bin/migrate
+
+<span class="c1"># Install PostgreSQL.</span>
+apt --yes install postgresql
+
+<span class="c1"># Set up the greenlight DB and create a user account with the password entered earlier.</span>
+sudo -i -u postgres psql -c <span class="s2">&#34;CREATE DATABASE greenlight&#34;</span>
+sudo -i -u postgres psql -d greenlight -c <span class="s2">&#34;CREATE EXTENSION IF NOT EXISTS citext&#34;</span>
+sudo -i -u postgres psql -d greenlight -c <span class="s2">&#34;</span><span class="s2">CREATE ROLE greenlight WITH LOGIN PASSWORD &#39;</span><span class="si">${</span><span class="nv">DB_PASSWORD</span><span class="si">}</span><span class="s2">&#39;</span><span class="s2">&#34;</span>
+
+<span class="c1"># Add a DSN for connecting to the greenlight database to the system-wide environment</span> 
+<span class="c1"># variables in the /etc/environment file.</span>
+<span class="nb">echo</span> <span class="s2">&#34;</span><span class="s2">GREENLIGHT_DB_DSN=&#39;postgres://greenlight:</span><span class="si">${</span><span class="nv">DB_PASSWORD</span><span class="si">}</span><span class="s2">@localhost/greenlight&#39;</span><span class="s2">&#34;</span> &gt;&gt; /etc/environment
+
+<span class="c1"># Install Caddy (see https://caddyserver.com/docs/install#debian-ubuntu-raspbian).</span>
+apt --yes install debian-keyring debian-archive-keyring apt-transport-https
+curl -1sLf <span class="s1">&#39;https://dl.cloudsmith.io/public/caddy/stable/gpg.key&#39;</span> <span class="p">|</span> sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf <span class="s1">&#39;https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt&#39;</span> <span class="p">|</span> sudo tee /etc/apt/sources.list.d/caddy-stable.list
+apt update
+apt --yes install caddy
+
+<span class="c1"># Upgrade all packages. Using the --force-confnew flag means that configuration</span> 
+<span class="c1"># files will be replaced if newer ones are available.</span>
+apt --yes -o Dpkg::Options::<span class="o">=</span><span class="s2">&#34;--force-confnew&#34;</span> upgrade
+
+<span class="nb">echo</span> <span class="s2">&#34;Script complete! Rebooting...&#34;</span>
+reboot</pre>
+</figure>
+
+<p>OK, let&rsquo;s now run this script on our new DigitalOcean droplet. This will be a two-step process:</p>
+
+<ol>
+<li>First we need to copy the script to the droplet (which we will do using <a href="https://linux.die.net/man/1/rsync"><code>rsync</code></a>).</li>
+<li>Then we need to connect to the droplet via SSH and execute the script.</li>
+</ol>
+
+<p>Go ahead and run the following command to <code>rsync</code> the contents of the <code>/remote/setup</code> folder to the <code>root</code> user&rsquo;s home directory on the droplet. Remember to replace the IP address with your own!</p>
+
+<figure class="code bash">
+<pre>$ rsync -rP --delete ./remote/setup root@161.35.71.158:/root
+<samp>sending incremental file list
+setup/
+setup/01.sh
+          3,354 100%    0.00kB/s    0:00:00 (xfr#1, to-chk=0/2)</samp></pre>
+</figure>
+
+<aside class="hint"><p>
+<strong>Note:</strong> In this <code>rsync</code> command the <code>-r</code> flag indicates that we want to copy the contents of <code>./remote/setup</code> recursively, the <code>-P</code> flag indicates that we want to display progress of the transfer, and the <code>--delete</code> flag indicates that we want to delete any extraneous files from the destination directory on the droplet.
+</p></aside>
+
+<p>Now that a copy of our setup script is on the droplet, let&rsquo;s use the <code>ssh</code> command to execute the script on the remote machine as the <code>root</code> user. We&rsquo;ll use the <code>-t</code> flag to force <em>pseudo-terminal allocation</em>, which is useful when executing screen-based programs on a remote machine.</p>
+
+<p>Go ahead and run the script, entering a password for the <code>greenlight</code> <em>PostgreSQL user</em>, like so:</p>
+
+<figure class="code bash">
+<pre>$ ssh -t root@161.35.71.158 &#34;bash /root/setup/01.sh&#34;
+<samp>Enter password for greenlight DB user:</samp> pa55word1234
+<samp>Adding component(s) &#39;universe&#39; to all repositories.
+Hit:1 https://repos.insights.digitalocean.com/apt/do-agent main InRelease
+Hit:2 http://mirrors.digitalocean.com/ubuntu jammy InRelease                                                
+Hit:3 http://mirrors.digitalocean.com/ubuntu jammy-updates InRelease                                        
+Hit:4 https://repos-droplet.digitalocean.com/apt/droplet-agent main InRelease
+Hit:5 http://mirrors.digitalocean.com/ubuntu jammy-backports InRelease   
+...
+Script complete! Rebooting...
+Connection to 161.35.71.158 closed by remote host.
+Connection to 161.35.71.158 closed.</samp></pre>
+</figure>
+
+<aside class="important"><p>
+<strong>Important:</strong> While this script is running you will get a message saying: <code style="white-space: normal;">A new version of configuration file /etc/ssh/sshd_config is available, but the version installed currently has been locally modified.</code></p>
+
+<p>This is because DigitalOcean automatically makes some adaptations to the <code>sshd_config</code> file, including disabling password-based access when you are using SSH keys for authentication. Please select <code>keep the local version currently installed</code> and then <code>&lt;Ok&gt;</code> to continue.</p>
+
+<p>You may also see a message saying: <code style="white-space: normal;">Newer kernel available&hellip; Restarting the system to load the new kernel will not be handled automatically, so you should consider rebooting.</code> Please <code>&lt;Ok&gt;</code> it to continue, and the script will automatically reboot the server.
+</p></aside>
+
+<p>After a few minutes the script should complete successfully and the droplet will be rebooted &mdash; which will also kick you off the SSH connection.</p>
+
+<h3 id="connecting-as-the-greenlight-user">Connecting as the greenlight user</h3>
+
+<p>After waiting a minute for the reboot to complete, try connecting to the droplet as the <code>greenlight</code> user over SSH. This should work correctly (and the SSH key pair you created in the previous chapter should be used to authenticate the connection) <em>but you will be prompted to set a password</em>.</p>
+
+<figure class="code bash">
+<pre>$ ssh greenlight@161.35.71.158
+<samp>You are required to change your password immediately (administrator enforced).
+Welcome to Ubuntu 22.04.2 LTS (GNU/Linux 5.15.0-60-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/advantage
+
+  System information as of Thu Feb 23 16:46:00 CET 2023
+
+  System load:  0.0               Users logged in:       0
+  Usage of /:   25.7% of 9.51GB   IPv4 address for eth0: 161.35.71.158
+  Memory usage: 41%               IPv4 address for eth0: 10.19.0.5
+  Swap usage:   0%                IPv4 address for eth1: 10.114.0.2
+  Processes:    101
+
+ * Introducing Expanded Security Maintenance for Applications.
+   Receive updates to over 25,000 software packages with your
+   Ubuntu Pro subscription. Free for personal use.
+
+     https://ubuntu.com/pro
+
+Expanded Security Maintenance for Applications is not enabled.
+
+0 updates can be applied immediately.
+
+Enable ESM Apps to receive additional future security updates.
+See https://ubuntu.com/esm or run: sudo pro status
+
+The programs included with the Ubuntu system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Ubuntu comes with ABSOLUTELY NO WARRANTY, to the extent permitted by
+applicable law.
+
+WARNING: Your password has expired.
+You must change your password now and login again!</samp>
+New password: 
+Retype new password: 
+<samp>passwd: password updated successfully
+Connection to 161.35.71.158 closed.</samp></pre>
+</figure>
+
+<p>The password you enter here will be the regular password for the <code>greenlight</code> user on your droplet (i.e. the password you will need to type whenever you are logged in and want to execute a <code>sudo</code> command). Just to be clear, it is <em>not</em> an SSH password for connecting as the <code>greenlight</code> user.</p>
+
+<p>Go ahead and enter whatever password you would like, confirm it, and check that you see a message saying that the password change has been successful. The SSH connection will then be automatically terminated.</p>
+
+<p>If you reconnect as the <code>greenlight</code> user, everything should now work normally and you should be able to execute commands on the droplet. Like so:</p>
+
+<figure class="code bash">
+<pre>$ ssh greenlight@161.35.71.158
+<samp>Welcome to Ubuntu 22.04.2 LTS (GNU/Linux 5.15.0-60-generic x86_64)
+
+...</samp>
+
+greenlight@greenlight-production:~$ whoami
+<samp>greenlight</samp></pre>
+</figure>
+
+<p>While we&rsquo;re connected to the droplet, let&rsquo;s take a quick look around and check that some key things are working as we would expect.</p>
+
+<p>First, let&rsquo;s check that the <code>migrate</code> binary has been downloaded and is on the system path by running it with the <code>-version</code> flag. All being well, this should print the <code>migrate</code> version number like so:</p>
+
+<figure class="code bash">
+<pre>greenlight@greenlight-production:~$ migrate -version
+<samp>4.14.1 </samp> </pre>
+</figure>
+
+<p>Next, let&rsquo;s verify that PostgreSQL is running, and that we can connect to it using the DSN in the <code>GREENLIGHT_DB_DSN</code> environment variable:</p>
+
+<figure class="code bash">
+<pre>greenlight@greenlight-production:~$ psql $GREENLIGHT_DB_DSN 
+<samp>psql (14.6 (Ubuntu 14.6-0ubuntu0.22.04.1))
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+Type &#34;help&#34; for help.
+
+greenlight=&gt; exit</samp></pre>
+</figure>
+
+<p>Finally, let&rsquo;s check that Caddy is running by calling <code>systemctl status caddy</code> to see the status of the Caddy background service. You&rsquo;ll need to use <code>sudo</code> here to run this command as <code>root</code>.</p>
+
+<figure class="code bash">
+<pre>greenlight@greenlight-production:~$ sudo systemctl status caddy
+<samp>● caddy.service - Caddy
+     Loaded: loaded (/lib/systemd/system/caddy.service; enabled; vendor preset: enabled)
+     Active: active (running) since Sun 2021-04-18 15:23:32 EDT; 37min ago
+       Docs: https://caddyserver.com/docs/
+   Main PID: 586 (caddy)
+      Tasks: 7 (limit: 512)
+     Memory: 37.6M
+     CGroup: /system.slice/caddy.service
+             └─586 /usr/bin/caddy run --environ --config /etc/caddy/Caddyfile
+...</samp></pre>
+</figure>
+
+<p>You should see that the status of the Caddy service is <code>active (running)</code> &mdash; confirming that Caddy is working successfully.</p>
+
+<p>This means that you should be able to visit your droplet directly in a web browser via <code>http://&lt;your_droplet_ip&gt;</code>, and you should see the following Caddy welcome page.</p>
+
+<figure class="img">
+<img src="assets/img/20.02-01.png" alt="20.02-01.png" />
+</figure>
+
+<h3 id="connecting-to-the-droplet">Connecting to the droplet</h3>
+
+<p>To make connecting to the droplet a bit easier, and so we don&rsquo;t have to remember the IP address, let&rsquo;s quickly add a makefile rule for initializing an SSH connection to the droplet as the <code>greenlight</code> user. Like so:</p>
+
+<figure class="code shell">
+<figcaption>File: Makefile</figcaption>
+<pre>...
+
+<span class="c1"># ==================================================================================== #</span>
+<span class="c1"># PRODUCTION</span>
+<span class="c1"># ==================================================================================== #</span>
+
+<span class="nv">production_host_ip</span> <span class="o">=</span> <span class="s1">&#39;161.35.71.158&#39;</span>
+
+<span class="c1">## production/connect: connect to the production server</span>
+.PHONY: production/connect
+production/connect:
+	ssh greenlight@<span class="si">${</span><span class="nv">production_host_ip</span><span class="si">}</span></pre>
+</figure>
+
+<p>Once that&rsquo;s in place, you can then connect to your droplet whenever you need to by simply typing <code>make production/connect</code>:</p>
+
+<figure class="code bash">
+<pre>$ make production/connect 
+<samp>ssh greenlight@&#39;161.35.71.158&#39;
+Welcome to Ubuntu 20.04.2 LTS (GNU/Linux 5.4.0-65-generic x86_64)
+
+...</samp>
+
+greenlight@greenlight-production:~$ </pre>
+</figure>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="future-changes-to-the-droplet-configuration">Future changes to the droplet configuration</h4>
+
+<p>If you need to make further changes to your droplet configuration or settings, you can create an additional <code>remote/setup/02.sh</code> script and then execute it in the following way:</p>
+
+<figure class="code bash">
+<pre>$ rsync -rP --delete ./remote/setup greenlight@161.35.71.158:~
+$ ssh -t greenlight@161.35.71.158 &#34;sudo bash /home/greenlight/setup/02.sh&#34;</pre>
+</figure>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="20.01-creating-a-digital-ocean-droplet.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="20.03-deployment-and-executing-migrations.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "20.01-creating-a-digital-ocean-droplet.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "20.03-deployment-and-executing-migrations.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

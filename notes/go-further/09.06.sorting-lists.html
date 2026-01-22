@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Sorting Lists &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="09.00-filtering-sorting-and-pagination.html">Filtering, sorting, and pagination</a> &rsaquo; Sorting Lists</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="09.05-full-text-search.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="09.07-paginating-lists.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 9.6.</div>
+			<h2 id="sorting-lists">Sorting Lists</h2>
+
+<p>Now let&rsquo;s update our <code>GET /v1/movies</code> endpoint so that the client can specify how the movies are sorted in the JSON response.</p>
+
+<p>As we briefly explained earlier, we want to let the client control the sort order via a query string parameter in the format <code>sort={-}{field_name}</code>, where an optional <code>-</code> prefix is used to indicate a descending sort order. For example:</p>
+
+<figure class="code go">
+<pre><span class="c1">// Sort the movies on the title field in ascending alphabetical order.
+</span><span class="c1"></span><span class="o">/</span><span class="nx">v1</span><span class="o">/</span><span class="nx">movies</span><span class="err">?</span><span class="nx">sort</span><span class="p">=</span><span class="nx">title</span>
+
+<span class="c1">// Sort the movies on the year field in descending numerical order.
+</span><span class="c1"></span><span class="o">/</span><span class="nx">v1</span><span class="o">/</span><span class="nx">movies</span><span class="err">?</span><span class="nx">sort</span><span class="p">=</span><span class="o">-</span><span class="nx">year</span></pre>
+</figure>
+
+<p>Behind the scenes, we will want to translate this into an <a href="https://www.postgresql.org/docs/current/queries-order.html"><code>ORDER BY</code></a> clause in our SQL query, so that a query string parameter like <code>sort=-year</code> would result in a SQL query like this:</p>
+
+<figure class="code plain">
+<pre>SELECT id, created_at, title, year, runtime, genres, version
+FROM movies
+WHERE (STRPOS(LOWER(title), LOWER($1)) &gt; 0 OR $1 = &#39;&#39;) 
+AND (genres @&gt; $2 OR $2 = &#39;{}&#39;)     
+ORDER BY year DESC --&lt;-- Order the result by descending year</pre>
+</figure>
+
+<p>The difficulty here is that the values for the <code>ORDER BY</code> clause need to be generated at runtime based on the query string values from the client. Ideally we&rsquo;d use placeholder parameters to insert these dynamic values into our query, but unfortunately it&rsquo;s <em>not possible to use placeholder parameters for column names or SQL keywords</em> (including <code>ASC</code> and <code>DESC</code>).</p>
+
+<p>So instead, we&rsquo;ll need to interpolate these dynamic values into our query using <code>fmt.Sprintf()</code> &mdash; making sure that the values are checked against a strict safelist first to prevent a SQL injection attack.</p>
+
+<p>When working with PostgreSQL, it&rsquo;s also important to be aware that the order of returned rows <em>is only guaranteed by the rules that your <code>ORDER BY</code> clause imposes</em>. From the <a href="https://www.postgresql.org/docs/current/queries-order.html">official documentation</a>:</p>
+
+<blockquote>
+<p>If sorting is not chosen, the rows will be returned in an unspecified order. The actual order in that case will depend on the scan and join plan types and the order on disk, but it must not be relied on. A particular output ordering can only be guaranteed if the sort step is explicitly chosen.</p>
+</blockquote>
+
+<p>That means if we don&rsquo;t include an <code>ORDER BY</code> clause, then PostgreSQL may return the movies in any order &mdash; <em>and the order may or may not change each time the query is run</em>.</p>
+
+<p>Likewise, in our database multiple movies will have the same <code>year</code> value. If we order based on the <code>year</code> column, then the movies are guaranteed to be ordered by year, but the movies <em>for</em> a particular year could appear in any order at any time.</p>
+
+<p>This point is particularly important in the context of an endpoint which provides pagination. We need to make sure that the order of movies is perfectly consistent between requests to prevent items in the list &lsquo;jumping&rsquo; between the pages.</p>
+
+<p>Fortunately, guaranteeing the order is simple &mdash; we just need to ensure that the <code>ORDER BY</code> clause always includes a primary key column (or another column with a unique constraint on it). So, in our case, we can apply a secondary sort on the <code>id</code> column to ensure an always-consistent order. Like so:</p>
+
+<figure class="code plain">
+<pre>SELECT id, created_at, title, year, runtime, genres, version
+FROM movies
+WHERE (STRPOS(LOWER(title), LOWER($1)) &gt; 0 OR $1 = &#39;&#39;) 
+AND (genres @&gt; $2 OR $2 = &#39;{}&#39;)     
+ORDER BY year DESC, id ASC</pre>
+</figure>
+
+<h3 id="implementing-sorting">Implementing sorting</h3>
+
+<p>To get the dynamic sorting working, let&rsquo;s begin by updating our <code>Filters</code> struct to include some <code>sortColumn()</code> and <code>sortDirection()</code> helpers that transform a query string value (like <code>-year</code>) into values we can use in our SQL query.</p>
+
+<figure class="code go">
+<figcaption>File: internal/data/filters.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">data</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;slices&#34;</span>  <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;strings&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>
+    <span class="s">&#34;greenlight.alexedwards.net/internal/validator&#34;</span>
+<span class="p">)</span>
+
+<span class="kd">type</span> <span class="nx">Filters</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">Page</span>         <span class="kt">int</span>
+    <span class="nx">PageSize</span>     <span class="kt">int</span>
+    <span class="nx">Sort</span>         <span class="kt">string</span>
+    <span class="nx">SortSafelist</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span>
+<span class="p">}</span>
+
+<span class="c1">// Check that the client-provided Sort field matches one of the entries in our safelist
+</span><span class="c1"></span><span class="c1">// and if it does, extract the column name from the Sort field by stripping the leading
+</span><span class="c1"></span><span class="c1">// hyphen character (if one exists).
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">f</span> <span class="nx">Filters</span><span class="p">)</span> <span class="nf">sortColumn</span><span class="p">(</span><span class="p">)</span> <span class="kt">string</span> <span class="p">{</span>
+    <span class="k">if</span> <span class="nx">slices</span><span class="p">.</span><span class="nf">Contains</span><span class="p">(</span><span class="nx">f</span><span class="p">.</span><span class="nx">SortSafelist</span><span class="p">,</span> <span class="nx">f</span><span class="p">.</span><span class="nx">Sort</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">strings</span><span class="p">.</span><span class="nf">TrimPrefix</span><span class="p">(</span><span class="nx">f</span><span class="p">.</span><span class="nx">Sort</span><span class="p">,</span> <span class="s">&#34;-&#34;</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="nb">panic</span><span class="p">(</span><span class="s">&#34;unsafe sort parameter: &#34;</span> <span class="o">+</span> <span class="nx">f</span><span class="p">.</span><span class="nx">Sort</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="c1">// Return the sort direction (&#34;ASC&#34; or &#34;DESC&#34;) depending on the prefix character of the
+</span><span class="c1"></span><span class="c1">// Sort field.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">f</span> <span class="nx">Filters</span><span class="p">)</span> <span class="nf">sortDirection</span><span class="p">(</span><span class="p">)</span> <span class="kt">string</span> <span class="p">{</span>
+    <span class="k">if</span> <span class="nx">strings</span><span class="p">.</span><span class="nf">HasPrefix</span><span class="p">(</span><span class="nx">f</span><span class="p">.</span><span class="nx">Sort</span><span class="p">,</span> <span class="s">&#34;-&#34;</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="s">&#34;DESC&#34;</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="s">&#34;ASC&#34;</span>
+<span class="p">}</span>
+
+<span class="o">...</span></pre>
+</figure>
+
+<p>Notice that the <code>sortColumn()</code> function is constructed in such a way that it will panic if the client-provided <code>Sort</code> value doesn&rsquo;t match one of the entries in our safelist. In theory this shouldn&rsquo;t happen &mdash; the <code>Sort</code> value should have already been checked by calling the <code>ValidateFilters()</code> function &mdash; but this is a sensible failsafe to help stop a SQL injection attack from occurring.</p>
+
+<p>Now let&rsquo;s update our <code>internal/data/movies.go</code> file to call those methods, and interpolate the return values into our SQL query&rsquo;s <code>ORDER BY</code> clause. Like so:</p>
+
+<figure class="code go">
+<figcaption>File: internal/data/movies.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">data</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;context&#34;</span>
+    <span class="s">&#34;database/sql&#34;</span>
+    <span class="s">&#34;errors&#34;</span>
+    <span class="s">&#34;fmt&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;time&#34;</span>
+
+    <span class="s">&#34;greenlight.alexedwards.net/internal/validator&#34;</span>
+
+    <span class="s">&#34;github.com/lib/pq&#34;</span>
+<span class="p">)</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="nx">MovieModel</span><span class="p">)</span> <span class="nf">GetAll</span><span class="p">(</span><span class="nx">title</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">genres</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span><span class="p">,</span> <span class="nx">filters</span> <span class="nx">Filters</span><span class="p">)</span> <span class="p">(</span><span class="p">[</span><span class="p">]</span><span class="o">*</span><span class="nx">Movie</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Add an ORDER BY clause and interpolate the sort column and direction. Importantly
+</span><span class="c1"></span>    <span class="c1">// notice that we also include a secondary sort on the movie ID to ensure a
+</span><span class="c1"></span>    <span class="c1">// consistent ordering.
+</span><span class="c1"></span>    <span class="nx">query</span> <span class="o">:=</span> <span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">`</span><span class="s">
+</span><span class="s">        SELECT id, created_at, title, year, runtime, genres, version
+</span><span class="s">        FROM movies
+</span><span class="s">        WHERE (to_tsvector(&#39;simple&#39;, title) @@ plainto_tsquery(&#39;simple&#39;, $1) OR $1 = &#39;&#39;) 
+</span><span class="s">        AND (genres @&gt; $2 OR $2 = &#39;</span><span class="s">{</span><span class="s">}&#39;)     
+</span><span class="s">        ORDER BY %s %s, id ASC</span><span class="s">`</span><span class="p">,</span> <span class="nx">filters</span><span class="p">.</span><span class="nf">sortColumn</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="nx">filters</span><span class="p">.</span><span class="nf">sortDirection</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+
+    <span class="c1">// Nothing else below needs to change.
+</span><span class="c1"></span>    <span class="o">...</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>And once that&rsquo;s done, we should be ready to try this out.</p>
+
+<p>Restart the application then, as an example, go ahead and try making a request for the movies sorted by descending <code>title</code>. You should get a response which looks like this:</p>
+
+<figure class="code bash">
+<pre>$ curl &#34;localhost:4000/v1/movies?sort=-title&#34;
+<samp>{
+    &#34;movies&#34;: [
+        {
+            &#34;id&#34;: 4,
+            &#34;title&#34;: &#34;The Breakfast Club&#34;,
+            &#34;year&#34;: 1985,
+            &#34;runtime&#34;: &#34;97 mins&#34;,
+            &#34;genres&#34;: [
+                &#34;comedy&#34;
+            ],
+            &#34;version&#34;: 5
+        },
+        {
+            &#34;id&#34;: 1,
+            &#34;title&#34;: &#34;Moana&#34;,
+            &#34;year&#34;: 2016,
+            &#34;runtime&#34;: &#34;107 mins&#34;,
+            &#34;genres&#34;: [
+                &#34;animation&#34;,
+                &#34;adventure&#34;
+            ],
+            &#34;version&#34;: 1
+        },
+        {
+            &#34;id&#34;: 2,
+            &#34;title&#34;: &#34;Black Panther&#34;,
+            &#34;year&#34;: 2018,
+            &#34;runtime&#34;: &#34;134 mins&#34;,
+            &#34;genres&#34;: [
+                &#34;sci-fi&#34;,
+                &#34;action&#34;,
+                &#34;adventure&#34;
+            ],
+            &#34;version&#34;: 2
+        }
+    ]
+}</samp></pre>
+</figure>
+
+<p>In contrast, using a sort parameter of descending <code>runtime</code> should yield a response in a totally different order. Similar to this:</p>
+
+<figure class="code bash">
+<pre>$ curl &#34;localhost:4000/v1/movies?sort=-runtime&#34;
+<samp>{
+    &#34;movies&#34;: [
+        {
+            &#34;id&#34;: 2,
+            &#34;title&#34;: &#34;Black Panther&#34;,
+            &#34;year&#34;: 2018,
+            &#34;runtime&#34;: &#34;134 mins&#34;,
+            &#34;genres&#34;: [
+                &#34;sci-fi&#34;,
+                &#34;action&#34;,
+                &#34;adventure&#34;
+            ],
+            &#34;version&#34;: 2
+        },
+        {
+            &#34;id&#34;: 1,
+            &#34;title&#34;: &#34;Moana&#34;,
+            &#34;year&#34;: 2016,
+            &#34;runtime&#34;: &#34;107 mins&#34;,
+            &#34;genres&#34;: [
+                &#34;animation&#34;,
+                &#34;adventure&#34;
+            ],
+            &#34;version&#34;: 1
+        },
+        {
+            &#34;id&#34;: 4,
+            &#34;title&#34;: &#34;The Breakfast Club&#34;,
+            &#34;year&#34;: 1985,
+            &#34;runtime&#34;: &#34;97 mins&#34;,
+            &#34;genres&#34;: [
+                &#34;comedy&#34;
+            ],
+            &#34;version&#34;: 5
+        }
+    ]
+}</samp></pre>
+</figure>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="09.05-full-text-search.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="09.07-paginating-lists.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "09.05-full-text-search.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "09.07-paginating-lists.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Sending background emails &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="13.00-sending-emails.html">Sending emails</a> &rsaquo; Sending background emails</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="13.03-sending-a-welcome-email.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="13.05-graceful-shutdown-of-background-tasks.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 13.4.</div>
+			<h2 id="sending-background-emails">Sending background emails</h2>
+
+<p>As we mentioned briefly in the last chapter, sending the welcome email from the <code>registerUserHandler</code> method adds quite a lot of latency to the total request/response round-trip for the client.</p>
+
+<p>One way we could reduce this latency is by sending the email in a <em>background goroutine</em>. This would effectively &lsquo;decouple&rsquo; the task of sending an email from the rest of the code in our <code>registerUserHandler</code>, and means that we could return an HTTP response to the client without waiting for the email sending to complete.</p>
+
+<p>At its very simplest, we could adapt our handler to execute the email send in a background goroutine like this:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/users.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">registerUserHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+
+    <span class="o">...</span>
+
+    <span class="c1">// Launch a goroutine which runs an anonymous function that sends the welcome email.
+</span><span class="c1"></span>    <span class="k">go</span> <span class="kd">func</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">mailer</span><span class="p">.</span><span class="nf">Send</span><span class="p">(</span><span class="nx">user</span><span class="p">.</span><span class="nx">Email</span><span class="p">,</span> <span class="s">&#34;user_welcome.tmpl&#34;</span><span class="p">,</span> <span class="nx">user</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+            <span class="c1">// Importantly, if there is an error sending the email then we use the 
+</span><span class="c1"></span>            <span class="c1">// app.logger.Error() helper to manage it, instead of the 
+</span><span class="c1"></span>            <span class="c1">// app.serverErrorResponse() helper like before.
+</span><span class="c1"></span>            <span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="p">}</span>
+    <span class="p">}</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="c1">// Note that we also change this to send the client a 202 Accepted status code.
+</span><span class="c1"></span>    <span class="c1">// This status code indicates that the request has been accepted for processing, but 
+</span><span class="c1"></span>    <span class="c1">// the processing has not yet been completed.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">writeJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusAccepted</span><span class="p">,</span> <span class="nx">envelope</span><span class="p">{</span><span class="s">&#34;user&#34;</span><span class="p">:</span> <span class="nx">user</span><span class="p">}</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>When this code is executed now, a new &lsquo;background&rsquo; goroutine will be launched for sending the welcome email. The code in this background goroutine will be executed <em>concurrently</em> with the subsequent code in our <code>registerUserHandler</code>, which means we are no longer waiting for the email to be sent before we return a JSON response to the client. Most likely, the background goroutine will still be executing its code long after the <code>registerUserHandler</code> has returned.</p>
+
+<p>There are a couple of things I&rsquo;d like to emphasize here:</p>
+
+<ul>
+<li><p>We use the <code>app.logger.Error()</code> method to manage any errors in our background goroutine. This is because by the time we encounter the errors, the client will probably have already been sent a <code>202 Accepted</code> response by our <code>writeJSON()</code> helper.</p>
+
+<p>Note that we don&rsquo;t want to use the <code>app.serverErrorResponse()</code> helper to handle any errors in our background goroutine, as that would result in us trying to write a <em>second HTTP response</em> and getting a <code>&quot;http: superfluous response.WriteHeader call&quot;</code> error from our <code>http.Server</code> at runtime.</p></li>
+
+<li><p>The code running in the background goroutine forms a <em>closure</em> over the <code>user</code> and <code>app</code> variables. It&rsquo;s important to be aware that these &lsquo;closed over&rsquo; variables are <em>not scoped to the background goroutine</em>, which means that any changes you make to them will be reflected in the rest of your codebase. For a simple example of this, see the following <a href="https://play.golang.org/p/eTz1xBm4W2a">playground code</a>.</p>
+
+<p>In our case we aren&rsquo;t changing the value of these variables in any way, so this behavior won&rsquo;t cause us any issues. But it is important to keep in mind.</p></li>
+</ul>
+
+<p>OK, let&rsquo;s try this out!</p>
+
+<p>Restart the API, then go ahead and register another new user with the email address <code>carol@example.com</code>. Like so:</p>
+
+<figure class="code bash">
+<pre>$ BODY=&#39;{&#34;name&#34;: &#34;Carol Smith&#34;, &#34;email&#34;: &#34;carol@example.com&#34;, &#34;password&#34;: &#34;pa55word&#34;}&#39;
+$ curl -w &#39;\nTime: %{time_total}\n&#39; -d &#34;$BODY&#34; localhost:4000/v1/users
+<samp>{
+    &#34;user&#34;: {
+        &#34;id&#34;: 4,
+        &#34;created_at&#34;: &#34;2021-04-11T21:21:12+02:00&#34;,
+        &#34;name&#34;: &#34;Carol Smith&#34;,
+        &#34;email&#34;: &#34;carol@example.com&#34;,
+        &#34;activated&#34;: false
+    }
+}
+
+Time: 0.268639</samp></pre>
+</figure>
+
+<p>This time, you should see that the time taken to return the response is much faster &mdash;  in my case 0.27 seconds compared to the previous 2.33 seconds.</p>
+
+<p>And if you take a look at your Mailtrap inbox, you should see that the email for <code>carol@example.com</code> has been delivered correctly. Like so:</p>
+
+<figure class="img">
+<img src="assets/img/13.04-01.png" alt="13.04-01.png" />
+</figure>
+
+<h3 id="recovering-panics">Recovering panics</h3>
+
+<p>It&rsquo;s important to bear in mind that any panic which happens in this background goroutine <em>will not</em> be automatically recovered by our <code>recoverPanic()</code> middleware or Go&rsquo;s <code>http.Server</code>, and will cause our whole application to terminate.</p>
+
+<p>In very simple background goroutines this is less of a worry. But the code involved in sending an email is quite complex (including calls to a third-party package) and the risk of a runtime panic is non-negligible. So we need to make sure that any panic in this background goroutine is manually recovered, using a similar pattern to the one in our <code>recoverPanic()</code> middleware.</p>
+
+<p>I&rsquo;ll demonstrate.</p>
+
+<p>Reopen your <code>cmd/api/users.go</code> file and update the <code>registerUserHandler</code> like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/users.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;errors&#34;</span>
+    <span class="s">&#34;fmt&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;net/http&#34;</span>
+
+    <span class="s">&#34;greenlight.alexedwards.net/internal/data&#34;</span>
+    <span class="s">&#34;greenlight.alexedwards.net/internal/validator&#34;</span>
+<span class="p">)</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">registerUserHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+
+    <span class="o">...</span>
+
+    <span class="c1">// Launch a background goroutine to send the welcome email.
+</span><span class="c1"></span>    <span class="k">go</span> <span class="kd">func</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="c1">// Run a deferred function which uses recover() to catch any panic, and log an
+</span><span class="c1"></span>        <span class="c1">// error message instead of terminating the application.
+</span><span class="c1"></span>        <span class="k">defer</span> <span class="kd">func</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+            <span class="nx">pv</span> <span class="o">:=</span> <span class="nb">recover</span><span class="p">(</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nx">pv</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+                <span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;%v&#34;</span><span class="p">,</span> <span class="nx">pv</span><span class="p">)</span><span class="p">)</span>
+            <span class="p">}</span>
+        <span class="p">}</span><span class="p">(</span><span class="p">)</span>
+
+        <span class="c1">// Send the welcome email.
+</span><span class="c1"></span>        <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">mailer</span><span class="p">.</span><span class="nf">Send</span><span class="p">(</span><span class="nx">user</span><span class="p">.</span><span class="nx">Email</span><span class="p">,</span> <span class="s">&#34;user_welcome.tmpl&#34;</span><span class="p">,</span> <span class="nx">user</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="p">}</span>
+    <span class="p">}</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">writeJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusAccepted</span><span class="p">,</span> <span class="nx">envelope</span><span class="p">{</span><span class="s">&#34;user&#34;</span><span class="p">:</span> <span class="nx">user</span><span class="p">}</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre>
+</figure>
+
+<h3 id="using-a-helper-function">Using a helper function</h3>
+
+<p>If you need to execute a lot of background tasks in your application, it can get tedious to keep repeating the same panic recovery code &mdash; and there&rsquo;s a risk that you might forget to include it altogether.</p>
+
+<p>To help take care of this, it&rsquo;s possible to create a simple helper function which wraps the panic recovery logic. If you&rsquo;re following along, open your <code>cmd/api/helpers.go</code> file and create a new <code>background()</code> helper method as follows:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/helpers.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="c1">// The background() helper accepts an arbitrary function as a parameter.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">background</span><span class="p">(</span><span class="nx">fn</span> <span class="kd">func</span><span class="p">(</span><span class="p">)</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Launch a background goroutine.
+</span><span class="c1"></span>    <span class="k">go</span> <span class="kd">func</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="c1">// Recover any panic.
+</span><span class="c1"></span>        <span class="k">defer</span> <span class="kd">func</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+            <span class="nx">pv</span> <span class="o">:=</span> <span class="nb">recover</span><span class="p">(</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nx">pv</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+                <span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Sprintf</span><span class="p">(</span><span class="s">&#34;%v&#34;</span><span class="p">,</span> <span class="nx">pv</span><span class="p">)</span><span class="p">)</span>
+            <span class="p">}</span>
+        <span class="p">}</span><span class="p">(</span><span class="p">)</span>
+
+        <span class="c1">// Execute the arbitrary function that we passed as the parameter.
+</span><span class="c1"></span>        <span class="nf">fn</span><span class="p">(</span><span class="p">)</span>
+    <span class="p">}</span><span class="p">(</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>This <code>background()</code> helper leverages the fact that Go has <a href="https://levelup.gitconnected.com/first-class-functions-in-golang-ef2a5001bb4f">first-class functions</a>, which means that functions can be <em>assigned to variables</em> and <em>passed as parameters</em> to other functions.</p>
+
+<p>In this case, we&rsquo;ve set up the <code>background()</code> helper so that it accepts any function with the signature <code>func()</code> as a parameter and stores it in the variable <code>fn</code>. It then spins up a background goroutine, uses a deferred function to recover any panics and log the error, and then executes the function itself by calling <code>fn()</code>.</p>
+
+<p>Now that this is in place, let&rsquo;s update our <code>registerUserHandler</code> to use it like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/users.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;errors&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+
+    <span class="s">&#34;greenlight.alexedwards.net/internal/data&#34;</span>
+    <span class="s">&#34;greenlight.alexedwards.net/internal/validator&#34;</span>
+<span class="p">)</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">registerUserHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+
+    <span class="o">...</span>
+  
+    <span class="c1">// Use the background helper to execute an anonymous function that sends the welcome
+</span><span class="c1"></span>    <span class="c1">// email.
+</span><span class="c1"></span>    <span class="nx">app</span><span class="p">.</span><span class="nf">background</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">mailer</span><span class="p">.</span><span class="nf">Send</span><span class="p">(</span><span class="nx">user</span><span class="p">.</span><span class="nx">Email</span><span class="p">,</span> <span class="s">&#34;user_welcome.tmpl&#34;</span><span class="p">,</span> <span class="nx">user</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="p">}</span>
+    <span class="p">}</span><span class="p">)</span>
+
+    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">writeJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusAccepted</span><span class="p">,</span> <span class="nx">envelope</span><span class="p">{</span><span class="s">&#34;user&#34;</span><span class="p">:</span> <span class="nx">user</span><span class="p">}</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Let&rsquo;s double-check that this is still working. Restart the API, then create another new user with the email address <code>dave@example.com</code>:</p>
+
+<figure class="code bash">
+<pre>$ BODY=&#39;{&#34;name&#34;: &#34;Dave Smith&#34;, &#34;email&#34;: &#34;dave@example.com&#34;, &#34;password&#34;: &#34;pa55word&#34;}&#39;
+$ curl -w &#39;\nTime: %{time_total}\n&#39; -d &#34;$BODY&#34; localhost:4000/v1/users
+<samp>{
+    &#34;user&#34;: {
+       &#34;id&#34;: 5,
+       &#34;created_at&#34;: &#34;2021-04-11T21:33:07+02:00&#34;,
+       &#34;name&#34;: &#34;Dave Smith&#34;,
+       &#34;email&#34;: &#34;dave@example.com&#34;,
+       &#34;activated&#34;: false
+    }
+}
+
+Time: 0.267692</samp></pre>
+</figure>
+
+<p>If everything is set up correctly, you&rsquo;ll now see the corresponding email appear in your Mailtrap inbox again.</p>
+
+<figure class="img">
+<img src="assets/img/13.04-02.png" alt="13.04-02.png" />
+</figure>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="13.03-sending-a-welcome-email.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="13.05-graceful-shutdown-of-background-tasks.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "13.03-sending-a-welcome-email.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "13.05-graceful-shutdown-of-background-tasks.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

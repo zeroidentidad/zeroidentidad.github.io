@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Sending activation tokens &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="14.00-user-activation.html">User activation</a> &rsaquo; Sending activation tokens</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="14.02-creating-secure-activation-tokens.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="14.04-activating-a-user.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 14.3.</div>
+			<h2 id="sending-activation-tokens">Sending activation tokens</h2>
+
+<p>The next step is to hook this up to our <code>registerUserHandler</code>, so that we generate an activation token when a user signs up and include it in their welcome email &mdash; similar to this:</p>
+
+<figure class="code plain">
+<pre>Hi,
+
+Thanks for signing up for a Greenlight account. We&#39;re excited to have you on board!
+
+For future reference, your user ID number is 123.
+
+Please send a request to the `PUT /v1/users/activated` endpoint with the following JSON
+body to activate your account:
+
+{&#34;token&#34;: &#34;RMMCV3MZCEBYQADXBODCLTAF6L&#34;}
+
+Please note that this is a one-time use token and it will expire in 3 days.
+
+Thanks,
+
+The Greenlight Team</pre>
+</figure>
+
+<p>The most important thing about this email is that we&rsquo;re instructing the user to activate by issuing a <code>PUT</code> request to our API. We&rsquo;re not asking them to activate by <em>clicking a link</em> that contains the token as part of the URL path or query string.</p>
+
+<p>Having a user click a link to activate via a <code>GET</code> request (which is used by default when clicking a link) would certainly be more convenient, but in the case of our API it has some big drawbacks. In particular:</p>
+
+<ul>
+<li><p>It would violate the HTTP principle that the <code>GET</code> method  should only be used for &lsquo;safe&rsquo; requests which retrieve resources &mdash; not for requests that modify something (like a user&rsquo;s activation status).</p></li>
+
+<li><p>It&rsquo;s possible that the user&rsquo;s web browser or antivirus will pre-fetch the link URL in the background, inadvertently activating the account. <a href="https://security.stackexchange.com/a/197005">This Stack Overflow comment</a> explains the risk of this nicely:</p>
+
+<blockquote>
+<p>That could result in a scenario where a malicious actor (Eve) wants to make an account using someone else&rsquo;s email (Alice). Eve signs up, and Alice received an email. Alice opens the email because she is curious about an account she didn&rsquo;t request. Her browser (or antivirus) requests the URL in the background, inadvertently activating the account.</p>
+</blockquote>
+</li>
+</ul>
+
+<p>All in all, you should make sure that any actions which change the state of your application (including activating a user) are only ever executed via <code>POST</code>, <code>PUT</code>, <code>PATCH</code> or <code>DELETE</code> requests &mdash; not by <code>GET</code> requests.</p>
+
+<aside class="hint"><p>
+<strong>Note:</strong> If your API is the back-end for a website, then you could adapt this email so that it asks the user to click a link that takes them to a page on your website. They can <em>then</em> click a button on the page to &lsquo;confirm their activation&rsquo;, which performs the <code>PUT</code> request to your API that actually activates the user. We&rsquo;ll look at this pattern in more detail in the next chapter.
+</p></aside>
+
+<p>But for now, if you&rsquo;re following along, go ahead and update your welcome email templates to include the activation token as follows:</p>
+
+<figure class="code plain">
+<figcaption>File: internal/mailer/templates/user_welcome.tmpl</figcaption>
+<pre>{{define &#34;subject&#34;}}Welcome to Greenlight!{{end}}
+
+{{define &#34;plainBody&#34;}}
+Hi,
+
+Thanks for signing up for a Greenlight account. We&#39;re excited to have you on board!
+
+For future reference, your user ID number is {{.userID}}.
+
+Please send a request to the `PUT /v1/users/activated` endpoint with the following JSON
+body to activate your account:
+
+{&#34;token&#34;: &#34;{{.activationToken}}&#34;}
+
+Please note that this is a one-time use token and it will expire in 3 days.
+
+Thanks,
+
+The Greenlight Team
+{{end}}
+
+{{define &#34;htmlBody&#34;}}
+&lt;!doctype html&gt;
+&lt;html&gt;
+
+&lt;head&gt;
+    &lt;meta name=&#34;viewport&#34; content=&#34;width=device-width&#34; /&gt;
+    &lt;meta http-equiv=&#34;Content-Type&#34; content=&#34;text/html; charset=UTF-8&#34; /&gt;
+&lt;/head&gt;
+
+&lt;body&gt;
+    &lt;p&gt;Hi,&lt;/p&gt;
+    &lt;p&gt;Thanks for signing up for a Greenlight account. We&#39;re excited to have you on board!&lt;/p&gt;
+    &lt;p&gt;For future reference, your user ID number is {{.userID}}.&lt;/p&gt;
+     &lt;p&gt;Please send a request to the &lt;code&gt;PUT /v1/users/activated&lt;/code&gt; endpoint with the 
+    following JSON body to activate your account:&lt;/p&gt;
+    &lt;pre&gt;&lt;code&gt;
+    {&#34;token&#34;: &#34;{{.activationToken}}&#34;}
+    &lt;/code&gt;&lt;/pre&gt;
+    &lt;p&gt;Please note that this is a one-time use token and it will expire in 3 days.&lt;/p&gt;
+    &lt;p&gt;Thanks,&lt;/p&gt;
+    &lt;p&gt;The Greenlight Team&lt;/p&gt;
+&lt;/body&gt;
+
+&lt;/html&gt;
+{{end}}</pre>
+</figure>
+
+<p>Next we&rsquo;ll need to update the <code>registerUserHandler</code> to generate a new activation token, and pass it to the welcome email template as dynamic data, along with the user ID.</p>
+
+<p>Like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/users.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;errors&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+    <span class="s">&#34;time&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>
+    <span class="s">&#34;greenlight.alexedwards.net/internal/data&#34;</span>
+    <span class="s">&#34;greenlight.alexedwards.net/internal/validator&#34;</span>
+<span class="p">)</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">registerUserHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+
+    <span class="o">...</span>
+
+    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Users</span><span class="p">.</span><span class="nf">Insert</span><span class="p">(</span><span class="nx">user</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">switch</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">data</span><span class="p">.</span><span class="nx">ErrDuplicateEmail</span><span class="p">)</span><span class="p">:</span>
+            <span class="nx">v</span><span class="p">.</span><span class="nf">AddError</span><span class="p">(</span><span class="s">&#34;email&#34;</span><span class="p">,</span> <span class="s">&#34;a user with this email address already exists&#34;</span><span class="p">)</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">failedValidationResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nx">Errors</span><span class="p">)</span>
+        <span class="k">default</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="p">}</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// After the user record has been created in the database, generate a new activation
+</span><span class="c1"></span>    <span class="c1">// token for the user.
+</span><span class="c1"></span>    <span class="nx">token</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Tokens</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="nx">user</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span> <span class="mi">3</span><span class="o">*</span><span class="mi">24</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Hour</span><span class="p">,</span> <span class="nx">data</span><span class="p">.</span><span class="nx">ScopeActivation</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="nx">app</span><span class="p">.</span><span class="nf">background</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="c1">// As there are now multiple pieces of data that we want to pass to our email
+</span><span class="c1"></span>        <span class="c1">// templates, we create a map to act as a &#39;holding structure&#39; for the data. This
+</span><span class="c1"></span>        <span class="c1">// contains the plaintext version of the activation token for the user, along 
+</span><span class="c1"></span>        <span class="c1">// with their ID.
+</span><span class="c1"></span>        <span class="nx">data</span> <span class="o">:=</span> <span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="nx">any</span><span class="p">{</span>
+            <span class="s">&#34;activationToken&#34;</span><span class="p">:</span> <span class="nx">token</span><span class="p">.</span><span class="nx">Plaintext</span><span class="p">,</span>
+            <span class="s">&#34;userID&#34;</span><span class="p">:</span>          <span class="nx">user</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span>
+        <span class="p">}</span>
+
+        <span class="c1">// Send the welcome email, passing in the map above as dynamic data.
+</span><span class="c1"></span>        <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">mailer</span><span class="p">.</span><span class="nf">Send</span><span class="p">(</span><span class="nx">user</span><span class="p">.</span><span class="nx">Email</span><span class="p">,</span> <span class="s">&#34;user_welcome.tmpl&#34;</span><span class="p">,</span> <span class="nx">data</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nx">logger</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="nx">err</span><span class="p">.</span><span class="nf">Error</span><span class="p">(</span><span class="p">)</span><span class="p">)</span>
+        <span class="p">}</span>
+    <span class="p">}</span><span class="p">)</span>
+
+    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">writeJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusAccepted</span><span class="p">,</span> <span class="nx">envelope</span><span class="p">{</span><span class="s">&#34;user&#34;</span><span class="p">:</span> <span class="nx">user</span><span class="p">}</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>OK, let&rsquo;s see how this works&hellip;</p>
+
+<p>Restart the application, and then register a new user account with the email address <code>faith@example.com</code>. Similar to this:</p>
+
+<figure class="code bash">
+<pre>$ BODY=&#39;{&#34;name&#34;: &#34;Faith Smith&#34;, &#34;email&#34;: &#34;faith@example.com&#34;, &#34;password&#34;: &#34;pa55word&#34;}&#39;
+$ curl -d &#34;$BODY&#34; localhost:4000/v1/users
+<samp>{
+    &#34;user&#34;: {
+        &#34;id&#34;: 7,
+        &#34;created_at&#34;: &#34;2021-04-15T20:25:41+02:00&#34;,
+        &#34;name&#34;: &#34;Faith Smith&#34;,
+        &#34;email&#34;: &#34;faith@example.com&#34;,
+        &#34;activated&#34;: false
+    }
+}</samp></pre>
+</figure>
+
+<p>And if you open your Mailtrap inbox again, you should now see the new welcome email containing the activation token for <code>faith@example.com</code>, like so:</p>
+
+<figure class="img">
+<img src="assets/img/14.03-01.png" alt="14.03-01.png" />
+</figure>
+
+<p>So, in my case, we can see that <code>faith@example.com</code> has been sent the activation token <code>P4B3URJZJ2NW5UPZC2OHN4H2NM</code>. If you&rsquo;re following along, your token should be a different 26-character string.</p>
+
+<p>Out of interest, let&rsquo;s quickly look inside the <code>tokens</code> table in our PostgreSQL database. Again, the exact values in your database will be different, but it should look similar to this:</p>
+
+<figure class="code bash">
+<pre>$ psql $GREENLIGHT_DB_DSN
+Password for user greenlight: 
+<samp>psql (15.4 (Ubuntu 15.4-1.pgdg22.04+1))
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+Type &#34;help&#34; for help.</samp>
+
+greenlight=&gt; SELECT * FROM tokens;
+<samp>                                 hash                               | user_id |         expiry         |   scope    
+--------------------------------------------------------------------+---------+------------------------+------------
+ \x09bcb40206b25fe511bfef4d56cbe8c4a141869fc29612fa984b371ef086f5f5 |       7 | 2021-04-18 20:25:41+02 | activation</samp></pre>
+</figure>
+
+<p>We can see here that the activation token hash is displayed as the value:</p>
+
+<figure class="code plain">
+<pre>09bcb40206b25fe511bfef4d56cbe8c4a141869fc29612fa984b371ef086f5f5</pre>
+</figure>
+
+<p>As we mentioned earlier, <code>psql</code> always displays values in <code>bytea</code> columns as a hex-encoded string. So what we&rsquo;re seeing here is a <em>hexadecimal encoding of the SHA-256 hash of the plaintext token</em> <code>P4B3URJZJ2NW5UPZC2OHN4H2NM</code> that we sent in the welcome email.</p>
+
+<aside class="hint"><p>
+<strong>Note:</strong> If you want, you can verify that this is correct by entering a plaintext activation token from the welcome email into this <a href="https://xorbin.com/tools/sha256-hash-calculator">online SHA-256 hash generator</a>. You should see that the result matches the hex-encoded value inside your PostgreSQL database.
+</p></aside>
+
+<p>Notice too that the <code>user_id</code> value of <code>7</code> is correct for our <code>faith@example.com</code> user, the expiry time has been correctly set to three days from now, and the token has the scope value <code>activation</code>?</p>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="a-standalone-endpoint-for-generating-tokens">A standalone endpoint for generating tokens</h4>
+
+<p>You may also want to provide a standalone endpoint for generating and sending activation tokens to your users. This can be useful if you need to resend an activation token, such as when a user doesn&rsquo;t activate their account within the 3-day time limit, or they never receive their welcome email.</p>
+
+<p>The code to implement this endpoint is a mix of patterns that we&rsquo;ve talked about already, so rather than repeating them in the main flow of the book the instructions are included in <a href="21.02-creating-additional-activation-tokens.html">this appendix</a>.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="14.02-creating-secure-activation-tokens.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="14.04-activating-a-user.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "14.02-creating-secure-activation-tokens.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "14.04-activating-a-user.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

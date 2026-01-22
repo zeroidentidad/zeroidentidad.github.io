@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Sending emails &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; Sending emails</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="12.03-registering-a-user.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="13.01-smtp-server-setup.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 13.</div>
+			<h1 id="sending-emails">Sending emails</h1>
+
+<p>In this section of the book we&rsquo;re going to inject some interactivity into our API, and adapt our <code>registerUserHandler</code> so that it sends the user a welcome email after they successfully register.</p>
+
+<p>In the process of doing this we&rsquo;ll cover a few interesting topics. You&rsquo;ll learn:</p>
+
+<ul>
+<li><p>How to use the <a href="https://mailtrap.io/">Mailtrap</a> SMTP service to send and monitor test emails during development.</p></li>
+
+<li><p>How to use the <code>html/template</code> package and Go&rsquo;s <em>embedded files</em> functionality to create dynamic and easy-to-manage templates for your email content.</p></li>
+
+<li><p>How to create a reusable <code>internal/mailer</code> package for sending emails from your application.</p></li>
+
+<li><p>How to implement a pattern for sending emails in background goroutines, and how to wait for these to complete during a graceful shutdown.</p></li>
+</ul>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="12.03-registering-a-user.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="13.01-smtp-server-setup.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "12.03-registering-a-user.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "13.01-smtp-server-setup.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

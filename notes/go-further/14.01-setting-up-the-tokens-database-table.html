@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Setting up the tokens database table  &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="14.00-user-activation.html">User activation</a> &rsaquo; Setting up the tokens database table </span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="14.00-user-activation.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="14.02-creating-secure-activation-tokens.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 14.1.</div>
+			<h2 id="setting-up-the-tokens-database-table">Setting up the tokens database table</h2>
+
+<p>Let&rsquo;s begin by creating a new <code>tokens</code> table in our database to store the activation tokens for our users. If you&rsquo;re following along, run the following command to create a new pair of migration files:</p>
+
+<figure class="code bash">
+<pre>$ migrate create -seq -ext .sql -dir ./migrations create_tokens_table
+<samp>/home/alex/Projects/greenlight/migrations/000005_create_tokens_table.up.sql
+/home/alex/Projects/greenlight/migrations/000005_create_tokens_table.down.sql</samp></pre>
+</figure>
+
+<p>And then add the following SQL statements to the &lsquo;up&rsquo; and &lsquo;down&rsquo; migration files respectively:</p>
+
+<figure class="code sql">
+<figcaption>File: migrations/000005_create_tokens_table.up.sql</figcaption>
+<pre><span class="k">CREATE</span> <span class="k">TABLE</span> <span class="k">IF</span> <span class="k">NOT</span> <span class="k">EXISTS</span> <span class="n">tokens</span> <span class="p">(</span>
+    <span class="n">hash</span> <span class="n">bytea</span> <span class="k">PRIMARY</span> <span class="k">KEY</span><span class="p">,</span>
+    <span class="n">user_id</span> <span class="nb">bigint</span> <span class="k">NOT</span> <span class="k">NULL</span> <span class="k">REFERENCES</span> <span class="n">users</span> <span class="k">ON</span> <span class="k">DELETE</span> <span class="k">CASCADE</span><span class="p">,</span>
+    <span class="n">expiry</span> <span class="k">timestamp</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="k">with</span> <span class="n">time</span> <span class="k">zone</span> <span class="k">NOT</span> <span class="k">NULL</span><span class="p">,</span>
+    <span class="k">scope</span> <span class="nb">text</span> <span class="k">NOT</span> <span class="k">NULL</span>
+<span class="p">)</span><span class="p">;</span></pre>
+</figure>
+
+<figure class="code sql">
+<figcaption>File: migrations/000005_create_tokens_table.down.sql</figcaption>
+<pre><span class="k">DROP</span> <span class="k">TABLE</span> <span class="k">IF</span> <span class="k">EXISTS</span> <span class="n">tokens</span><span class="p">;</span></pre>
+</figure>
+
+<p>Let&rsquo;s quickly step through the columns in this new <code>tokens</code> table and explain their purpose.</p>
+
+<ul>
+<li><p>The <code>hash</code> column will contain a SHA-256 hash of the activation token. It&rsquo;s important to emphasize that we will only store a hash of the activation token in our database &mdash; not the activation token itself.</p>
+
+<p>We want to hash the token before storing it for the same reason that we bcrypt a user&rsquo;s password &mdash; it provides an extra layer of protection if the database is ever compromised or leaked. Because our activation token is going to be a high-entropy random string (128 bits) &mdash; rather than something low-entropy like a typical user password &mdash; <a href="https://security.stackexchange.com/questions/151257/what-kind-of-hashing-to-use-for-storing-rest-api-tokens-in-the-database">it is sufficient</a> to use a fast algorithm like SHA-256 to create the hash, instead of a slow algorithm like bcrypt.</p></li>
+
+<li><p>The <code>user_id</code> column will contain the ID of the user associated with the token. We use the <code>REFERENCES users</code> syntax to create a <a href="https://www.postgresqltutorial.com/postgresql-foreign-key/">foreign key constraint</a> against the primary key of our <code>users</code> table, which ensures that any value in the <code>user_id</code> column has a corresponding <code>id</code> entry in our <code>users</code> table.</p>
+
+<p>We also use the <code>ON DELETE CASCADE</code> syntax to instruct PostgreSQL to <em>automatically delete all records for a user in our <code>tokens</code> table when the parent record in the <code>users</code> table is deleted</em>.</p>
+
+<aside class="hint"><p>
+<strong>Note:</strong> A common alternative to <code>ON DELETE CASCADE</code> is <code>ON DELETE RESTRICT</code>, which in our case would <em>prevent</em> a parent record in the <code>users</code> table from being deleted if the user has any tokens in our <code>tokens</code> table. If you use <code>ON DELETE RESTRICT</code>, you would need to manually delete any tokens for the user <em>before</em> you delete the user record itself.
+</p></aside></li>
+
+<li><p>The <code>expiry</code> column will contain the time when a token is considered &lsquo;expired&rsquo; and no longer valid. Setting a short expiry time is good from a security point of view because it helps reduce the window of possibility for a successful brute-force attack against the token. And it also helps in the scenario where the user is <em>sent a token but doesn&rsquo;t use it</em>, and their email account is compromised at a later time. By setting a short time limit, it reduces the time window that the compromised token could be used.</p>
+
+<p>Of course, the security risks here need to be weighed up against usability, and we want the expiry time to be long enough for a user to be able to activate the account at their leisure. In our case, we&rsquo;ll set the expiry time for our activation tokens to 3 days from the moment the token was created.</p></li>
+
+<li><p>The <code>scope</code> column will denote what <em>purpose</em> the token can be used for. Later in the book we&rsquo;ll also need to create and store <em>authentication tokens</em>, and most of the code and storage requirements for these are exactly the same as for our activation tokens. So instead of creating separate tables (and the code to interact with them), we&rsquo;ll store them in one table with a value in the <code>scope</code> column to restrict the purpose that the token can be used for.</p></li>
+</ul>
+
+<p>OK, with those explanations out of the way, you should be able to execute the &lsquo;up&rsquo; migration with the following command:</p>
+
+<figure class="code bash">
+<pre>$ migrate -path=./migrations -database=$GREENLIGHT_DB_DSN up
+<samp>5/u create_tokens_table (21.568194ms)</samp></pre>
+</figure>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="14.00-user-activation.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="14.02-creating-secure-activation-tokens.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "14.00-user-activation.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "14.02-creating-secure-activation-tokens.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

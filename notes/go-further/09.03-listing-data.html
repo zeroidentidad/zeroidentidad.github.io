@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Listing data &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="09.00-filtering-sorting-and-pagination.html">Filtering, sorting, and pagination</a> &rsaquo; Listing data</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="09.02-validating-query-string-parameters.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="09.04-filtering-lists.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 9.3.</div>
+			<h2 id="listing-data">Listing data</h2>
+
+<p>OK, let&rsquo;s move on and get our <code>GET /v1/movies</code> endpoint returning some real data.</p>
+
+<p>For now, we&rsquo;ll ignore any query string values provided by the client and return <em>all</em> movie records, sorted by movie ID. This will give us a solid base from which we can develop the more specialized functionality around filtering, sorting, and pagination.</p>
+
+<p>Our aim in this chapter will be to get the endpoint to return a JSON response containing an array of all movies, similar to this:</p>
+
+<figure class="code plain">
+<pre>{
+    &#34;movies&#34;: [
+        {
+            &#34;id&#34;: 1,
+            &#34;title&#34;: &#34;Moana&#34;,
+            &#34;year&#34;: 2015,
+            &#34;runtime&#34;: &#34;107 mins&#34;,
+            &#34;genres&#34;: [
+                &#34;animation&#34;,
+                &#34;adventure&#34;
+            ],
+            &#34;version&#34;: 1
+        },
+        {
+            &#34;id&#34;: 2,
+            &#34;title&#34;: &#34;Black Panther&#34;,
+            &#34;year&#34;: 2018,
+            &#34;runtime&#34;: &#34;134 mins&#34;,
+            &#34;genres&#34;: [
+                &#34;sci-fi&#34;,
+                &#34;action&#34;,
+                &#34;adventure&#34;
+            ],
+            &#34;version&#34;: 2
+        },
+        ... etc.
+    ]
+}</pre>
+</figure>
+
+<h3 id="updating-the-application">Updating the application</h3>
+
+<p>To retrieve this data from our PostgreSQL database, let&rsquo;s create a new <code>GetAll()</code> method on our database model which executes the following SQL query:</p>
+
+<figure class="code plain">
+<pre>SELECT id, created_at, title, year, runtime, genres, version
+FROM movies
+ORDER BY id</pre>
+</figure>
+
+<p>Because we&rsquo;re expecting this SQL query to return multiple records, we&rsquo;ll need to run it using Go&rsquo;s <a href="https://golang.org/pkg/database/sql/#DB.QueryContext"><code>QueryContext()</code></a> method. We already explained how this works in detail in <em>Let&rsquo;s Go</em>, so let&rsquo;s jump into the code:</p>
+
+<figure class="code go">
+<figcaption>File: internal/data/movies.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">data</span>
+
+<span class="o">...</span>
+
+<span class="c1">// Create a new GetAll() method which returns a slice of movies. Although we&#39;re not 
+</span><span class="c1"></span><span class="c1">// using them right now, we&#39;ve set this up to accept the various filter parameters as 
+</span><span class="c1"></span><span class="c1">// arguments.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">m</span> <span class="nx">MovieModel</span><span class="p">)</span> <span class="nf">GetAll</span><span class="p">(</span><span class="nx">title</span> <span class="kt">string</span><span class="p">,</span> <span class="nx">genres</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span><span class="p">,</span> <span class="nx">filters</span> <span class="nx">Filters</span><span class="p">)</span> <span class="p">(</span><span class="p">[</span><span class="p">]</span><span class="o">*</span><span class="nx">Movie</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// Construct the SQL query to retrieve all movie records.
+</span><span class="c1"></span>    <span class="nx">query</span> <span class="o">:=</span> <span class="s">`</span><span class="s">
+</span><span class="s">        SELECT id, created_at, title, year, runtime, genres, version
+</span><span class="s">        FROM movies
+</span><span class="s">        ORDER BY id</span><span class="s">`</span>
+
+    <span class="c1">// Create a context with a 3-second timeout.
+</span><span class="c1"></span>    <span class="nx">ctx</span><span class="p">,</span> <span class="nx">cancel</span> <span class="o">:=</span> <span class="nx">context</span><span class="p">.</span><span class="nf">WithTimeout</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nf">Background</span><span class="p">(</span><span class="p">)</span><span class="p">,</span> <span class="mi">3</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">)</span>
+    <span class="k">defer</span> <span class="nf">cancel</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="c1">// Use QueryContext() to execute the query. This returns a sql.Rows resultset 
+</span><span class="c1"></span>    <span class="c1">// containing the result.
+</span><span class="c1"></span>    <span class="nx">rows</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">m</span><span class="p">.</span><span class="nx">DB</span><span class="p">.</span><span class="nf">QueryContext</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">query</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">err</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Importantly, defer a call to rows.Close() to ensure that the resultset is closed
+</span><span class="c1"></span>    <span class="c1">// before GetAll() returns.
+</span><span class="c1"></span>    <span class="k">defer</span> <span class="nx">rows</span><span class="p">.</span><span class="nf">Close</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="c1">// Initialize an empty slice to hold the movie data.
+</span><span class="c1"></span>    <span class="nx">movies</span> <span class="o">:=</span> <span class="p">[</span><span class="p">]</span><span class="o">*</span><span class="nx">Movie</span><span class="p">{</span><span class="p">}</span>
+
+    <span class="c1">// Use rows.Next to iterate through the rows in the resultset.
+</span><span class="c1"></span>    <span class="k">for</span> <span class="nx">rows</span><span class="p">.</span><span class="nf">Next</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="c1">// Initialize an empty Movie struct to hold the data for an individual movie.
+</span><span class="c1"></span>        <span class="kd">var</span> <span class="nx">movie</span> <span class="nx">Movie</span>
+
+        <span class="c1">// Scan the values from the row into the Movie struct. Again, note that we&#39;re 
+</span><span class="c1"></span>        <span class="c1">// using the pq.Array() adapter on the genres field here.
+</span><span class="c1"></span>        <span class="nx">err</span> <span class="o">:=</span> <span class="nx">rows</span><span class="p">.</span><span class="nf">Scan</span><span class="p">(</span>
+            <span class="o">&amp;</span><span class="nx">movie</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span>
+            <span class="o">&amp;</span><span class="nx">movie</span><span class="p">.</span><span class="nx">CreatedAt</span><span class="p">,</span>
+            <span class="o">&amp;</span><span class="nx">movie</span><span class="p">.</span><span class="nx">Title</span><span class="p">,</span>
+            <span class="o">&amp;</span><span class="nx">movie</span><span class="p">.</span><span class="nx">Year</span><span class="p">,</span>
+            <span class="o">&amp;</span><span class="nx">movie</span><span class="p">.</span><span class="nx">Runtime</span><span class="p">,</span>
+            <span class="nx">pq</span><span class="p">.</span><span class="nf">Array</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">movie</span><span class="p">.</span><span class="nx">Genres</span><span class="p">)</span><span class="p">,</span>
+            <span class="o">&amp;</span><span class="nx">movie</span><span class="p">.</span><span class="nx">Version</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">err</span>
+        <span class="p">}</span>
+
+        <span class="c1">// Add the Movie struct to the slice.
+</span><span class="c1"></span>        <span class="nx">movies</span> <span class="p">=</span> <span class="nb">append</span><span class="p">(</span><span class="nx">movies</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">movie</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="c1">// After the rows.Next() loop has finished, call rows.Err() to retrieve any error 
+</span><span class="c1"></span>    <span class="c1">// that was encountered during the iteration.
+</span><span class="c1"></span>    <span class="k">if</span> <span class="nx">err</span> <span class="p">=</span> <span class="nx">rows</span><span class="p">.</span><span class="nf">Err</span><span class="p">(</span><span class="p">)</span><span class="p">;</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="kc">nil</span><span class="p">,</span> <span class="nx">err</span>
+    <span class="p">}</span>
+
+    <span class="c1">// If everything went OK, then return the slice of movies.
+</span><span class="c1"></span>    <span class="k">return</span> <span class="nx">movies</span><span class="p">,</span> <span class="kc">nil</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Next up, we need to adapt the <code>listMoviesHandler</code> so that it calls the new <code>GetAll()</code> method to retrieve the movie data, and then writes this data as a JSON response.</p>
+
+<p>If you&rsquo;re following along, go ahead and update the handler like so:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/movies.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">listMoviesHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">input</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">Title</span>  <span class="kt">string</span>
+        <span class="nx">Genres</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span>
+        <span class="nx">data</span><span class="p">.</span><span class="nx">Filters</span>
+    <span class="p">}</span>
+
+    <span class="nx">v</span> <span class="o">:=</span> <span class="nx">validator</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">qs</span> <span class="o">:=</span> <span class="nx">r</span><span class="p">.</span><span class="nx">URL</span><span class="p">.</span><span class="nf">Query</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">input</span><span class="p">.</span><span class="nx">Title</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readString</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;title&#34;</span><span class="p">,</span> <span class="s">&#34;&#34;</span><span class="p">)</span>
+    <span class="nx">input</span><span class="p">.</span><span class="nx">Genres</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readCSV</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;genres&#34;</span><span class="p">,</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span><span class="p">{</span><span class="p">}</span><span class="p">)</span>
+
+    <span class="nx">input</span><span class="p">.</span><span class="nx">Filters</span><span class="p">.</span><span class="nx">Page</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readInt</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;page&#34;</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="nx">v</span><span class="p">)</span>
+    <span class="nx">input</span><span class="p">.</span><span class="nx">Filters</span><span class="p">.</span><span class="nx">PageSize</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readInt</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;page_size&#34;</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="nx">v</span><span class="p">)</span>
+
+    <span class="nx">input</span><span class="p">.</span><span class="nx">Filters</span><span class="p">.</span><span class="nx">Sort</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readString</span><span class="p">(</span><span class="nx">qs</span><span class="p">,</span> <span class="s">&#34;sort&#34;</span><span class="p">,</span> <span class="s">&#34;id&#34;</span><span class="p">)</span>
+    <span class="nx">input</span><span class="p">.</span><span class="nx">Filters</span><span class="p">.</span><span class="nx">SortSafelist</span> <span class="p">=</span> <span class="p">[</span><span class="p">]</span><span class="kt">string</span><span class="p">{</span><span class="s">&#34;id&#34;</span><span class="p">,</span> <span class="s">&#34;title&#34;</span><span class="p">,</span> <span class="s">&#34;year&#34;</span><span class="p">,</span> <span class="s">&#34;runtime&#34;</span><span class="p">,</span> <span class="s">&#34;-id&#34;</span><span class="p">,</span> <span class="s">&#34;-title&#34;</span><span class="p">,</span> <span class="s">&#34;-year&#34;</span><span class="p">,</span> <span class="s">&#34;-runtime&#34;</span><span class="p">}</span>
+
+    <span class="k">if</span> <span class="nx">data</span><span class="p">.</span><span class="nf">ValidateFilters</span><span class="p">(</span><span class="nx">v</span><span class="p">,</span> <span class="nx">input</span><span class="p">.</span><span class="nx">Filters</span><span class="p">)</span><span class="p">;</span> <span class="p">!</span><span class="nx">v</span><span class="p">.</span><span class="nf">Valid</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">failedValidationResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nx">Errors</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Call the GetAll() method to retrieve the movies, passing in the various filter 
+</span><span class="c1"></span>    <span class="c1">// parameters.
+</span><span class="c1"></span>    <span class="nx">movies</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Movies</span><span class="p">.</span><span class="nf">GetAll</span><span class="p">(</span><span class="nx">input</span><span class="p">.</span><span class="nx">Title</span><span class="p">,</span> <span class="nx">input</span><span class="p">.</span><span class="nx">Genres</span><span class="p">,</span> <span class="nx">input</span><span class="p">.</span><span class="nx">Filters</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+    
+    <span class="c1">// Send a JSON response containing the movie data.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">writeJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusOK</span><span class="p">,</span> <span class="nx">envelope</span><span class="p">{</span><span class="s">&#34;movies&#34;</span><span class="p">:</span> <span class="nx">movies</span><span class="p">}</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>And now we should be ready to try this out.</p>
+
+<p>Go ahead and restart the API, then when you make a <code>GET /v1/movies</code> request you should see the slice of movies returned by <code>GetAll()</code> rendered as a JSON array. Similar to this:</p>
+
+<figure class="code bash">
+<pre>$ curl localhost:4000/v1/movies
+<samp>{
+    &#34;movies&#34;: [
+        {
+            &#34;id&#34;: 1,
+            &#34;title&#34;: &#34;Moana&#34;,
+            &#34;year&#34;: 2016,
+            &#34;runtime&#34;: &#34;107 mins&#34;,
+            &#34;genres&#34;: [
+                &#34;animation&#34;,
+                &#34;adventure&#34;
+            ],
+            &#34;version&#34;: 1
+        },
+        {
+            &#34;id&#34;: 2,
+            &#34;title&#34;: &#34;Black Panther&#34;,
+            &#34;year&#34;: 2018,
+            &#34;runtime&#34;: &#34;134 mins&#34;,
+            &#34;genres&#34;: [
+                &#34;sci-fi&#34;,
+                &#34;action&#34;,
+                &#34;adventure&#34;
+            ],
+            &#34;version&#34;: 2
+        },
+        {
+            &#34;id&#34;: 4,
+            &#34;title&#34;: &#34;The Breakfast Club&#34;,
+            &#34;year&#34;: 1985,
+            &#34;runtime&#34;: &#34;97 mins&#34;,
+            &#34;genres&#34;: [
+                &#34;comedy&#34;
+            ],
+            &#34;version&#34;: 5
+        }
+    ]
+}</samp></pre>
+</figure>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="09.02-validating-query-string-parameters.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="09.04-filtering-lists.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "09.02-validating-query-string-parameters.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "09.04-filtering-lists.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Handling partial updates &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="08.00-advanced-crud-operations.html">Advanced CRUD operations</a> &rsaquo; Handling partial updates</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="08.00-advanced-crud-operations.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="08.02-optimistic-concurrency-control.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 8.1.</div>
+			<h2 id="handling-partial-updates">Handling partial updates</h2>
+
+<p>In this chapter we&rsquo;re going to change the behavior of the <code>updateMovieHandler</code> so that it supports <em>partial updates</em> of the movie records. Conceptually this is a little more complicated than making a <em>complete replacement</em>, which is why we laid the groundwork with that approach first.</p>
+
+<p>As an example, let&rsquo;s say that we notice that the release year for <em>The Breakfast Club</em> is incorrect in our database (it should actually be 1985, not 1986). It would be nice if we could send a JSON request containing only the change that needs to be applied, instead of the full movie data, like so:</p>
+
+<figure class="code plain">
+<pre>{&#34;year&#34;: 1985}</pre>
+</figure>
+
+<p>Let&rsquo;s quickly look at what happens if we try to send this request right now:</p>
+
+<figure class="code bash">
+<pre>$ curl -X PUT -d &#39;{&#34;year&#34;: 1985}&#39; localhost:4000/v1/movies/4
+<samp>{
+    &#34;error&#34;: {
+        &#34;genres&#34;: &#34;must be provided&#34;,
+        &#34;runtime&#34;: &#34;must be provided&#34;,
+        &#34;title&#34;: &#34;must be provided&#34;
+    }
+}</samp></pre>
+</figure>
+
+<p>As we mentioned earlier in the book, when decoding the request body, any fields in our <code>input</code> struct which <em>don&rsquo;t</em> have a corresponding key-value pair in the JSON will retain their <a href="https://golang.org/ref/spec#The_zero_value">zero value</a>. We happen to check for these zero values during validation and return the error messages that you see above.</p>
+
+<p>In the context of a partial update, this causes a problem. How do we tell the difference between:</p>
+
+<ul>
+<li>A client <em>providing a key-value pair which has a zero-value value</em> &mdash; like <code>{&quot;title&quot;: &quot;&quot;}</code> &mdash; in which case we want to return a validation error.</li>
+<li>A client <em>not providing a key-value pair</em> in their JSON at all &mdash; in which case we want to &lsquo;skip&rsquo; updating the field but not send a validation error.</li>
+</ul>
+
+<p>To help answer this, let&rsquo;s quickly remind ourselves of what the zero values are for different Go types.</p>
+
+<table>
+<thead>
+<tr>
+<th>Go type</th>
+<th>Zero value</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td><code>int*</code>, <code>uint*</code>, <code>float*</code>, <code>complex</code></td>
+<td><code>0</code></td>
+</tr>
+
+<tr>
+<td><code>string</code></td>
+<td><code>&quot;&quot;</code></td>
+</tr>
+
+<tr>
+<td><code>bool</code></td>
+<td><code>false</code></td>
+</tr>
+
+<tr>
+<td><code>func</code>, <code>array</code>, <code>slice</code>, <code>map</code>, <code>chan</code> and <strong>pointers</strong></td>
+<td><code>nil</code></td>
+</tr>
+</tbody>
+</table>
+<p>The key thing to notice here is that <em>pointers have the zero value <code>nil</code></em>.</p>
+
+<p>So &mdash; in theory &mdash; we could change the fields in our <code>input</code> struct to be pointers. Then to see if a client has provided a particular key-value pair in the JSON, we can simply check whether the corresponding field in the <code>input</code> struct equals <code>nil</code> or not.</p>
+
+<figure class="code go">
+<pre><span class="c1">// Use pointers for the Title, Year and Runtime fields.
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">input</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">Title</span>   <span class="o">*</span><span class="kt">string</span>       <span class="s">`</span><span class="s">json:&#34;title&#34;</span><span class="s">`</span>   <span class="c1">// This will be nil if there is no corresponding key in the JSON.
+</span><span class="c1"></span>    <span class="nx">Year</span>    <span class="o">*</span><span class="kt">int32</span>        <span class="s">`</span><span class="s">json:&#34;year&#34;</span><span class="s">`</span>    <span class="c1">// Likewise...
+</span><span class="c1"></span>    <span class="nx">Runtime</span> <span class="o">*</span><span class="nx">data</span><span class="p">.</span><span class="nx">Runtime</span> <span class="s">`</span><span class="s">json:&#34;runtime&#34;</span><span class="s">`</span> <span class="c1">// Likewise...
+</span><span class="c1"></span>    <span class="nx">Genres</span>  <span class="p">[</span><span class="p">]</span><span class="kt">string</span>      <span class="s">`</span><span class="s">json:&#34;genres&#34;</span><span class="s">`</span>  <span class="c1">// We don&#39;t need to change this because slices already have the zero value nil.
+</span><span class="c1"></span><span class="p">}</span></pre>
+</figure>
+
+<h3 id="performing-the-partial-update">Performing the partial update</h3>
+
+<p>Let&rsquo;s put this into practice, and edit our <code>updateMovieHandler</code> method so it supports partial updates as follows:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/movies.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">updateMovieHandler</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">id</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readIDParam</span><span class="p">(</span><span class="nx">r</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">notFoundResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Retrieve the movie record as normal.
+</span><span class="c1"></span>    <span class="nx">movie</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Movies</span><span class="p">.</span><span class="nf">Get</span><span class="p">(</span><span class="nx">id</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="k">switch</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="nx">errors</span><span class="p">.</span><span class="nf">Is</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span> <span class="nx">data</span><span class="p">.</span><span class="nx">ErrRecordNotFound</span><span class="p">)</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">notFoundResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+        <span class="k">default</span><span class="p">:</span>
+            <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="p">}</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Use pointers for the Title, Year and Runtime fields.
+</span><span class="c1"></span>    <span class="kd">var</span> <span class="nx">input</span> <span class="kd">struct</span> <span class="p">{</span>
+        <span class="nx">Title</span>   <span class="o">*</span><span class="kt">string</span>       <span class="s">`</span><span class="s">json:&#34;title&#34;</span><span class="s">`</span>
+        <span class="nx">Year</span>    <span class="o">*</span><span class="kt">int32</span>        <span class="s">`</span><span class="s">json:&#34;year&#34;</span><span class="s">`</span>
+        <span class="nx">Runtime</span> <span class="o">*</span><span class="nx">data</span><span class="p">.</span><span class="nx">Runtime</span> <span class="s">`</span><span class="s">json:&#34;runtime&#34;</span><span class="s">`</span>
+        <span class="nx">Genres</span>  <span class="p">[</span><span class="p">]</span><span class="kt">string</span>      <span class="s">`</span><span class="s">json:&#34;genres&#34;</span><span class="s">`</span>
+    <span class="p">}</span>
+
+    <span class="c1">// Decode the JSON as normal.
+</span><span class="c1"></span>    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">readJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="o">&amp;</span><span class="nx">input</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">badRequestResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="c1">// If the input.Title value is nil, then we know that no corresponding &#34;title&#34; 
+</span><span class="c1"></span>    <span class="c1">// key-value pair was provided in the JSON request body. So we move on and leave the 
+</span><span class="c1"></span>    <span class="c1">// movie record unchanged. Otherwise, we update the movie record with the new title
+</span><span class="c1"></span>    <span class="c1">// value. Importantly, because input.Title is now a pointer to a string, we need 
+</span><span class="c1"></span>    <span class="c1">// to dereference the pointer using the * operator to get the underlying value
+</span><span class="c1"></span>    <span class="c1">// before assigning it to our movie record.
+</span><span class="c1"></span>    <span class="k">if</span> <span class="nx">input</span><span class="p">.</span><span class="nx">Title</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">movie</span><span class="p">.</span><span class="nx">Title</span> <span class="p">=</span> <span class="o">*</span><span class="nx">input</span><span class="p">.</span><span class="nx">Title</span>
+    <span class="p">}</span>
+
+    <span class="c1">// We also do the same for the other fields in the input struct.
+</span><span class="c1"></span>    <span class="k">if</span> <span class="nx">input</span><span class="p">.</span><span class="nx">Year</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">movie</span><span class="p">.</span><span class="nx">Year</span> <span class="p">=</span> <span class="o">*</span><span class="nx">input</span><span class="p">.</span><span class="nx">Year</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="nx">input</span><span class="p">.</span><span class="nx">Runtime</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">movie</span><span class="p">.</span><span class="nx">Runtime</span> <span class="p">=</span> <span class="o">*</span><span class="nx">input</span><span class="p">.</span><span class="nx">Runtime</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="nx">input</span><span class="p">.</span><span class="nx">Genres</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">movie</span><span class="p">.</span><span class="nx">Genres</span> <span class="p">=</span> <span class="nx">input</span><span class="p">.</span><span class="nx">Genres</span> <span class="c1">// Note that we don&#39;t need to dereference a slice.
+</span><span class="c1"></span>    <span class="p">}</span>
+
+    <span class="nx">v</span> <span class="o">:=</span> <span class="nx">validator</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="p">)</span>
+    
+    <span class="k">if</span> <span class="nx">data</span><span class="p">.</span><span class="nf">ValidateMovie</span><span class="p">(</span><span class="nx">v</span><span class="p">,</span> <span class="nx">movie</span><span class="p">)</span><span class="p">;</span> <span class="p">!</span><span class="nx">v</span><span class="p">.</span><span class="nf">Valid</span><span class="p">(</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">failedValidationResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">v</span><span class="p">.</span><span class="nx">Errors</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nx">models</span><span class="p">.</span><span class="nx">Movies</span><span class="p">.</span><span class="nf">Update</span><span class="p">(</span><span class="nx">movie</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="p">}</span>
+
+    <span class="nx">err</span> <span class="p">=</span> <span class="nx">app</span><span class="p">.</span><span class="nf">writeJSON</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusOK</span><span class="p">,</span> <span class="nx">envelope</span><span class="p">{</span><span class="s">&#34;movie&#34;</span><span class="p">:</span> <span class="nx">movie</span><span class="p">}</span><span class="p">,</span> <span class="kc">nil</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+        <span class="nx">app</span><span class="p">.</span><span class="nf">serverErrorResponse</span><span class="p">(</span><span class="nx">w</span><span class="p">,</span> <span class="nx">r</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>To summarize this: we&rsquo;ve changed our <code>input</code> struct so that all the fields now have the zero value <code>nil</code>. After parsing the JSON request, we then go through the <code>input</code> struct fields and only update the movie record if the new value is <em>not</em> <code>nil</code>.</p>
+
+<p>In addition to this, for API endpoints which perform <em>partial updates</em> on a resource, it&rsquo;s appropriate to use the HTTP method <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/PATCH"><code>PATCH</code></a> rather than <code>PUT</code> (which is intended for replacing a resource in full).</p>
+
+<p>So, before we try out our new code, let&rsquo;s quickly update our <code>cmd/api/routes.go</code> file so that our <code>updateMovieHandler</code> is only used for <code>PATCH</code> requests.</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/routes.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="o">...</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">routes</span><span class="p">(</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span> <span class="p">{</span>
+    <span class="nx">router</span> <span class="o">:=</span> <span class="nx">httprouter</span><span class="p">.</span><span class="nf">New</span><span class="p">(</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nx">NotFound</span> <span class="p">=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">notFoundResponse</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nx">MethodNotAllowed</span> <span class="p">=</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">methodNotAllowedResponse</span><span class="p">)</span>
+
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/healthcheck&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">healthcheckHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPost</span><span class="p">,</span> <span class="s">&#34;/v1/movies&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">createMovieHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodGet</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">showMovieHandler</span><span class="p">)</span>
+    <span class="c1">// Require a PATCH request, rather than PUT.
+</span><span class="c1"></span>    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodPatch</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">updateMovieHandler</span><span class="p">)</span>
+    <span class="nx">router</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">MethodDelete</span><span class="p">,</span> <span class="s">&#34;/v1/movies/:id&#34;</span><span class="p">,</span> <span class="nx">app</span><span class="p">.</span><span class="nx">deleteMovieHandler</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="nx">app</span><span class="p">.</span><span class="nf">recoverPanic</span><span class="p">(</span><span class="nx">router</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<h3 id="demonstration">Demonstration</h3>
+
+<p>With that all set up, let&rsquo;s check that this partial update functionality works by correcting the release year for <em>The Breakfast Club</em> to 1985. Like so:</p>
+
+<figure class="code bash">
+<pre>$ curl -X PATCH -d &#39;{&#34;year&#34;: 1985}&#39; localhost:4000/v1/movies/4
+<samp>{
+    &#34;movie&#34;: {
+        &#34;id&#34;: 4,
+        &#34;title&#34;: &#34;The Breakfast Club&#34;,
+        &#34;year&#34;: 1985,
+        &#34;runtime&#34;: &#34;96 mins&#34;,
+        &#34;genres&#34;: [
+            &#34;drama&#34;
+        ],
+        &#34;version&#34;: 2
+    }
+}</samp></pre>
+</figure>
+
+<p>Again, that&rsquo;s looking good. We can see that the <code>year</code> value has been correctly updated, and the <code>version</code> number has been incremented, but none of the other data fields have been changed.</p>
+
+<p>Let&rsquo;s also quickly try the same request but including an empty <code>title</code> value. In this case the update will be blocked and you should receive a validation error, like so:</p>
+
+<figure class="code bash">
+<pre>$ curl -X PATCH -d &#39;{&#34;year&#34;: 1985, &#34;title&#34;: &#34;&#34;}&#39; localhost:4000/v1/movies/4
+<samp>{
+    &#34;error&#34;: {
+        &#34;title&#34;: &#34;must be provided&#34;
+    }
+}</samp></pre>
+</figure>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="null-values-in-json">Null values in JSON</h4>
+
+<p>One special case to be aware of is when the client explicitly <em>supplies a field in the JSON request with the value <code>null</code></em>. In this case, our handler will ignore the field and treat it like it hasn&rsquo;t been supplied.</p>
+
+<p>For example, the following request would result in no changes to the movie record (apart from the <code>version</code> number being incremented):</p>
+
+<figure class="code bash">
+<pre>$ curl -X PATCH -d &#39;{&#34;title&#34;: null, &#34;year&#34;: null}&#39; localhost:4000/v1/movies/4
+<samp>{
+    &#34;movie&#34;: {
+        &#34;id&#34;: 4,
+        &#34;title&#34;: &#34;The Breakfast Club&#34;,
+        &#34;year&#34;: 1985,
+        &#34;runtime&#34;: &#34;96 mins&#34;,
+        &#34;genres&#34;: [
+            &#34;drama&#34;
+        ],
+        &#34;version&#34;: 3
+    }
+}</samp></pre>
+</figure>
+
+<p>In an ideal world this type of request would return some kind of validation error. But &mdash; unless you write your own custom JSON parser &mdash; there is no way to determine the difference between the client not supplying a key-value pair in the JSON, or supplying it with the value <code>null</code>.</p>
+
+<p>In most cases, it will probably suffice to explain this special case behavior in client documentation for the endpoint, and say something like <em>&ldquo;JSON items with <code>null</code> values will be ignored and will remain unchanged&rdquo;</em>.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="08.00-advanced-crud-operations.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="08.02-optimistic-concurrency-control.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "08.00-advanced-crud-operations.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "08.02-optimistic-concurrency-control.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

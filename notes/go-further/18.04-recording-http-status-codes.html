@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Recording HTTP status codes &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="18.00-metrics.html">Metrics</a> &rsaquo; Recording HTTP status codes</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="18.03-request-level-metrics.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="19.00-building-versioning-and-quality-control.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 18.4.</div>
+			<h2 id="recording-http-status-codes">Recording HTTP status codes</h2>
+
+<p>As well as recording the total count of responses sent, we can take this further and extend our <code>metrics()</code> middleware to start tallying exactly which HTTP status codes our responses had.</p>
+
+<p>The tricky part of doing this is finding out <em>what HTTP status code a response has</em> in our <code>metrics()</code> middleware. Unfortunately Go doesn&rsquo;t support this out-of-the-box &mdash; there is no built-in way to examine an <code>http.ResponseWriter</code> to see what status code is going to be sent to a client.</p>
+
+<p>To capture the response status code, we&rsquo;ll instead need to create our own custom <code>http.ResponseWriter</code> that records a copy of the HTTP status code for future access.</p>
+
+<p>Before Go 1.20 was released, doing this was brittle and <a href="https://github.com/felixge/httpsnoop#why-this-package-exists">awkward to get right</a>. But now Go has the <code>http.ResponseController</code> type with support for <code>http.ResponseWriter</code> <em>unwrapping</em>, it&rsquo;s much more straightforward to implement yourself.</p>
+
+<aside class="hint"><p>
+<strong>Hint:</strong> If you need to work with an older version of Go, I highly recommend using the third-party <a href="https://github.com/felixge/httpsnoop"><code>httpsnoop</code></a> package rather than implementing your own custom <code>http.ResponseWriter</code>.
+</p></aside>
+
+<p>Effectively, we want to create a struct that wraps an existing <code>http.ResponseWriter</code> and has custom <code>Write()</code> and <code>WriteHeader()</code> methods implemented on it which record the response status code. Importantly, we should also implement an <code>Unwrap()</code> method on it, which returns the original, wrapped, <code>http.ResponseWriter</code> value.</p>
+
+<p>The code we want to write looks like this:</p>
+
+<figure class="code go">
+<pre><span class="c1">// The metricsResponseWriter type wraps an existing http.ResponseWriter and also
+</span><span class="c1"></span><span class="c1">// contains a field for recording the response status code, and a boolean flag to
+</span><span class="c1"></span><span class="c1">// indicate whether the response headers have already been written.
+</span><span class="c1"></span><span class="kd">type</span> <span class="nx">metricsResponseWriter</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">wrapped</span>       <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span>
+    <span class="nx">statusCode</span>    <span class="kt">int</span>
+    <span class="nx">headerWritten</span> <span class="kt">bool</span>
+<span class="p">}</span>
+
+<span class="c1">// This function returns a new metricsResponseWriter instance which wraps a given 
+</span><span class="c1"></span><span class="c1">// http.ResponseWriter and has a status code of 200 (which is the status
+</span><span class="c1"></span><span class="c1">// code that Go will send in an HTTP response by default).
+</span><span class="c1"></span><span class="kd">func</span> <span class="nf">newMetricsResponseWriter</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">)</span> <span class="o">*</span><span class="nx">metricsResponseWriter</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="o">&amp;</span><span class="nx">metricsResponseWriter</span><span class="p">{</span>
+        <span class="nx">wrapped</span><span class="p">:</span>    <span class="nx">w</span><span class="p">,</span>
+        <span class="nx">statusCode</span><span class="p">:</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusOK</span><span class="p">,</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="c1">// The Header() method is a simple &#39;pass through&#39; to the Header() method of the
+</span><span class="c1"></span><span class="c1">// wrapped http.ResponseWriter.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">mw</span> <span class="o">*</span><span class="nx">metricsResponseWriter</span><span class="p">)</span> <span class="nf">Header</span><span class="p">(</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Header</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="nx">mw</span><span class="p">.</span><span class="nx">wrapped</span><span class="p">.</span><span class="nf">Header</span><span class="p">(</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="c1">// Again, the WriteHeader() method does a &#39;pass through&#39; to the WriteHeader()
+</span><span class="c1"></span><span class="c1">// method of the wrapped http.ResponseWriter. But after this returns,
+</span><span class="c1"></span><span class="c1">// we also record the response status code (if it hasn&#39;t already been recorded)
+</span><span class="c1"></span><span class="c1">// and set the headerWritten field to true to indicate that the HTTP response  
+</span><span class="c1"></span><span class="c1">// headers have now been written.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">mw</span> <span class="o">*</span><span class="nx">metricsResponseWriter</span><span class="p">)</span> <span class="nf">WriteHeader</span><span class="p">(</span><span class="nx">statusCode</span> <span class="kt">int</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">mw</span><span class="p">.</span><span class="nx">wrapped</span><span class="p">.</span><span class="nf">WriteHeader</span><span class="p">(</span><span class="nx">statusCode</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="p">!</span><span class="nx">mw</span><span class="p">.</span><span class="nx">headerWritten</span> <span class="p">{</span>
+        <span class="nx">mw</span><span class="p">.</span><span class="nx">statusCode</span> <span class="p">=</span> <span class="nx">statusCode</span>
+        <span class="nx">mw</span><span class="p">.</span><span class="nx">headerWritten</span> <span class="p">=</span> <span class="kc">true</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="c1">// Likewise the Write() method does a &#39;pass through&#39; to the Write() method of the
+</span><span class="c1"></span><span class="c1">// wrapped http.ResponseWriter. Calling this will automatically write any 
+</span><span class="c1"></span><span class="c1">// response headers, so we set the headerWritten field to true.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">mw</span> <span class="o">*</span><span class="nx">metricsResponseWriter</span><span class="p">)</span> <span class="nf">Write</span><span class="p">(</span><span class="nx">b</span> <span class="p">[</span><span class="p">]</span><span class="kt">byte</span><span class="p">)</span> <span class="p">(</span><span class="kt">int</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">mw</span><span class="p">.</span><span class="nx">headerWritten</span> <span class="p">=</span> <span class="kc">true</span>
+    <span class="k">return</span> <span class="nx">mw</span><span class="p">.</span><span class="nx">wrapped</span><span class="p">.</span><span class="nf">Write</span><span class="p">(</span><span class="nx">b</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="c1">// We also need an Unwrap() method which returns the existing wrapped
+</span><span class="c1"></span><span class="c1">// http.ResponseWriter.
+</span><span class="c1"></span><span class="kd">func</span> <span class="p">(</span><span class="nx">mw</span> <span class="o">*</span><span class="nx">metricsResponseWriter</span><span class="p">)</span> <span class="nf">Unwrap</span><span class="p">(</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="nx">mw</span><span class="p">.</span><span class="nx">wrapped</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>The important thing to note is that our <code>metricsResponseWriter</code> type <em>satisfies</em> the <a href="https://pkg.go.dev/net/http#ResponseWriter"><code>http.ResponseWriter</code> interface</a>. It has <code>Header()</code>, <code>WriteHeader()</code> and <code>Write()</code> methods with the appropriate signature, so we can use it in our handlers just like normal.</p>
+
+<p>Also, notice that we don&rsquo;t record the status code until <em>after</em> the &lsquo;pass through&rsquo; call in the <code>WriteHeader()</code> method. This is because a panic in that operation (potentially due to an invalid status code) may mean that a different status code is ultimately sent to the client.</p>
+
+<p>Lastly, we also set a default status code of <code>200 OK</code> in the <code>newMetricsResponseWriter()</code> function. It&rsquo;s important that we set this default here, in case a handler doesn&rsquo;t ever call <code>Write()</code> or <code>WriteHeader()</code>.</p>
+
+<p>But ultimately, our <code>metricsResponseWriter</code> is really just a light layer over the top of an existing <code>http.ResponseWriter</code> value.</p>
+
+<p>Let&rsquo;s move on, and adapt our <code>metrics()</code> middleware to use this. We&rsquo;ll also need to publish a new <code>total_responses_sent_by_status</code> variable using the <a href="https://golang.org/pkg/expvar/#NewMap"><code>expvar.NewMap()</code></a> function. This will give us a map in which we can store the different HTTP status codes, along with a running count of responses for each status.</p>
+
+<p>Go ahead and update the <code>cmd/api/middleware.go</code> file as follows:</p>
+
+<figure class="code go">
+<figcaption>File: cmd/api/middleware.go</figcaption>
+<pre><span class="kn">package</span> <span class="nx">main</span>
+
+<span class="kn">import</span> <span class="p">(</span>
+    <span class="s">&#34;errors&#34;</span>
+    <span class="s">&#34;expvar&#34;</span>
+    <span class="s">&#34;fmt&#34;</span>
+    <span class="s">&#34;net&#34;</span>
+    <span class="s">&#34;net/http&#34;</span>
+    <span class="s">&#34;strconv&#34;</span> <span class="c1">// New import
+</span><span class="c1"></span>    <span class="s">&#34;strings&#34;</span>
+    <span class="s">&#34;sync&#34;</span>
+    <span class="s">&#34;time&#34;</span>
+
+    <span class="s">&#34;greenlight.alexedwards.net/internal/data&#34;</span>
+    <span class="s">&#34;greenlight.alexedwards.net/internal/validator&#34;</span>
+
+    <span class="s">&#34;golang.org/x/time/rate&#34;</span>
+<span class="p">)</span>
+
+<span class="o">...</span>
+
+<span class="kd">type</span> <span class="nx">metricsResponseWriter</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">wrapped</span>       <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span>
+    <span class="nx">statusCode</span>    <span class="kt">int</span>
+    <span class="nx">headerWritten</span> <span class="kt">bool</span>
+<span class="p">}</span>
+
+<span class="kd">func</span> <span class="nf">newMetricsResponseWriter</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">)</span> <span class="o">*</span><span class="nx">metricsResponseWriter</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="o">&amp;</span><span class="nx">metricsResponseWriter</span><span class="p">{</span>
+        <span class="nx">wrapped</span><span class="p">:</span>    <span class="nx">w</span><span class="p">,</span>
+        <span class="nx">statusCode</span><span class="p">:</span> <span class="nx">http</span><span class="p">.</span><span class="nx">StatusOK</span><span class="p">,</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">mw</span> <span class="o">*</span><span class="nx">metricsResponseWriter</span><span class="p">)</span> <span class="nf">Header</span><span class="p">(</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Header</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="nx">mw</span><span class="p">.</span><span class="nx">wrapped</span><span class="p">.</span><span class="nf">Header</span><span class="p">(</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">mw</span> <span class="o">*</span><span class="nx">metricsResponseWriter</span><span class="p">)</span> <span class="nf">WriteHeader</span><span class="p">(</span><span class="nx">statusCode</span> <span class="kt">int</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">mw</span><span class="p">.</span><span class="nx">wrapped</span><span class="p">.</span><span class="nf">WriteHeader</span><span class="p">(</span><span class="nx">statusCode</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="p">!</span><span class="nx">mw</span><span class="p">.</span><span class="nx">headerWritten</span> <span class="p">{</span>
+        <span class="nx">mw</span><span class="p">.</span><span class="nx">statusCode</span> <span class="p">=</span> <span class="nx">statusCode</span>
+        <span class="nx">mw</span><span class="p">.</span><span class="nx">headerWritten</span> <span class="p">=</span> <span class="kc">true</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">mw</span> <span class="o">*</span><span class="nx">metricsResponseWriter</span><span class="p">)</span> <span class="nf">Write</span><span class="p">(</span><span class="nx">b</span> <span class="p">[</span><span class="p">]</span><span class="kt">byte</span><span class="p">)</span> <span class="p">(</span><span class="kt">int</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">mw</span><span class="p">.</span><span class="nx">headerWritten</span> <span class="p">=</span> <span class="kc">true</span>
+    <span class="k">return</span> <span class="nx">mw</span><span class="p">.</span><span class="nx">wrapped</span><span class="p">.</span><span class="nf">Write</span><span class="p">(</span><span class="nx">b</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">mw</span> <span class="o">*</span><span class="nx">metricsResponseWriter</span><span class="p">)</span> <span class="nf">Unwrap</span><span class="p">(</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="nx">mw</span><span class="p">.</span><span class="nx">wrapped</span>
+<span class="p">}</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">app</span> <span class="o">*</span><span class="nx">application</span><span class="p">)</span> <span class="nf">metrics</span><span class="p">(</span><span class="nx">next</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">Handler</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="p">(</span>
+        <span class="nx">totalRequestsReceived</span>           <span class="p">=</span> <span class="nx">expvar</span><span class="p">.</span><span class="nf">NewInt</span><span class="p">(</span><span class="s">&#34;total_requests_received&#34;</span><span class="p">)</span>
+        <span class="nx">totalResponsesSent</span>              <span class="p">=</span> <span class="nx">expvar</span><span class="p">.</span><span class="nf">NewInt</span><span class="p">(</span><span class="s">&#34;total_responses_sent&#34;</span><span class="p">)</span>
+        <span class="nx">totalProcessingTimeMicroseconds</span> <span class="p">=</span> <span class="nx">expvar</span><span class="p">.</span><span class="nf">NewInt</span><span class="p">(</span><span class="s">&#34;total_processing_time_μs&#34;</span><span class="p">)</span>
+
+        <span class="c1">// Declare a new expvar map to hold the count of responses for each HTTP status
+</span><span class="c1"></span>        <span class="c1">// code.
+</span><span class="c1"></span>        <span class="nx">totalResponsesSentByStatus</span> <span class="p">=</span> <span class="nx">expvar</span><span class="p">.</span><span class="nf">NewMap</span><span class="p">(</span><span class="s">&#34;total_responses_sent_by_status&#34;</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="nx">http</span><span class="p">.</span><span class="nf">HandlerFunc</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span> <span class="nx">r</span> <span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">start</span> <span class="o">:=</span> <span class="nx">time</span><span class="p">.</span><span class="nf">Now</span><span class="p">(</span><span class="p">)</span>
+
+        <span class="nx">totalRequestsReceived</span><span class="p">.</span><span class="nf">Add</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="c1">// Create a new metricsResponseWriter, which wraps the original  
+</span><span class="c1"></span>        <span class="c1">// http.ResponseWriter value that the metrics middleware received.
+</span><span class="c1"></span>        <span class="nx">mw</span> <span class="o">:=</span> <span class="nf">newMetricsResponseWriter</span><span class="p">(</span><span class="nx">w</span><span class="p">)</span>
+        
+        <span class="c1">// Call the next handler in the chain using the new metricsResponseWriter
+</span><span class="c1"></span>        <span class="c1">// as the http.ResponseWriter value.
+</span><span class="c1"></span>        <span class="nx">next</span><span class="p">.</span><span class="nf">ServeHTTP</span><span class="p">(</span><span class="nx">mw</span><span class="p">,</span> <span class="nx">r</span><span class="p">)</span>
+
+        <span class="nx">totalResponsesSent</span><span class="p">.</span><span class="nf">Add</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="c1">// At this point, the response status code should be stored in the
+</span><span class="c1"></span>        <span class="c1">// mw.statusCode field. Note that the expvar map is string-keyed, so we
+</span><span class="c1"></span>        <span class="c1">// need to use the strconv.Itoa() function to convert the status code
+</span><span class="c1"></span>        <span class="c1">// (which is an integer) to a string. Then we use the Add() method on
+</span><span class="c1"></span>        <span class="c1">// our new totalResponsesSentByStatus map to increment the count for the
+</span><span class="c1"></span>        <span class="c1">// given status code by 1.
+</span><span class="c1"></span>        <span class="nx">totalResponsesSentByStatus</span><span class="p">.</span><span class="nf">Add</span><span class="p">(</span><span class="nx">strconv</span><span class="p">.</span><span class="nf">Itoa</span><span class="p">(</span><span class="nx">mw</span><span class="p">.</span><span class="nx">statusCode</span><span class="p">)</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+
+        <span class="nx">duration</span> <span class="o">:=</span> <span class="nx">time</span><span class="p">.</span><span class="nf">Since</span><span class="p">(</span><span class="nx">start</span><span class="p">)</span><span class="p">.</span><span class="nf">Microseconds</span><span class="p">(</span><span class="p">)</span>
+        <span class="nx">totalProcessingTimeMicroseconds</span><span class="p">.</span><span class="nf">Add</span><span class="p">(</span><span class="nx">duration</span><span class="p">)</span>
+    <span class="p">}</span><span class="p">)</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>Alright, let&rsquo;s try this out. Run the API again, but this time <em>leave the rate limiter enabled</em>. Like so:</p>
+
+<figure class="code bash">
+<pre>$ go run ./cmd/api
+<samp>time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development</samp></pre>
+</figure>
+
+<p>Then use <code>hey</code> again to generate some load against the <code>POST /v1/tokens/authentication</code> endpoint. This should result in a small number of successful <code>201 Created</code> responses, but many more <code>429 Too Many Requests</code> responses due to the rate limit being hit.</p>
+
+<figure class="code bash">
+<pre>$ BODY=&#39;{&#34;email&#34;: &#34;alice@example.com&#34;, &#34;password&#34;: &#34;pa55word&#34;}&#39;
+$ hey -d &#34;$BODY&#34; -m &#34;POST&#34; http://localhost:4000/v1/tokens/authentication
+
+<samp>Summary:
+  Total:        0.3351 secs
+  Slowest:      0.3334 secs
+  Fastest:      0.0001 secs
+  Average:      0.0089 secs
+  Requests/sec: 596.9162
+  
+  Total data: 7556 bytes
+  Size/request: 37 bytes
+
+Response time histogram:
+  0.000 [1]   |
+  0.033 [195] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+  0.067 [0]   |
+  0.100 [0]   |
+  0.133 [0]   |
+  0.167 [0]   |
+  0.200 [0]   |
+  0.233 [0]   |
+  0.267 [0]   |
+  0.300 [0]   |
+  0.333 [4]   |■
+
+
+Latency distribution:
+  10% in 0.0002 secs
+  25% in 0.0002 secs
+  50% in 0.0014 secs
+  75% in 0.0047 secs
+  90% in 0.0075 secs
+  95% in 0.0088 secs
+  99% in 0.3311 secs
+
+Details (average, fastest, slowest):
+  DNS+dialup: 0.0008 secs, 0.0001 secs, 0.3334 secs
+  DNS-lookup: 0.0006 secs, 0.0000 secs, 0.0041 secs
+  req write:  0.0002 secs, 0.0000 secs, 0.0033 secs
+  resp wait:  0.0078 secs, 0.0001 secs, 0.3291 secs
+  resp read:  0.0000 secs, 0.0000 secs, 0.0015 secs
+
+Status code distribution:
+  [201] 4 responses
+  [429] 196 responses</samp></pre>
+</figure>
+
+<p>And if you take a look at the metrics in your browser, you should now see the same corresponding counts for each status code under the <code>total_responses_sent_by_status</code> item, similar to this:</p>
+
+<figure class="img">
+<img src="assets/img/18.04-01.png" alt="18.04-01.png" />
+</figure>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="visualizing-and-analyzing-metrics">Visualizing and analyzing metrics</h4>
+
+<p>Now that we have some good application-level metrics being recorded, there is the whole question of <em>what should you do with them?</em></p>
+
+<p>The answer to this will be different from project-to-project.</p>
+
+<p>For some low-value applications, it might be sufficient to manually spot check the metrics every so often &mdash; or only when you suspect a problem &mdash; and make sure that nothing looks unusual or out of place.</p>
+
+<p>In other projects, you might want to write a script to periodically fetch the JSON data from the <code>GET /debug/vars</code> endpoint and carry out further analysis. This might include functionality to alert you if something appears to be abnormal.</p>
+
+<p>At the other end of the spectrum, you might want to use a tool like <a href="https://prometheus.io/">Prometheus</a> to fetch and visualize the data from the endpoint, and display graphs of the metrics in real-time.</p>
+
+<p>There are a lot of different options, and the right thing to do really depends on the needs of your project and business. But in all cases, using the <code>expvar</code> package to collect and publish the metrics gives you a great platform from which you can integrate any external monitoring, alerting or visualization tools.</p>
+
+<h4 id="embedded-http-responsewriter">Embedded http.ResponseWriter</h4>
+
+<p>If you want, you could change the <code>metricsResponseWriter</code> struct so that it <em>embeds</em> an <code>http.ResponseWriter</code> instead of wrapping it. Like this:</p>
+
+<figure class="code go">
+<pre><span class="kd">type</span> <span class="nx">metricsResponseWriter</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span>
+    <span class="nx">statusCode</span>    <span class="kt">int</span>
+    <span class="nx">headerWritten</span> <span class="kt">bool</span>
+<span class="p">}</span>
+
+<span class="kd">func</span> <span class="nf">newMetricsResponseWriter</span><span class="p">(</span><span class="nx">w</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">)</span> <span class="o">*</span><span class="nx">metricsResponseWriter</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="o">&amp;</span><span class="nx">metricsResponseWriter</span><span class="p">{</span>
+        <span class="nx">ResponseWriter</span><span class="p">:</span> <span class="nx">w</span><span class="p">,</span>
+        <span class="nx">statusCode</span><span class="p">:</span>     <span class="nx">http</span><span class="p">.</span><span class="nx">StatusOK</span><span class="p">,</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">mw</span> <span class="o">*</span><span class="nx">metricsResponseWriter</span><span class="p">)</span> <span class="nf">WriteHeader</span><span class="p">(</span><span class="nx">statusCode</span> <span class="kt">int</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">mw</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">.</span><span class="nf">WriteHeader</span><span class="p">(</span><span class="nx">statusCode</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="p">!</span><span class="nx">mw</span><span class="p">.</span><span class="nx">headerWritten</span> <span class="p">{</span>
+        <span class="nx">mw</span><span class="p">.</span><span class="nx">statusCode</span> <span class="p">=</span> <span class="nx">statusCode</span>
+        <span class="nx">mw</span><span class="p">.</span><span class="nx">headerWritten</span> <span class="p">=</span> <span class="kc">true</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">mw</span> <span class="o">*</span><span class="nx">metricsResponseWriter</span><span class="p">)</span> <span class="nf">Write</span><span class="p">(</span><span class="nx">b</span> <span class="p">[</span><span class="p">]</span><span class="kt">byte</span><span class="p">)</span> <span class="p">(</span><span class="kt">int</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">mw</span><span class="p">.</span><span class="nx">headerWritten</span> <span class="p">=</span> <span class="kc">true</span>
+    <span class="k">return</span> <span class="nx">mw</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">.</span><span class="nf">Write</span><span class="p">(</span><span class="nx">b</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="kd">func</span> <span class="p">(</span><span class="nx">mw</span> <span class="o">*</span><span class="nx">metricsResponseWriter</span><span class="p">)</span> <span class="nf">Unwrap</span><span class="p">(</span><span class="p">)</span> <span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="nx">mw</span><span class="p">.</span><span class="nx">ResponseWriter</span>
+<span class="p">}</span></pre>
+</figure>
+
+<p>This will give you the same end result as the original approach. However, the gain is that you don&rsquo;t need to write a <code>Header()</code> method for the <code>metricsResponseWriter</code> struct (it&rsquo;s automatically promoted from the embedded <code>http.ResponseWriter</code>). Whereas the loss &mdash; at least in my eyes &mdash; is that it&rsquo;s a bit less clear and explicit than using a <code>wrapped</code> field. Either approach is fine, it&rsquo;s really just a matter of taste which one you prefer.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="18.03-request-level-metrics.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="19.00-building-versioning-and-quality-control.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "18.03-request-level-metrics.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "19.00-building-versioning-and-quality-control.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

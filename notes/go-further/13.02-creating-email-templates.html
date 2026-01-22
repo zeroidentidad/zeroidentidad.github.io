@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Creating email templates &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="13.00-sending-emails.html">Sending emails</a> &rsaquo; Creating email templates</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="13.01-smtp-server-setup.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="13.03-sending-a-welcome-email.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 13.2.</div>
+			<h2 id="creating-email-templates">Creating email templates</h2>
+
+<p>To start with, we&rsquo;ll keep the content of the welcome email really simple, with a short message to let the user know that their registration was successful and to confirm their ID number. Similar to this:</p>
+
+<figure class="code plain">
+<pre>Hi,
+
+Thanks for signing up for a Greenlight account. We&#39;re excited to have you on board!
+
+For future reference, your user ID number is 123.
+
+Thanks,
+
+The Greenlight Team</pre>
+</figure>
+
+<aside class="hint"><p>
+<strong>Note:</strong> Including the user ID probably isn&rsquo;t something you&rsquo;d normally do in a welcome email, but it&rsquo;s a simple way for us to demonstrate how to include <em>dynamic data</em> in emails &mdash; rather than just static content.
+</p></aside>
+
+<p>There are several different approaches we could take to define and manage the content for this email, but a convenient and flexible way is to use Go&rsquo;s templating functionality from the <a href="https://golang.org/pkg/html/template/"><code>html/template</code></a> package.</p>
+
+<p>If you&rsquo;re following along, begin by creating a new <code>internal/mailer/templates</code> folder in your project directory and then add a <code>user_welcome.tmpl</code> file. Like so:</p>
+
+<figure class="code bash">
+<pre>$ mkdir -p internal/mailer/templates
+$ touch internal/mailer/templates/user_welcome.tmpl</pre>
+</figure>
+
+<p>Inside this file, we&rsquo;re going to define three <em>named templates</em> to use as part of our welcome email:</p>
+
+<ul>
+<li>A <code>&quot;subject&quot;</code> template containing the subject line for the email.</li>
+<li>A <code>&quot;plainBody&quot;</code> template containing the plain-text variant of the email message body.</li>
+<li>A <code>&quot;htmlBody&quot;</code> template containing the HTML variant of the email message body.</li>
+</ul>
+
+<p>Go ahead and update the <code>internal/mailer/templates/user_welcome.tmpl</code> file to include the content for these templates:</p>
+
+<figure class="code plain">
+<figcaption>File: internal/mailer/templates/user_welcome.tmpl</figcaption>
+<pre>{{define &#34;subject&#34;}}Welcome to Greenlight!{{end}}
+
+{{define &#34;plainBody&#34;}}
+Hi,
+
+Thanks for signing up for a Greenlight account. We&#39;re excited to have you on board!
+
+For future reference, your user ID number is {{.ID}}.
+
+Thanks,
+
+The Greenlight Team
+{{end}}
+
+{{define &#34;htmlBody&#34;}}
+&lt;!doctype html&gt;
+&lt;html&gt;
+
+&lt;head&gt;
+    &lt;meta name=&#34;viewport&#34; content=&#34;width=device-width&#34; /&gt;
+    &lt;meta http-equiv=&#34;Content-Type&#34; content=&#34;text/html; charset=UTF-8&#34; /&gt;
+&lt;/head&gt;
+
+&lt;body&gt;
+    &lt;p&gt;Hi,&lt;/p&gt;
+    &lt;p&gt;Thanks for signing up for a Greenlight account. We&#39;re excited to have you on board!&lt;/p&gt;
+    &lt;p&gt;For future reference, your user ID number is {{.ID}}.&lt;/p&gt;
+    &lt;p&gt;Thanks,&lt;/p&gt;
+    &lt;p&gt;The Greenlight Team&lt;/p&gt;
+&lt;/body&gt;
+
+&lt;/html&gt;
+{{end}}</pre>
+</figure>
+
+<p>If you&rsquo;ve read <em>Let&rsquo;s Go</em>, this template syntax and structure should look very familiar to you, and we won&rsquo;t dwell on the details again here. But basically:</p>
+
+<ul>
+<li>We&rsquo;ve defined the three <em>named templates</em> using the <code>{{define &quot;...&quot;}}...{{end}}</code> tags.</li>
+<li>You can render dynamic data in these templates via the <code>.</code> character (referred to as <em>dot</em>). In the next chapter we&rsquo;ll pass a <code>User</code> struct to the templates as dynamic data, which means that we can then render the user&rsquo;s ID using the tag <code>{{.ID}}</code> in the templates.</li>
+</ul>
+
+<aside class="hint"><p>
+<strong>Note:</strong> If you need to frequently change the text of emails or require them to be user-editable, then it might be appropriate to store these templates as strings in your database instead. But I&rsquo;ve found that storing them in a file, like we are here, is a less complicated approach and a good starting point for most projects.
+</p></aside>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="13.01-smtp-server-setup.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="13.03-sending-a-welcome-email.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "13.01-smtp-server-setup.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "13.03-sending-a-welcome-email.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

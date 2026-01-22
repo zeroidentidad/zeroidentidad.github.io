@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Running the API as a background service &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="20.00-deployment-and-hosting.html">Deployment and hosting</a> &rsaquo; Running the API as a background service</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="20.03-deployment-and-executing-migrations.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="20.05-using-caddy-as-a-reverse-proxy.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 20.4.</div>
+			<h2 id="running-the-api-as-a-background-service">Running the API as a background service</h2>
+
+<p>Now that we know our API executable works fine on our production droplet, the next step is to configure it to run as a <em>background service</em>, including starting up automatically when the droplet is rebooted.</p>
+
+<p>There are a few different tools we could use to do this, but in this book we will use <a href="https://www.freedesktop.org/wiki/Software/systemd/">systemd</a> &mdash; a collection of tools for managing services that ships with Ubuntu (and many other Linux distributions).</p>
+
+<p>In order to run our API application as a background service, the first thing we need to do is make a <a href="https://www.freedesktop.org/software/systemd/man/systemd.unit.html">unit file</a>, which informs systemd how and when to run the service.</p>
+
+<p>If you&rsquo;re following along, head back to a terminal window on your local machine and create a new <code>remote/production/api.service</code> file in your project directory:</p>
+
+<figure class="code bash">
+<pre>$ mkdir remote/production
+$ touch remote/production/api.service</pre>
+</figure>
+
+<p>And then add the following markup:</p>
+
+<figure class="code shell">
+<figcaption>File: remote/production/api.service</figcaption>
+<pre><span class="o">[</span>Unit<span class="o">]</span>
+<span class="c1"># Description is a human-readable name for the service.</span>
+<span class="nv">Description</span><span class="o">=</span>Greenlight API service
+
+<span class="c1"># Wait until PostgreSQL is running and the network is &#34;up&#34; before starting the service.</span>
+<span class="nv">After</span><span class="o">=</span>postgresql.service
+<span class="nv">After</span><span class="o">=</span>network-online.target
+<span class="nv">Wants</span><span class="o">=</span>network-online.target
+
+<span class="c1"># Configure service start rate limiting. If the service is (re)started more than 5 times</span> 
+<span class="c1"># in 600 seconds then don&#39;t permit it to start anymore.</span>
+<span class="nv">StartLimitIntervalSec</span><span class="o">=</span><span class="m">600</span>
+<span class="nv">StartLimitBurst</span><span class="o">=</span><span class="m">5</span>
+
+<span class="o">[</span>Service<span class="o">]</span>
+<span class="c1"># Execute the API binary as the greenlight user, loading the environment variables from</span>
+<span class="c1"># /etc/environment and using the working directory /home/greenlight.</span>
+<span class="nv">Type</span><span class="o">=</span><span class="nb">exec</span>
+<span class="nv">User</span><span class="o">=</span>greenlight
+<span class="nv">Group</span><span class="o">=</span>greenlight
+<span class="nv">EnvironmentFile</span><span class="o">=</span>/etc/environment
+<span class="nv">WorkingDirectory</span><span class="o">=</span>/home/greenlight
+<span class="nv">ExecStart</span><span class="o">=</span>/home/greenlight/api -port<span class="o">=</span><span class="m">4000</span> -db-dsn<span class="o">=</span><span class="si">${</span><span class="nv">GREENLIGHT_DB_DSN</span><span class="si">}</span> -env<span class="o">=</span>production
+
+<span class="c1"># Automatically restart the service after a 5-second wait if it exits with a non-zero</span> 
+<span class="c1"># exit code. If it restarts more than 5 times in 600 seconds, then the rate limit we</span>
+<span class="c1"># configured above will be hit and it won&#39;t be restarted anymore.</span>
+<span class="nv">Restart</span><span class="o">=</span>on-failure
+<span class="nv">RestartSec</span><span class="o">=</span><span class="m">5</span>
+
+<span class="o">[</span>Install<span class="o">]</span>
+<span class="c1"># Start the service automatically at boot time (the &#39;multi-user.target&#39; describes a boot</span>
+<span class="c1"># state when the system will accept logins).</span>
+<span class="nv">WantedBy</span><span class="o">=</span>multi-user.target</pre>
+</figure>
+
+<p>Now that we&rsquo;ve got a unit file set up, the next step is to install this unit file on our droplet and start up the service. Essentially we need to do three things:</p>
+
+<ol>
+<li>To install the unit file, we need to copy it into the <code>/etc/systemd/system/</code> folder on our droplet. Because this folder is owned by the <code>root</code> user on our droplet, we need to break this down into two steps: first we need to copy the unit file into the <code>greenlight</code> user&rsquo;s home directory, and secondly use the <code>sudo mv</code> command to move it to its final location.</li>
+<li>Then we need to run the <code>systemctl enable api</code>  command  on our droplet to make <code>systemd</code> aware of the new unit file and automatically enable the service when the droplet is rebooted.</li>
+<li>Finally, we need to run <code>systemctl restart api</code> to start (or restart) the service.</li>
+</ol>
+
+<p>All three of these tasks will need to be run with <code>sudo</code>.</p>
+
+<p>Let&rsquo;s update the <code>production/deploy/api</code> makefile rule to automate these tasks for us. Like so:</p>
+
+<figure class="code shell">
+<figcaption>File: Makefile</figcaption>
+<pre>
+...
+
+<span class="c1"># ==================================================================================== #</span>
+<span class="c1"># PRODUCTION</span>
+<span class="c1"># ==================================================================================== #</span>
+
+<span class="nv">production_host_ip</span> <span class="o">=</span> <span class="s1">&#39;161.35.71.158&#39;</span>
+
+...
+
+<span class="c1">## production/deploy/api: deploy the api to production</span>
+.PHONY: production/deploy/api
+production/deploy/api:
+	rsync -P ./bin/linux_amd64/api greenlight@<span class="si">${</span><span class="nv">production_host_ip</span><span class="si">}</span>:~
+	rsync -rP --delete ./migrations greenlight@<span class="si">${</span><span class="nv">production_host_ip</span><span class="si">}</span>:~
+	rsync -P ./remote/production/api.service greenlight@<span class="si">${</span><span class="nv">production_host_ip</span><span class="si">}</span>:~
+	ssh -t greenlight@<span class="si">${</span><span class="nv">production_host_ip</span><span class="si">}</span> <span class="s1">&#39;\
+</span><span class="s1">		migrate -path ~/migrations -database $$GREENLIGHT_DB_DSN up \
+</span><span class="s1">		&amp;&amp; sudo mv ~/api.service /etc/systemd/system/ \
+</span><span class="s1">		&amp;&amp; sudo systemctl enable api \
+</span><span class="s1">		&amp;&amp; sudo systemctl restart api \
+</span><span class="s1">	&#39;</span></pre>
+</figure>
+
+<p>Save the makefile, then go ahead and run the <code>production/deploy/api</code> rule again. You should be prompted to enter the password for the <code>greenlight</code> user when it&rsquo;s executing, and the rule should complete without any errors. The output you see should look similar to this:</p>
+
+<figure class="code bash">
+<pre>$ make production/deploy/api 
+<samp>rsync -P ./bin/linux_amd64/api greenlight@&#34;161.35.71.158&#34;:~
+api
+      7,700,480 100%    2.39GB/s    0:00:00 (xfr#1, to-chk=0/1)
+rsync -rP --delete ./migrations greenlight@&#34;161.35.71.158&#34;:~
+sending incremental file list
+migrations/000001_create_movies_table.down.sql
+             28 100%    0.00kB/s    0:00:00 (xfr#1, to-chk=11/13)
+migrations/000001_create_movies_table.up.sql
+            286 100%  279.30kB/s    0:00:00 (xfr#2, to-chk=10/13)
+migrations/000002_add_movies_check_constraints.down.sql
+            198 100%  193.36kB/s    0:00:00 (xfr#3, to-chk=9/13)
+migrations/000002_add_movies_check_constraints.up.sql
+            289 100%  282.23kB/s    0:00:00 (xfr#4, to-chk=8/13)
+migrations/000003_add_movies_indexes.down.sql
+             78 100%   76.17kB/s    0:00:00 (xfr#5, to-chk=7/13)
+migrations/000003_add_movies_indexes.up.sql
+            170 100%  166.02kB/s    0:00:00 (xfr#6, to-chk=6/13)
+migrations/000004_create_users_table.down.sql
+             27 100%   26.37kB/s    0:00:00 (xfr#7, to-chk=5/13)
+migrations/000004_create_users_table.up.sql
+            294 100%  287.11kB/s    0:00:00 (xfr#8, to-chk=4/13)
+migrations/000005_create_tokens_table.down.sql
+             28 100%   27.34kB/s    0:00:00 (xfr#9, to-chk=3/13)
+migrations/000005_create_tokens_table.up.sql
+            203 100%  198.24kB/s    0:00:00 (xfr#10, to-chk=2/13)
+migrations/000006_add_permissions.down.sql
+             73 100%   71.29kB/s    0:00:00 (xfr#11, to-chk=1/13)
+migrations/000006_add_permissions.up.sql
+            452 100%  441.41kB/s    0:00:00 (xfr#12, to-chk=0/13)
+rsync -P ./remote/production/api.service greenlight@&#34;161.35.71.158&#34;:~
+api.service
+          1,266 100%    0.00kB/s    0:00:00 (xfr#1, to-chk=0/1)
+ssh -t greenlight@&#34;161.35.71.158&#34; &#39;\
+        migrate -path ~/migrations -database $GREENLIGHT_DB_DSN up \
+        &amp;&amp; sudo mv ~/api.service /etc/systemd/system/ \
+        &amp;&amp; sudo systemctl enable api \
+        &amp;&amp; sudo systemctl restart api \
+&#39;
+no change</samp>
+[sudo] password for greenlight: 
+<samp>Created symlink /etc/systemd/system/multi-user.target.wants/api.service → /etc/systemd/system/api.service.
+Connection to 161.35.71.158 closed.</samp></pre>
+</figure>
+
+<p>Next let&rsquo;s connect to the droplet and check the status of our new <code>api</code> service using the <code>sudo systemctl status api</code> command:</p>
+
+<figure class="code bash">
+<pre>$ make production/connect 
+greenlight@greenlight-production:~$ sudo systemctl status api
+<samp>● api.service - Greenlight API service
+     Loaded: loaded (/etc/systemd/system/api.service; enabled; vendor preset: enabled)
+     Active: active (running) since Thu 2023-02-23 17:28:18 CET; 1min 7s ago
+   Main PID: 2717 (api)
+      Tasks: 5 (limit: 512)
+     Memory: 2.9M
+        CPU: 10ms
+     CGroup: /system.slice/api.service
+             └─2717 /home/greenlight/api -port=4000 -db-dsn=postgres://greenlight:pa55word1234@localhost/greenlight -env=production
+
+Feb 23 17:28:18 greenlight-production systemd[1]: Starting Greenlight API service...
+Feb 23 17:28:18 greenlight-production systemd[1]: Started Greenlight API service.
+Feb 23 17:28:18 greenlight-production api[2717]: time=2023-02-23T17:28:18.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+Feb 23 17:28:18 greenlight-production api[2717]: time=2023-02-23T17:28:18.722+02:00 level=INFO msg=&#34;starting server&#34; ...</samp></pre>
+</figure>
+
+<p>Great! This confirms that our <code>api</code> service is running successfully in the background and, in my case, that it has the PID (process ID) <code>2717</code>.</p>
+
+<p>Out of interest, let&rsquo;s also quickly list the running processes for our <code>greenlight</code> user:</p>
+
+<figure class="code bash">
+<pre>greenlight@greenlight-production:~$ ps -U greenlight
+<samp>   PID TTY          TIME CMD
+   2717 ?        00:00:00 api
+   2749 ?        00:00:00 systemd
+   2750 ?        00:00:00 (sd-pam)
+   2807 ?        00:00:00 sshd
+   2808 pts/0    00:00:00 bash
+   2859 pts/0    00:00:00 ps</samp></pre>
+</figure>
+
+<p>That tallies &mdash; we can see the <code>api</code> process listed here with the PID <code>2717</code>, confirming that it is indeed our <code>greenlight</code> user who is running the <code>api</code> binary.</p>
+
+<p>Lastly, let&rsquo;s check from an external perspective and try making a request to our healthcheck endpoint again, either in a browser or with <code>curl</code>. You should get a successful response like so:</p>
+
+<figure class="code bash">
+<pre>$ curl 161.35.71.158:4000/v1/healthcheck
+<samp>{
+    &#34;status&#34;: &#34;available&#34;,
+    &#34;system_info&#34;: {
+        &#34;environment&#34;: &#34;production&#34;,
+        &#34;version&#34;: &#34;1c9b6ff48ea800acdf4f5c6f5c3b62b98baf2bd7&#34;
+    }
+}</samp></pre>
+</figure>
+
+<h3 id="restarting-after-reboot">Restarting after reboot</h3>
+
+<p>By running the <code>systemctl enable api</code> command in our makefile after we copied across the systemd unit file, our API service should be started up automatically after the droplet is rebooted.</p>
+
+<p>If you like, you can verify this yourself. While you&rsquo;re connected to the droplet via SSH, go ahead and reboot it (make sure you are connected to the droplet and don&rsquo;t accidentally reboot your local machine!).</p>
+
+<figure class="code bash">
+<pre>greenlight@greenlight-production:~$ sudo reboot
+greenlight@greenlight-production:~$ Connection to 161.35.71.158 closed by remote host.
+<samp>Connection to 161.35.71.158 closed.
+make: *** [Makefile:91: production/connect] Error 255</samp></pre>
+</figure>
+
+<p>Wait a minute for the reboot to complete and for the droplet to come back online. Then you should be able to reconnect and use <code>systemctl status</code> to check that the service is running again. Like so:</p>
+
+<figure class="code bash">
+<pre>$ make production/connect 
+greenlight@greenlight-production:~$ sudo systemctl status api.service 
+[sudo] password for greenlight: 
+<samp>● api.service - Greenlight API service
+        Loaded: loaded (/etc/systemd/system/api.service; enabled; vendor preset: enabled)
+     Active: active (running) since Thu 2023-02-23 17:34:55 CET; 1min 33s ago
+   Main PID: 895 (api)
+      Tasks: 5 (limit: 512)
+     Memory: 8.8M
+        CPU: 15ms
+     CGroup: /system.slice/api.service
+             └─895 /home/greenlight/api -port=4000 -db-dsn=postgres://greenlight:pa55word1234@localhost/greenlight -env=production
+
+Feb 23 17:28:18 greenlight-production systemd[1]: Starting Greenlight API service...
+Feb 23 17:28:18 greenlight-production systemd[1]: Started Greenlight API service.
+Feb 23 17:28:18 greenlight-production api[2717]: time=2023-02-23T17:28:18.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+Feb 23 17:28:18 greenlight-production api[2717]: time=2023-02-23T17:28:18.722+02:00 level=INFO msg=&#34;starting server&#34; ...</samp></pre>
+</figure>
+
+<h3 id="disable-port-4000">Disable port 4000</h3>
+
+<p>If you&rsquo;ve been following along with the steps in this section of the book, let&rsquo;s revert the temporary firewall change that we made earlier and disallow traffic on port 4000 again.</p>
+
+<figure class="code bash">
+<pre>greenlight@greenlight-production:~$ sudo ufw delete allow 4000/tcp
+<samp>Rule deleted
+Rule deleted (v6)</samp>
+greenlight@greenlight-production:~$ sudo ufw status
+<samp>Status: active
+
+To                         Action      From
+--                         ------      ----
+22                         ALLOW       Anywhere                  
+80/tcp                     ALLOW       Anywhere                  
+443/tcp                    ALLOW       Anywhere                  
+22 (v6)                    ALLOW       Anywhere (v6)             
+80/tcp (v6)                ALLOW       Anywhere (v6)             
+443/tcp (v6)               ALLOW       Anywhere (v6) </samp></pre>
+</figure>
+
+<hr />
+
+<h3 id="additional-information">Additional information</h3>
+
+<h4 id="listening-on-a-restricted-port">Listening on a restricted port</h4>
+
+<p>If you&rsquo;re <em>not</em> planning to run your application behind a reverse proxy, and want to listen for requests directly on port 80 or 443, you&rsquo;ll need to set up your unit file so that the service has the <code>CAP_NET_BIND_SERVICE</code> capability (which will allow it to bind to a restricted port). For example:</p>
+
+<figure class="code shell">
+<pre><span class="o">[</span>Unit<span class="o">]</span>
+<span class="nv">Description</span><span class="o">=</span>Greenlight API service
+
+<span class="nv">After</span><span class="o">=</span>postgresql.service
+<span class="nv">After</span><span class="o">=</span>network-online.target
+<span class="nv">Wants</span><span class="o">=</span>network-online.target
+
+<span class="nv">StartLimitIntervalSec</span><span class="o">=</span><span class="m">600</span>
+<span class="nv">StartLimitBurst</span><span class="o">=</span><span class="m">5</span>
+
+<span class="o">[</span>Service<span class="o">]</span>
+<span class="nv">Type</span><span class="o">=</span><span class="nb">exec</span>
+<span class="nv">User</span><span class="o">=</span>greenlight
+<span class="nv">Group</span><span class="o">=</span>greenlight
+<span class="nv">CapabilityBoundingSet</span><span class="o">=</span>CAP_NET_BIND_SERVICE
+<span class="nv">AmbientCapabilities</span><span class="o">=</span>CAP_NET_BIND_SERVICE
+<span class="nv">EnvironmentFile</span><span class="o">=</span>/etc/environment
+<span class="nv">WorkingDirectory</span><span class="o">=</span>/home/greenlight
+<span class="nv">ExecStart</span><span class="o">=</span>/home/greenlight/api -port<span class="o">=</span><span class="m">80</span> -db-dsn<span class="o">=</span><span class="si">${</span><span class="nv">GREENLIGHT_DB_DSN</span><span class="si">}</span> -env<span class="o">=</span>production
+
+<span class="nv">Restart</span><span class="o">=</span>on-failure
+<span class="nv">RestartSec</span><span class="o">=</span><span class="m">5</span>
+
+<span class="o">[</span>Install<span class="o">]</span>
+<span class="nv">WantedBy</span><span class="o">=</span>multi-user.target</pre>
+</figure>
+
+<h4 id="viewing-logs">Viewing logs</h4>
+
+<p>It&rsquo;s possible to view the logs for your background service using the <code>journalctl</code> command, like so:</p>
+
+<figure class="code bash">
+<pre>$ sudo journalctl -u api
+<samp>-- Logs begin at Sun 2021-04-18 14:55:45 EDT, end at Mon 2021-04-19 03:39:55 EDT. --
+Apr 19 03:24:35 greenlight-production systemd[1]: Starting Greenlight API service...
+Apr 19 03:24:35 greenlight-production systemd[1]: Started Greenlight API service.
+Apr 19 03:24:35 greenlight-production api[6997]: time=2023-02-23T17:28:18.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+Apr 19 03:24:35 greenlight-production api[6997]: time=2023-02-23T17:28:18.722+02:00 level=INFO msg=&#34;starting server&#34; ...</samp></pre>
+</figure>
+
+<p>The <code>journalctl</code> command is really powerful and offers a wide variety of parameters that you can use to filter your log messages and customize the formatting. <a href="https://www.digitalocean.com/community/tutorials/how-to-use-journalctl-to-view-and-manipulate-systemd-logs">This article</a> provides a great introduction to the details of <code>journalctl</code> and is well worth a read.</p>
+
+<h4 id="configuring-the-smtp-provider">Configuring the SMTP provider</h4>
+
+<p>Our unit file is currently set up to start our API with the following command:</p>
+
+<figure class="code plain">
+<pre>ExecStart=/home/greenlight/api -port=4000 -db-dsn=${GREENLIGHT_DB_DSN} -env=production</pre>
+</figure>
+
+<p>It&rsquo;s important to remember that apart from the <code>port</code>, <code>db-dsn</code> and <code>env</code> flags that we&rsquo;re specifying here, our application will still be using the default values for the other settings which are hardcoded into the <code>cmd/api/main.go</code> file &mdash; including the SMTP credentials for your Mailtrap inbox. Under normal circumstances, you would want to set your production SMTP credentials as part of this command in the unit file too.</p>
+
+<h4 id="additional-unit-file-options">Additional unit file options</h4>
+
+<p>Systemd unit files offer a huge range of configuration options, and we&rsquo;ve only just scratched the surface in this chapter. For more information, the <a href="https://www.digitalocean.com/community/tutorials/understanding-systemd-units-and-unit-files">Understanding Systemd Units and Unit Files</a> article is a really good overview, and you can find comprehensive (albeit dense) information in the <a href="https://www.freedesktop.org/software/systemd/man/systemd.service.html">man pages</a>.</p>
+
+<p>There is also <a href="https://gist.github.com/ageis/f5595e59b1cddb1513d1b425a323db04">this gist</a> which talks through the various security options that you can use to help harden your service.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="20.03-deployment-and-executing-migrations.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="20.05-using-caddy-as-a-reverse-proxy.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "20.03-deployment-and-executing-migrations.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "20.05-using-caddy-as-a-reverse-proxy.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

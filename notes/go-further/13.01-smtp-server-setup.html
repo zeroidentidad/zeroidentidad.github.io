@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>SMTP server setup &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="13.00-sending-emails.html">Sending emails</a> &rsaquo; SMTP server setup</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="13.00-sending-emails.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="13.02-creating-email-templates.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 13.1.</div>
+			<h2 id="smtp-server-setup">SMTP server setup</h2>
+
+<p>In order to develop our email sending functionality, we&rsquo;ll need access to an SMTP (Simple Mail Transfer Protocol) server that we can safely use for testing purposes.</p>
+
+<p>There are a huge number of SMTP service providers (such as Postmark, Sendgrid or Amazon SES) that we <em>could</em> use to send our emails &mdash; or you can even install and run your own SMTP server. But in this book we&rsquo;re going to use <a href="https://mailtrap.io/">Mailtrap</a>.</p>
+
+<p>The reason for using Mailtrap is because it&rsquo;s a specialist service for <em>sending emails during development and testing</em>. Essentially, it delivers all emails to an inbox that you can access, instead of sending them to the actual recipient.</p>
+
+<p>I&rsquo;ve got no affiliation with the company &mdash; I just find that the service works well and is simple to use. They also offer a &lsquo;free forever&rsquo; plan, which should be sufficient for anyone who is coding along with this book.</p>
+
+<aside class="hint"><p>
+<strong>Note:</strong> If you already have your own SMTP server, or there is an alternative SMTP provider that you want to use instead, that&rsquo;s absolutely fine. Feel free to skip ahead to the next chapter.
+</p></aside>
+
+<h3 id="setting-up-mailtrap">Setting up Mailtrap</h3>
+
+<p>To set up a Mailtrap account, head to the <a href="https://mailtrap.io/register/signup">signup page</a> where you can register using either your email address or your Google or GitHub accounts (if you have them).</p>
+
+<p>Once you&rsquo;re registered and logged in, use the menu to navigate to <strong>Testing › Inboxes</strong>. You should see a page listing your available <em>inboxes</em>, similar to the screenshot below.</p>
+
+<figure class="img">
+<img src="assets/img/13.01-01.png" alt="13.01-01.png" />
+</figure>
+
+<p>Every Mailtrap account comes with one free inbox, which by default is called <strong>Demo inbox</strong>. You can change the name if you want by clicking the pencil icon under <strong>Actions</strong>.</p>
+
+<p>If you go ahead and click through to that inbox, you should see that it&rsquo;s currently empty and contains no emails, similar to this:</p>
+
+<figure class="img">
+<img src="assets/img/13.01-02.png" alt="13.01-02.png" />
+</figure>
+
+<p>Each inbox has its own set of SMTP credentials, which you can display by clicking the <strong>Show Credentials</strong> link (highlighted by the red box in the screenshot above). This will expand to display the inbox SMTP credentials, similar to the screenshot below.</p>
+
+<figure class="img">
+<img src="assets/img/13.01-03.png" alt="13.01-03.png" />
+</figure>
+
+<p>Basically, any emails that you send using these SMTP credentials will end up in this inbox, instead of being sent to the actual recipient.</p>
+
+<p>If you&rsquo;re following along, make a note of the credentials displayed on your screen (or just keep the browser tab open) &mdash; you&rsquo;ll need them in the next chapter.</p>
+
+<aside class="hint"><p>
+<strong>Note:</strong> The credentials in the screenshot above have been reset and are no longer valid, so please don&rsquo;t try to use them!
+</p></aside>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="13.00-sending-emails.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="13.02-creating-email-templates.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "13.00-sending-emails.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "13.02-creating-email-templates.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

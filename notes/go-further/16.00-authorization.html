@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Permission-based authorization &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; Permission-based authorization</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="15.03-authenticating-requests.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="16.01-requiring-user-activation.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 16.</div>
+			<h1 id="permission-based-authorization">Permission-based authorization</h1>
+
+<p>By the time a request leaves our <code>authenticate()</code> middleware, there are now two possible states for the request context. Either:</p>
+
+<ul>
+<li>The request context contains a <code>User</code> struct (representing a valid, authenticated, user).</li>
+<li>Or the request context contains an <code>AnonymousUser</code> struct.</li>
+</ul>
+
+<p>In this section of the book, we&rsquo;re going to take this to the next natural stage and look at how to perform different <em>authorization</em> checks to restrict access to our API endpoints. Specifically, you&rsquo;ll learn how to:</p>
+
+<ul>
+<li><p>Add checks so that only <em>activated users</em> are able to access the various <code>/v1/movies**</code> endpoints.</p></li>
+
+<li><p>Implement a <em>permission-based authorization</em> pattern, which provides fine-grained control over exactly <em>which users can access which endpoints</em>.</p></li>
+</ul>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="15.03-authenticating-requests.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="16.01-requiring-user-activation.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "15.03-authenticating-requests.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "16.01-requiring-user-activation.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>

@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<meta name="author" content="Alex Edwards">
+		<meta name="copyright" content="Copyright Alex Edwards 2025">
+		<title>Creating and using makefiles &mdash; Let's Go Further</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+		<link rel="stylesheet" type="text/css" href="assets/css/main.css">
+		<link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+	</head>
+	<body>
+		<header>
+			<div class="wrapper">
+				<div>
+					
+						
+						<a href="00.00-front-matter.html">Let's Go Further</a> <span class="crumbs">&rsaquo; <a href="19.00-building-versioning-and-quality-control.html">Building, versioning and quality control</a> &rsaquo; Creating and using makefiles</span>
+						
+					
+				</div>
+				<div>
+					&lsaquo; <a href="19.00-building-versioning-and-quality-control.html">Previous</a>
+					&middot; <a href="00.01-contents.html">Contents</a> &middot;
+					<a href="19.02-managing-environment-variables.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</header>
+		<main class="wrapper text">
+			<div class="chapter">Chapter 19.1.</div>
+			<h2 id="creating-and-using-makefiles">Creating and using makefiles</h2>
+
+<p>In this first chapter we&rsquo;re going to look at how to use the GNU <a href="https://www.gnu.org/software/make/manual/make.html"><code>make</code></a> utility and makefiles to help automate common tasks in your project.</p>
+
+<p>The <code>make</code> tool should be pre-installed in most Linux distributions, but if it&rsquo;s not already on your machine you should be able to install it via your package manager. For example, if your OS supports the <code>apt</code> package manager (like Debian and Ubuntu do) you can install it with:</p>
+
+<figure class="code bash">
+<pre>$ sudo apt install make</pre>
+</figure>
+
+<p>It&rsquo;s also probably already on your machine if you use macOS, but if not you can use <code>brew</code> to install it:</p>
+
+<figure class="code bash">
+<pre>$ brew install make</pre>
+</figure>
+
+<p>On Windows machines you can install <code>make</code> using the <a href="https://chocolatey.org">Chocolatey package manager</a> with the command:</p>
+
+<figure class="code bash">
+<pre>&gt; choco install make</pre>
+</figure>
+
+<h3 id="a-simple-makefile">A simple makefile</h3>
+
+<p>Now that the <code>make</code> utility is installed on your system, let&rsquo;s create our first iteration of a <em>makefile</em>. We&rsquo;ll start simple, and then build things up step-by-step.</p>
+
+<p>A makefile is essentially a text file which contains one or more <em>rules</em> that the <code>make</code> utility can run. Each rule has a <em>target</em> and contains a sequence of <em>commands</em> which are executed when the rule is run. Generally speaking, makefile rules have the following structure:</p>
+
+<figure class="code plain">
+<pre># comment (optional)
+target: 
+	command
+	command
+	...</pre>
+</figure>
+
+<aside class="important"><p>
+<strong>Important:</strong> Please note that each command in a makefile rule must start with a tab character, <strong>not spaces</strong>. If you happen to be reading this in PDF format, the tab will appear as a single space character in the snippet above, but please make sure it is a tab character in your own code.
+</p></aside>
+
+<p>If you&rsquo;ve been following along, you should already have an empty <code>Makefile</code> in the root of your project directory. Let&rsquo;s jump in and create a rule which executes the <code>go run ./cmd/api</code> command to run our API application. Like so:</p>
+
+<figure class="code shell">
+<figcaption>File: Makefile</figcaption>
+<pre>run:
+	go run ./cmd/api</pre>
+</figure>
+
+<p>Make sure that the <code>Makefile</code> is saved, and then you can execute a specific rule by running <code>$ make &lt;target&gt;</code> from your terminal.</p>
+
+<p>Let&rsquo;s go ahead and call <code>make run</code> to start the API:</p>
+
+<figure class="code bash">
+<pre>$ make run
+<samp>go run ./cmd/api
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development</samp></pre>
+</figure>
+
+<p>Great, that&rsquo;s worked well. When we type <code>make run</code>, the make utility looks for a file called <code>Makefile</code> or <code>makefile</code> in the current directory and then executes the commands associated with the <code>run</code> target.</p>
+
+<p>One thing to point out &mdash; by default <code>make</code> echoes commands in the terminal output. We can see that in the code above where the first line of the output is the echoed command <code>go run ./cmd/api</code>. If you want, it&rsquo;s possible to suppress commands from being echoed by prefixing them with the <code>@</code> character.</p>
+
+<h3 id="environment-variables">Environment variables</h3>
+
+<p>When we execute a <code>make</code> rule, every environment variable that is available to <code>make</code> when it starts is transformed into a <em>make variable</em> with the same name and value. We can then access these variables using the syntax <code>${VARIABLE_NAME}</code> in our makefile.</p>
+
+<p>To illustrate this, let&rsquo;s create two additional rules &mdash; a <code>psql</code> rule for connecting to our database and an <code>up</code> rule to execute our database migrations. If you&rsquo;ve been following along, both of these rules will need access to the database DSN value from your <code>GREENLIGHT_DB_DSN</code> environment variable.</p>
+
+<p>Go ahead and update your <code>Makefile</code> to include these two new rules like so:</p>
+
+<figure class="code shell">
+<figcaption>File: Makefile</figcaption>
+<pre>run:
+	go run ./cmd/api
+
+psql:
+	psql <span class="si">${</span><span class="nv">GREENLIGHT_DB_DSN</span><span class="si">}</span>
+
+up:
+	@echo <span class="s1">&#39;Running up migrations...&#39;</span>
+	migrate -path ./migrations -database <span class="si">${</span><span class="nv">GREENLIGHT_DB_DSN</span><span class="si">}</span> up</pre>
+</figure>
+
+<p>Notice here how we&rsquo;ve used the <code>@</code> character in the <code>up</code> rule to prevent the <code>echo</code> command <em>from being echoed itself</em> when running?</p>
+
+<p>OK, let&rsquo;s try this out by running <code>make up</code> to execute our database migrations:</p>
+
+<figure class="code bash">
+<pre>$ make up
+<samp>Running up migrations...
+migrate -path ./migrations -database postgres://greenlight:pa55word@localhost/greenlight up
+no change</samp></pre>
+</figure>
+
+<p>You should see from the output that the value of your <code>GREENLIGHT_DB_DSN</code> environment variable is successfully pulled through and used in the <code>make</code> rule. If you&rsquo;ve been following along, there shouldn&rsquo;t be any outstanding migrations to apply, so this should then exit successfully with no further action.</p>
+
+<p>We&rsquo;re also starting to see the benefits of using a makefile here &mdash; being able to type <code>make up</code> is a big improvement on having to remember and use the full command for executing our &lsquo;up&rsquo; migrations.</p>
+
+<p>Likewise, if you want, you can also try running <code>make psql</code> to connect to the <code>greenlight</code> database with <code>psql</code>.</p>
+
+<h3 id="passing-arguments">Passing arguments</h3>
+
+<p>The <code>make</code> utility also allows you to pass <em>named arguments</em> when executing a particular rule. To illustrate this, let&rsquo;s add a <code>migration</code> rule to our makefile to generate a new pair of migration files. The idea is that when we execute this rule we&rsquo;ll pass the name of the migration files as an argument, similar to this:</p>
+
+<figure class="code bash">
+<pre>$ make migration name=create_example_table</pre>
+</figure>
+
+<p>The syntax to access the value of named arguments is exactly the same as for accessing environment variables. So, in the example above, we could access the migration file name via <code>${name}</code> in our makefile.</p>
+
+<p>Go ahead and update the makefile to include this new <code>migration</code> rule, like so:</p>
+
+<figure class="code shell">
+<figcaption>File: Makefile</figcaption>
+<pre>run:
+	go run ./cmd/api
+
+psql:
+	psql <span class="si">${</span><span class="nv">GREENLIGHT_DB_DSN</span><span class="si">}</span>
+
+migration:
+	@echo <span class="s1">&#39;Creating migration files for ${name}...&#39;</span>
+	migrate create -seq -ext<span class="o">=</span>.sql -dir<span class="o">=</span>./migrations <span class="si">${</span><span class="nv">name</span><span class="si">}</span>
+
+up:
+	@echo <span class="s1">&#39;Running up migrations...&#39;</span>
+	migrate -path ./migrations -database <span class="si">${</span><span class="nv">GREENLIGHT_DB_DSN</span><span class="si">}</span> up</pre>
+</figure>
+
+<p>And if you execute this new rule with the <code>name=create_example_table</code> argument you should see the following output:</p>
+
+<figure class="code bash">
+<pre>$ make migration name=create_example_table
+<samp>Creating migration files for create_example_table ...
+migrate create -seq -ext=.sql -dir=./migrations create_example_table
+/home/alex/Projects/greenlight/migrations/000007_create_example_table.up.sql
+/home/alex/Projects/greenlight/migrations/000007_create_example_table.down.sql</samp></pre>
+</figure>
+
+<p>You&rsquo;ll now also have two new empty migration files with the name <code>create_example_table</code> in your migrations folder. Like so:</p>
+
+<figure class="code bash">
+<pre>$ ls ./migrations/
+<samp>000001_create_movies_table.down.sql           000004_create_users_table.up.sql
+000001_create_movies_table.up.sql             000005_create_tokens_table.down.sql
+000002_add_movies_check_constraints.down.sql  000005_create_tokens_table.up.sql
+000002_add_movies_check_constraints.up.sql    000006_add_permissions.down.sql
+000003_add_movies_indexes.down.sql            000006_add_permissions.up.sql
+000003_add_movies_indexes.up.sql              000007_create_example_table.down.sql
+000004_create_users_table.down.sql            000007_create_example_table.up.sql</samp></pre>
+</figure>
+
+<p>If you&rsquo;re following along, we won&rsquo;t actually be using these two new migration files, so feel free to delete them:</p>
+
+<figure class="code bash">
+<pre>$ rm migrations/000007*</pre>
+</figure>
+
+<aside class="hint"><p>
+<strong>Note:</strong> Variable names in makefiles are case-sensitive, so <code>foo</code>, <code>FOO</code>, and <code>Foo</code> all refer to different variables. The <code>make</code> <a href="https://www.gnu.org/software/make/manual/html_node/Using-Variables.html">documentation</a> suggests using lower case letters for variable names that only serve an internal purpose in the makefile, and using upper case variable names otherwise.
+</p></aside>
+
+<h3 id="namespacing-targets">Namespacing targets</h3>
+
+<p>As your makefile continues to grow, you might want to start <em>namespacing</em> your target names to provide some differentiation between rules and help organize the file. For example, in a large makefile rather than having the target name <code>up</code> it would be clearer to give it the name <code>db/migrations/up</code> instead.</p>
+
+<p>I recommend using the <code>/</code> character as a namespace separator, rather than a period, hyphen or the <code>:</code> character. In fact, the <code>:</code> character should be strictly avoided in target names as it can cause problems when using <em>target prerequisites</em> (something that we&rsquo;ll cover in a moment).</p>
+
+<p>Let&rsquo;s update our target names to use some sensible namespaces, like so:</p>
+
+<figure class="code shell">
+<figcaption>File: Makefile</figcaption>
+<pre>run/api:
+	go run ./cmd/api
+
+db/psql:
+	psql <span class="si">${</span><span class="nv">GREENLIGHT_DB_DSN</span><span class="si">}</span>
+
+db/migrations/new:
+	@echo <span class="s1">&#39;Creating migration files for ${name}...&#39;</span>
+	migrate create -seq -ext<span class="o">=</span>.sql -dir<span class="o">=</span>./migrations <span class="si">${</span><span class="nv">name</span><span class="si">}</span>
+
+db/migrations/up:
+	@echo <span class="s1">&#39;Running up migrations...&#39;</span>
+	migrate -path ./migrations -database <span class="si">${</span><span class="nv">GREENLIGHT_DB_DSN</span><span class="si">}</span> up</pre>
+</figure>
+
+<p>And you should be able to execute the rules by typing the full target name when running <code>make</code>. For example:</p>
+
+<figure class="code bash">
+<pre>$ make run/api 
+<samp>go run ./cmd/api
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development</samp></pre>
+</figure>
+
+<p>A nice feature of using the <code>/</code> character as the namespace separator is that you get tab completion in the terminal when typing target names. For example, if you type <code>make db/migrations/</code> and then hit tab on your keyboard the remaining targets under the namespace will be listed. Like so:</p>
+
+<figure class="code bash">
+<pre>$ make db/migrations/
+<samp>new  up</samp></pre>
+</figure>
+
+<h3 id="prerequisite-targets-and-asking-for-confirmation">Prerequisite targets and asking for confirmation</h3>
+
+<p>The general syntax for a makefile rule that I gave at the start of this chapter was a slight simplification, because it&rsquo;s also possible to specify <em>prerequisite</em> targets.</p>
+
+<figure class="code plain">
+<pre>target: prerequisite-target-1 prerequisite-target-2 ...
+	command
+	command
+	...</pre>
+</figure>
+
+<p>When you specify a prerequisite target for a rule, the corresponding commands for the prerequisite targets will be run <em>before</em> executing the actual target commands.</p>
+
+<p>Let&rsquo;s leverage this functionality to ask the user for <em>confirmation to continue</em> before executing our <code>db/migrations/up</code> rule.</p>
+
+<p>To do this, we&rsquo;ll create a new <code>confirm</code> target which asks the user <code>Are you sure? [y/N]</code> and exits with an error if they do not enter <code>y</code>. Then we&rsquo;ll use this new <code>confirm</code> target as a prerequisite for <code>db/migrations/up</code>.</p>
+
+<p>Go ahead and update your <code>Makefile</code> as follows:</p>
+
+<figure class="code shell">
+<figcaption>File: Makefile</figcaption>
+<pre><span class="c1"># Create the new confirm target.</span>
+confirm:
+	@echo -n <span class="s1">&#39;Are you sure? [y/N] &#39;</span> <span class="o">&amp;&amp;</span> <span class="nb">read</span> ans <span class="o">&amp;&amp;</span> <span class="o">[</span> <span class="nv">$$</span><span class="o">{</span>ans:-N<span class="o">}</span> <span class="o">=</span> y <span class="o">]</span>
+
+run/api:
+	go run ./cmd/api
+
+db/psql:
+	psql <span class="si">${</span><span class="nv">GREENLIGHT_DB_DSN</span><span class="si">}</span>
+
+db/migrations/new:
+	@echo <span class="s1">&#39;Creating migration files for ${name}...&#39;</span>
+	migrate create -seq -ext<span class="o">=</span>.sql -dir<span class="o">=</span>./migrations <span class="si">${</span><span class="nv">name</span><span class="si">}</span>
+
+<span class="c1"># Include it as prerequisite.</span>
+db/migrations/up: confirm
+	@echo <span class="s1">&#39;Running up migrations...&#39;</span>
+	migrate -path ./migrations -database <span class="si">${</span><span class="nv">GREENLIGHT_DB_DSN</span><span class="si">}</span> up</pre>
+</figure>
+
+<p>The code in the <code>confirm</code> target is taken from <a href="https://stackoverflow.com/a/47839479">this StackOverflow post</a>. Essentially, what happens here is that we ask the user <code>Are you sure? [y/N]</code> and then read the response. We then use the code <code>[ $${ans:-N} = y ]</code> to evaluate the response &mdash; this will return <code>true</code> if the user enters <code>y</code> and <code>false</code> if they enter anything else. If a command in a makefile returns <code>false</code>, then <code>make</code> will stop running the rule and exit with an error message &mdash; essentially stopping the rule in its tracks.</p>
+
+<p>Also, importantly, notice that we have set <code>confirm</code> as a prerequisite for the <code>db/migrations/up</code> target?</p>
+
+<p>Let&rsquo;s try this out and see what happens when we enter <code>y</code>:</p>
+
+<figure class="code bash">
+<pre>$ make db/migrations/up 
+<samp>Are you sure? [y/N]</samp> y
+<samp>Running up migrations...
+migrate -path ./migrations -database postgres://greenlight:pa55word@localhost/greenlight up
+no change</samp></pre>
+</figure>
+
+<p>That looks good &mdash; the commands in our <code>db/migrations/up</code> rule have been executed as we would expect.</p>
+
+<p>In contrast, let&rsquo;s try the same thing again but enter any other letter when asked for confirmation. This time, <code>make</code> should exit <em>without</em> executing anything in the <code>db/migrations/up</code> rule. Like so:</p>
+
+<figure class="code bash">
+<pre>$ make db/migrations/up 
+<samp>Are you sure? [y/N]</samp> n
+<samp>make: *** [Makefile:3: confirm] Error 1</samp></pre>
+</figure>
+
+<p>Using a <code>confirm</code> rule as a prerequisite target like this is a really nice reusable pattern. Any time you have a makefile rule which does something destructive or dangerous, you can now just include <code>confirm</code> as a prerequisite target to ask the user for confirmation to continue.</p>
+
+<h3 id="displaying-help-information">Displaying help information</h3>
+
+<p>Another small thing that we can do to make our makefile more user-friendly is to include some comments and help functionality. Specifically, we&rsquo;ll prefix each rule in our makefile with a comment in the following format:</p>
+
+<figure class="code plain">
+<pre>## &lt;example target call&gt;: &lt;help text&gt;</pre>
+</figure>
+
+<p>Then we&rsquo;ll create a new <code>help</code> rule which parses the makefile itself, extracts the help text from the comments using <a href="https://www.gnu.org/software/sed/manual/sed.html"><code>sed</code></a>, formats them into a table and then displays them to the user.</p>
+
+<p>If you&rsquo;re following along, go ahead and update your <code>Makefile</code> so that it looks like this:</p>
+
+<figure class="code shell">
+<figcaption>File: Makefile</figcaption>
+<pre><span class="c1">## help: print this help message</span>
+help:
+	@echo <span class="s1">&#39;Usage:&#39;</span>
+	@sed -n <span class="s1">&#39;s/^##//p&#39;</span> <span class="si">${</span><span class="nv">MAKEFILE_LIST</span><span class="si">}</span> <span class="p">|</span> column -t -s <span class="s1">&#39;:&#39;</span> <span class="p">|</span>  sed -e <span class="s1">&#39;s/^/ /&#39;</span>
+
+confirm:
+	@echo -n <span class="s1">&#39;Are you sure? [y/N] &#39;</span> <span class="o">&amp;&amp;</span> <span class="nb">read</span> ans <span class="o">&amp;&amp;</span> <span class="o">[</span> <span class="nv">$$</span><span class="o">{</span>ans:-N<span class="o">}</span> <span class="o">=</span> y <span class="o">]</span>
+
+<span class="c1">## run/api: run the cmd/api application</span>
+run/api:
+	go run ./cmd/api
+
+<span class="c1">## db/psql: connect to the database using psql</span>
+db/psql:
+	psql <span class="si">${</span><span class="nv">GREENLIGHT_DB_DSN</span><span class="si">}</span>
+
+<span class="c1">## db/migrations/new name=$1: create a new database migration</span>
+db/migrations/new:
+	@echo <span class="s1">&#39;Creating migration files for ${name}...&#39;</span>
+	migrate create -seq -ext<span class="o">=</span>.sql -dir<span class="o">=</span>./migrations <span class="si">${</span><span class="nv">name</span><span class="si">}</span>
+
+<span class="c1">## db/migrations/up: apply all up database migrations</span>
+db/migrations/up: confirm
+	@echo <span class="s1">&#39;Running up migrations...&#39;</span>
+	migrate -path ./migrations -database <span class="si">${</span><span class="nv">GREENLIGHT_DB_DSN</span><span class="si">}</span> up</pre>
+</figure>
+
+<aside class="hint"><p>
+<strong>Note:</strong> <code>MAKEFILE_LIST</code> is a <a href="https://www.gnu.org/software/make/manual/html_node/Special-Variables.html">special variable</a> which contains the name of the makefile being parsed by <code>make</code>.
+</p></aside>
+
+<p>And if you now execute the <code>help</code> target, you should get a response which lists all the available targets and the corresponding help text. Similar to this:</p>
+
+<figure class="code bash">
+<pre>$ make help
+<samp>Usage: 
+  help                        print this help message
+  run/api                     run the cmd/api application
+  db/psql                     connect to the database using psql
+  db/migrations/new name=$1   create a new database migration
+  db/migrations/up            apply all up database migrations</samp> </pre>
+</figure>
+
+<p>I should also point out that positioning the <code>help</code> rule as the first thing in the <code>Makefile</code> is a deliberate move. If you run <code>make</code> <em>without specifying a target</em> then it will default to executing the first rule in the file.</p>
+
+<p>So this means that if you try to run <code>make</code> without a target you&rsquo;ll now be presented with the help information, like so:</p>
+
+<figure class="code bash">
+<pre>$ make
+<samp>Usage: 
+  help                        print this help message
+  run/api                     run the cmd/api application
+  db/psql                     connect to the database using psql
+  db/migrations/new name=$1   create a new database migration
+  db/migrations/up            apply all up database migrations</samp> </pre>
+</figure>
+
+<h3 id="phony-targets">Phony targets</h3>
+
+<p>In this chapter we&rsquo;ve been using <code>make</code> to execute <em>actions</em>, but another (and arguably, the primary) purpose of <code>make</code> is to help create files on disk where <em>the name of a target is the name of a file</em> being created by the rule.</p>
+
+<p>If you&rsquo;re using <code>make</code> primarily to execute actions, like we are, then this can cause a problem if there is a file in your project directory <em>with the same path</em> as a target name.</p>
+
+<p>If you want, you can demonstrate this problem by creating a file called <code>./run/api</code> in the root of your project directory, like so:</p>
+
+<figure class="code bash">
+<pre>$ mkdir run &amp;&amp; touch run/api</pre>
+</figure>
+
+<p>And then if you execute <code>make run/api</code>, instead of our API application starting up you&rsquo;ll get the following message:</p>
+
+<figure class="code bash">
+<pre>$ make run/api 
+<samp>make: &#39;run/api&#39; is up to date.</samp> </pre>
+</figure>
+
+<p>Because we already have a file on disk at <code>./run/api</code>, the <code>make</code> tool considers this rule to have already been executed and so returns the message that we see above without taking any further action.</p>
+
+<p>To work around this, we can declare our makefile targets to be <a href="https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html#Phony-Targets">phony targets</a>:</p>
+
+<blockquote>
+<p>A phony target is one that is not really the name of a file; rather it is just a name for a rule to be executed.</p>
+</blockquote>
+
+<p>To declare a target as phony, you can make it prerequisite of the special <a href="https://www.gnu.org/software/make/manual/html_node/Special-Targets.html#Special-Targets"><code>.PHONY</code></a> target. The syntax looks like this:</p>
+
+<figure class="code plain">
+<pre>.PHONY: target
+target: prerequisite-target-1 prerequisite-target-2 ...
+	command
+	command
+	...</pre>
+</figure>
+
+<p>Let&rsquo;s go ahead and update out <code>Makefile</code> so that all our rules have phony targets, like so:</p>
+
+<figure class="code shell">
+<figcaption>File: Makefile</figcaption>
+<pre><span class="c1">## help: print this help message</span>
+.PHONY: <span class="nb">help</span>
+help:
+	@echo <span class="s1">&#39;Usage:&#39;</span>
+	@sed -n <span class="s1">&#39;s/^##//p&#39;</span> <span class="si">${</span><span class="nv">MAKEFILE_LIST</span><span class="si">}</span> <span class="p">|</span> column -t -s <span class="s1">&#39;:&#39;</span> <span class="p">|</span>  sed -e <span class="s1">&#39;s/^/ /&#39;</span>
+
+.PHONY: confirm
+confirm:
+	@echo -n <span class="s1">&#39;Are you sure? [y/N] &#39;</span> <span class="o">&amp;&amp;</span> <span class="nb">read</span> ans <span class="o">&amp;&amp;</span> <span class="o">[</span> <span class="nv">$$</span><span class="o">{</span>ans:-N<span class="o">}</span> <span class="o">=</span> y <span class="o">]</span>
+
+<span class="c1">## run/api: run the cmd/api application</span>
+.PHONY: run/api
+run/api:
+	go run ./cmd/api
+
+<span class="c1">## db/psql: connect to the database using psql</span>
+.PHONY: db/psql
+db/psql:
+	psql <span class="si">${</span><span class="nv">GREENLIGHT_DB_DSN</span><span class="si">}</span>
+
+<span class="c1">## db/migrations/new name=$1: create a new database migration</span>
+.PHONY: db/migrations/new
+db/migrations/new:
+	@echo <span class="s1">&#39;Creating migration files for ${name}...&#39;</span>
+	migrate create -seq -ext<span class="o">=</span>.sql -dir<span class="o">=</span>./migrations <span class="si">${</span><span class="nv">name</span><span class="si">}</span>
+
+<span class="c1">## db/migrations/up: apply all up database migrations</span>
+.PHONY: db/migrations/up
+db/migrations/up: confirm
+	@echo <span class="s1">&#39;Running up migrations...&#39;</span>
+	migrate -path ./migrations -database <span class="si">${</span><span class="nv">GREENLIGHT_DB_DSN</span><span class="si">}</span> up</pre>
+</figure>
+
+<p>If you run <code>make run/api</code> again now, it should now correctly recognize this as a phony target and execute the rule for us:</p>
+
+<figure class="code bash">
+<pre>$ make run/api 
+<samp>go run ./cmd/api -db-dsn=postgres://greenlight:pa55word@localhost/greenlight
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;database connection pool established&#34;
+time=2023-09-10T10:59:13.722+02:00 level=INFO msg=&#34;starting server&#34; addr=:4000 env=development</samp> </pre>
+</figure>
+
+<p>You might think that it&rsquo;s only necessary to declare targets as phony if you have a conflicting file name, but in practice <em>not declaring a target as phony when it actually is</em> can lead to bugs or confusing behavior. For example, imagine if in the future someone unknowingly creates a file called <code>confirm</code> in the root of the project directory. This would mean that our <code>confirm</code> rule is never executed, which in turn would lead to dangerous or destructive rules being executed without confirmation.</p>
+
+<p>To avoid this kind of bug, if you have a makefile rule which carries out an action (rather than creating a file) then it&rsquo;s best to get into the habit of declaring it as phony.</p>
+
+<p>If you&rsquo;re following along, you can go ahead and remove the contents of the <code>run</code> directory that we just made. Like so:</p>
+
+<figure class="code bash">
+<pre>$ rm -rf run/</pre>
+</figure>
+
+<p>All in all, this is shaping up nicely. Our makefile is starting to contain some helpful functionality, and we&rsquo;ll continue to add more to it over the next few chapters of this book.</p>
+
+<p>Although this is one of the last things we&rsquo;re doing in this build, creating a makefile in the root of a project directory is normally one of the very <em>first</em> things I do when starting a project. I find that using a makefile for common tasks helps save both typing and mental overhead during development, and &mdash; in the longer term &mdash; it acts as a useful entry point and a reminder of how things work when you come back to a project after a long break.</p>
+
+		</main>
+		<footer>
+			<div class="wrapper">
+				<div>
+					&lsaquo; <a href="19.00-building-versioning-and-quality-control.html">Previous</a>
+				</div>
+				<div>
+					<a href="00.01-contents.html">Contents</a>
+				</div>
+				<div>
+					<a href="19.02-managing-environment-variables.html">Next</a> &rsaquo;
+				</div>
+			</div>
+		</footer>
+		<script>
+			document.onkeydown = function(evt) {
+				evt = evt || window.event;
+				switch (evt.keyCode) {
+					
+					case 37:
+						window.location.href = "19.00-building-versioning-and-quality-control.html";
+						break;
+						
+					
+					case 39:
+						window.location.href = "19.02-managing-environment-variables.html";
+						break;
+						
+				}
+			};
+		</script>
+	</body>
+</html>
