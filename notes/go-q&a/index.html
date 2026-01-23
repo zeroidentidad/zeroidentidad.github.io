@@ -179,6 +179,82 @@
 
     <hr />
 
+    <section class="question">
+      <h3>5. ¿Por qué Go no permite variables o importaciones no utilizadas?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Go prioriza el código limpio y eficiente y la seguridad en tiempo de compilación.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Las variables/importaciones no utilizadas indican posibles errores o inflación.</li>
+          <li>El compilador lanza errores para forzar la limpieza.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          // Error: unused import "fmt"
+          // Error: unused variable x
+          import"fmt"
+          func main() {
+            x := 10
+          }
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Evitar que las variables de depuración sobrantes se envíen a producción.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+    <section class="question">
+      <h3>6. ¿Cómo se crea una cadena de varias líneas sin caracteres de escape?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Las cadenas sin formato mejoran la legibilidad de las plantillas o JSON.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Utilice comillas invertidas ` para literales de cadena sin formato.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          s :=`Line 1
+          Line 2
+          Line 3`
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Incrustar consultas SQL o plantillas HTML en el código.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
