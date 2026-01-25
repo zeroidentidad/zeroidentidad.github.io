@@ -1,0 +1,122 @@
+<meta charset="utf-8"/>
+
+<!-- Open Graph -->
+<meta property="og:title" content="Notas.go - Nube - redes" />
+<meta property="og:description" content="Patrones de orquestador" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://zeroidentidad.github.io/notes" />
+<meta property="og:image" content="https://zeroidentidad.github.io/notes/img/advisory.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="1300" />
+
+<!-- Twitter Card (opcional) -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Notas.go - Nube - redes" />
+<meta name="twitter:description" content="Patrones de orquestador" />
+<meta name="twitter:image" content="https://zeroidentidad.github.io/notes/img/advisory.png" />
+
+<link rel="stylesheet" href="../style.css">
+<a href="../">🔙 Regresar</a>
+<co-content>
+ <p variant="body1" style="background-color: #000000;">
+  <u>
+   <strong>
+    Patrones de orquestador:
+   </strong>
+  </u>
+ </p>
+ <p variant="body1">
+  Los patrones de orquestador en Go implican el diseño e implementación de componentes o sistemas responsables de coordinar y gestionar la ejecución de tareas o flujos de trabajo distribuidos. Estos patrones ayudan a lograr la automatización, la escalabilidad y la fiabilidad en sistemas distribuidos. Algunos patrones de orquestador comunes en Go son:
+ </p>
+ <ul bullettype="bullets">
+  <li>
+   <p variant="body1">
+    Orquestación del flujo de trabajo:
+   </p>
+  </li>
+ </ul>
+ <p variant="body1">
+  Descripción: La orquestación del flujo de trabajo coordina la ejecución de una serie de tareas o pasos para lograr un proceso comercial o flujo de trabajo específico.
+ </p>
+ <p variant="body1">
+  Implementación en Go: Utilizar un motor o biblioteca de flujos de trabajo como Cadence, Temporal o Camunda para definir flujos de trabajo como código y orquestar su ejecución. Implementar los pasos del flujo de trabajo como funciones o actividades de Go y utilizar el motor de flujo de trabajo para gestionar dependencias, paralelismo, gestión de errores y gestión de estados.
+ </p>
+ <ul bullettype="bullets">
+  <li>
+   <p variant="body1">
+    Orquestación de servicios:
+   </p>
+  </li>
+ </ul>
+ <p variant="body1">
+  Descripción: La orquestación de servicios coordina la interacción entre múltiples microservicios o componentes para cumplir con un servicio de nivel superior o una solicitud de usuario.
+ </p>
+ <p variant="body1">
+  Implementación en Go: Utilizar una malla de servicios o una puerta de enlace API como Istio, Linkerd o Kong para gestionar la comunicación entre servicios, el enrutamiento de tráfico, el balanceo de carga y la tolerancia a fallos. Implementar orquestadores de servicios como aplicaciones o componentes de Go responsables del enrutamiento de solicitudes, la gestión de reintentos, la interrupción de circuitos y el descubrimiento de servicios.
+ </p>
+ <ul bullettype="bullets">
+  <li>
+   <p variant="body1">
+    Orquestación de procesamiento por lotes:
+   </p>
+  </li>
+ </ul>
+ <p variant="body1">
+  Descripción: La orquestación del procesamiento por lotes coordina la ejecución de trabajos por lotes o canales de procesamiento de datos, generalmente en grandes conjuntos de datos o flujos de datos.
+ </p>
+ <p variant="body1">
+  Implementación en Go: Utilizar framework o bibliotecas de procesamiento por lotes como Apache Beam, Apache Flink o GoFlow para definir y ejecutar trabajos por lotes o canalizaciones de procesamiento de datos. Implementar componentes de orquestación en Go para gestionar la programación de trabajos, la resolución de dependencias, el paralelismo de tareas, la tolerancia a fallos y la coordinación de datos.
+ </p>
+ <ul bullettype="bullets">
+  <li>
+   <p variant="body1">
+    Orquestación de contenedores:
+   </p>
+  </li>
+ </ul>
+ <p variant="body1">
+  Descripción: La orquestación de contenedores administra la implementación, el escalamiento y el funcionamiento de aplicaciones en contenedores o microservicios en un clúster de máquinas.
+ </p>
+ <p variant="body1">
+  Implementación en Go: Utilizar plataformas de orquestación de contenedores como Kubernetes o Docker Swarm para gestionar cargas de trabajo en contenedores. Implementar controladores, operadores o extensiones personalizados en Go para ampliar y personalizar el comportamiento de la plataforma de orquestación, automatizar tareas operativas e integrarse con sistemas externos.
+ </p>
+ <ul bullettype="bullets">
+  <li>
+   <p variant="body1">
+    Orquestación de infraestructura:
+   </p>
+  </li>
+ </ul>
+ <p variant="body1">
+  Descripción: La orquestación de infraestructura automatiza el aprovisionamiento, la configuración y la administración de recursos de infraestructura, como máquinas virtuales, redes y almacenamiento.
+ </p>
+ <p variant="body1">
+  Implementación en Go: Utilizar herramientas de infraestructura como código (IaC), como Terraform o Pulumi, para definir y gestionar recursos de infraestructura como código. Crear scripts, plantillas o módulos de aprovisionamiento de infraestructura en Go para automatizar el aprovisionamiento, la configuración y la gestión del ciclo de vida de la infraestructura.
+ </p>
+ <ul bullettype="bullets">
+  <li>
+   <p variant="body1">
+    Orquestación basada en eventos:
+   </p>
+  </li>
+ </ul>
+ <p variant="body1">
+  Descripción: La orquestación basada en eventos coordina la ejecución de tareas o servicios en respuesta a eventos o desencadenadores generados por sistemas o componentes externos.
+ </p>
+ <p variant="body1">
+  Implementación en Go: Utilizar arquitecturas basadas en eventos y agentes de mensajes como Kafka, RabbitMQ o NATS para publicar y consumir eventos. Implementar orquestadores o flujos de trabajo basados en eventos en Go para suscribirse a eventos, activar acciones o servicios, y coordinar el procesamiento de eventos y la gestión de respuestas.
+ </p>
+ <p>
+ </p>
+</co-content>
+<script async="" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript">
+</script>
+<script type="text/x-mathjax-config">
+ MathJax.Hub.Config({
+    tex2jax: {
+      inlineMath: [ ['$$','$$'], ['$','$'] ],
+      displayMath: [ ["\\[","\\]"] ],
+      processEscapes: true
+    }
+  });
+</script>
