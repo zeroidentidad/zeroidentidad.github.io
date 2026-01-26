@@ -255,6 +255,42 @@
 
     <hr />
 
+    <section class="question">
+      <h3>7. ¿Cuál es el propósito del _ (identificador en blanco) en los bucles for?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Ignora los valores que no necesitas, evitando las advertencias del compilador.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Omite el índice o valor en bucles de rango.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          for _, value := range []int{1,2,3} {
+            fmt.Println(value) // ignorar indice
+          }
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Procesamiento de elementos de slices sin necesidad de conocer sus posiciones.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
