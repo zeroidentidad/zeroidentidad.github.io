@@ -291,6 +291,110 @@
 
     <hr />
 
+    <section class="question">
+      <h3>8. ¿Cómo maneja Go el desbordamiento de int8?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          El manejo de desbordamientos afecta la integridad de los datos en sistemas de bajo nivel.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Se envuelve usando aritmética de complemento a dos.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          var a int8 = 127
+          a++ // -128 (desbordamiento)
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Manejo de datos de sensores que exceden los límites del hardware.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+    <section class="question">
+      <h3>9. ¿Cuál es la salida de fmt.Printf("%T", 'a')?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Comprender el tipo de runa de Go es clave para el manejo de Unicode.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>'a' es una runa (alias para int32).</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          fmt.Printf("%T",'a') // salida: int32
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Procesamiento de texto multilingüe (por ejemplo, emojis en la entrada del usuario).
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+    <section class="question">
+      <h3>10. ¿Cómo se define un alias de tipo personalizado para int?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Los alias de tipo mejoran la claridad del código y evitan el uso indebido.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Utilizar type NewName ExistingType.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          type UserID int
+          var id UserID =1001
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Distinguir los identificadores de bases de datos de los números enteros regulares.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
