@@ -395,6 +395,113 @@
 
     <hr />
 
+    <section class="question">
+      <h3>11. ¿Cuál es el valor cero de un slice?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Conocer el estado predeterminado de un slice evita errores de tiempo de ejecución cuando se manipulan datos no inicializados.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>El valor cero de un slice es nil. Un slice nil tiene una longitud y una capacidad de 0.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          var s []int // s == nil
+          s = make([]int, 3) // inicializar con longitud 3
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Comprobar si un slice es nulo antes de agregar datos en las respuestas de la API para evitar un comportamiento inesperado.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+    <section class="question">
+      <h3>12. ¿Cómo se declara una variable sin inicializarla?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Las variables deben declararse antes de su uso, pero la inicialización puede posponerse.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Use "var" sin asignación. La variable obtiene su valor cero.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          var count int // count = 0
+          var name string // name = ""
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Declaración de variables de configuración que se completan posteriormente mediante la entrada del usuario.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+    <section class="question">
+      <h3>13. ¿Por qué no puedes usar ++x en Go (solo x++)?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Go elimina la ambigüedad al restringir el incremento/decremento a la notación sufija.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>x++ es válido (postfijo).</li>
+          <li>++x no es válido (prefijo).</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          x := 5
+          x++ // valido (x = 6)
+          // ++x  // error de compilación
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Evitar efectos secundarios en expresiones como y = x++ + 5, que no están permitidos en Go.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
