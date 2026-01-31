@@ -1,0 +1,89 @@
+<meta charset="utf-8"/>
+
+<!-- Open Graph -->
+<meta property="og:title" content="Notas.go - Nube - redes" />
+<meta property="og:description" content="Microservicio HTTP simple" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://zeroidentidad.github.io/notes" />
+<meta property="og:image" content="https://zeroidentidad.github.io/notes/img/advisory.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="1300" />
+
+<!-- Twitter Card (opcional) -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Notas.go - Nube - redes" />
+<meta name="twitter:description" content="Microservicio HTTP simple" />
+<meta name="twitter:image" content="https://zeroidentidad.github.io/notes/img/advisory.png" />
+
+<link rel="stylesheet" href="../style.css">
+<a href="../">🔙 Regresar</a>
+<co-content>
+ <p variant="body1" style="background-color: #000000;">
+  <u>
+   <strong>
+    Microservicio HTTP simple:
+   </strong>
+  </u>
+ </p>
+ <p variant="body1">
+  Siguiendo los siguientes pasos, se puede crear un microservicio simple usando HTTP en Go. La elección de HTTP sobre gRPC depende de factores como los requisitos de rendimiento, la compatibilidad con sistemas existentes y las preferencias del desarrollador.
+ </p>
+ <ul bullettype="bullets">
+  <li>
+   <p variant="body1">
+    Definir interfaz del servicio: Definir los endpoints (métodos y rutas HTTP) que expondrá el microservicio. Por ejemplo, /users para obtener datos de usuario.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Implementar lógica del servicio: Implementar la lógica del servicio para cada endpoint generalmente implica gestionar las solicitudes HTTP entrantes, analizar los parámetros de la solicitud, procesar datos y generar respuestas HTTP.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Agregar middleware (opcional): agregar middleware para cuestiones transversales como autenticación, registro, manejo de errores, etc.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Configurar servidor: configurar un servidor HTTP (por ejemplo, utilizando el paquete http de Go) y registrar los controladores de servicio para cada endpoint.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Iniciar servidor: iniciar el servidor HTTP para escuchar las solicitudes entrantes en un puerto específico.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Crear cliente (opcional): si es necesario, crear un cliente para interactuar con los endpoints HTTP del microservicio.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Prueba de servicio: probar los endpoints del microservicio utilizando herramientas como curl, Postman o pruebas automatizadas.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Implementar servicio: implementar el microservicio HTTP en un servidor o plataforma en la nube donde los clientes puedan acceder a él.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Monitoreo y mantenimiento: Monitorear el microservicio en producción para garantizar el tiempo de actividad, el rendimiento y la confiabilidad. Implementar mecanismos de registro, monitoreo y alerta para detectar y responder a problemas. Actualizar y mantener el microservicio regularmente para corregir errores, agregar nuevas funciones y mejorar el rendimiento.
+   </p>
+  </li>
+ </ul>
+</co-content>
+<script async="" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript">
+</script>
+<script type="text/x-mathjax-config">
+ MathJax.Hub.Config({
+    tex2jax: {
+      inlineMath: [ ['$$','$$'], ['$','$'] ],
+      displayMath: [ ["\\[","\\]"] ],
+      processEscapes: true
+    }
+  });
+</script>
