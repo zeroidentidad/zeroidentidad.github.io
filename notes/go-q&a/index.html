@@ -502,6 +502,77 @@
 
     <hr />
 
+    <section class="question">
+      <h3>14. Escribir código para intercambiar dos variables sin una variable temporal.</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Esto evita la sobrecarga de memoria para intercambios simples.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Utilizar aritmética o asignación de tuplas.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          a, b := 10, 20
+          a, b = b, a  // intercambio de tuplas (a=20, b=10)
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Intercambio de valores en algoritmos de ordenamiento (por ejemplo, ordenamiento de burbuja).
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+    <section class="question">
+      <h3>15. ¿Cómo maneja Go la división de dos números enteros?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Go sigue las reglas de división de números enteros, descartando el resto.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>3/2 equivale a 1 (no 1.5).</li>
+          <li>Utilizar tipos flotantes para conservar decimales.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          fmt.Println(3/2) // 1
+          fmt.Println(3.0/2.0) // 1.5
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Cálculo de puntuaciones medias donde la precisión decimal importa.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
