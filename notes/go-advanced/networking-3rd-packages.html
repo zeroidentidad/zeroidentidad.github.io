@@ -1,0 +1,101 @@
+<meta charset="utf-8"/>
+
+<!-- Open Graph -->
+<meta property="og:title" content="Notas.go - Avanzado" />
+<meta property="og:description" content="Networking con paquetes de terceros" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://zeroidentidad.github.io/notes" />
+<meta property="og:image" content="https://zeroidentidad.github.io/notes/img/advisory.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="1300" />
+
+<!-- Twitter Card (opcional) -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Notas.go - Avanzado" />
+<meta name="twitter:description" content="Networking con paquetes de terceros" />
+<meta name="twitter:image" content="https://zeroidentidad.github.io/notes/img/advisory.png" />
+
+<link rel="stylesheet" href="../style.css">
+<a href="../">🔙 Regresar</a>
+<co-content>
+ <p variant="body1" style="background-color: #000000;">
+  <u>
+   <strong>
+    Networking con paquetes de terceros:
+   </strong>
+  </u>
+ </p>
+ <p variant="body1">
+  <strong>
+   - Paquetes de terceros -
+  </strong>
+ </p>
+ <p variant="body1">
+  1. gRPC:
+ </p>
+ <ul bullettype="bullets">
+  <li>
+   <p variant="body1">
+    Utilizar "google.golang.org/grpc" para crear aplicaciones basadas en RPC de alto rendimiento.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Los búferes de protocolo (github.com/golang/protobuf) a menudo acompañan a gRPC para definir las API de servicio.
+   </p>
+  </li>
+ </ul>
+ <p variant="body1">
+  2. Conectividad de base de datos:
+ </p>
+ <ul bullettype="bullets">
+  <li>
+   <p variant="body1">
+    Aprovechar los controladores (drivers) de bases de datos ("github.com/go-sql-driver/mysql", "github.com/lib/pq") para interactuar con las conexiones a bases de datos.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Utilizar "database/sql" junto con controladores de base de datos específicos para operaciones CRUD.
+   </p>
+  </li>
+ </ul>
+ <p variant="body1">
+  3. Seguridad de red:
+ </p>
+ <ul bullettype="bullets">
+  <li>
+   <p variant="body1">
+    Utilizar los paquetes "crypto" y "crypto/tls" para operaciones criptográficas y soporte TLS.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    "golang.org/x/crypto" proporciona funcionalidades criptográficas adicionales.
+   </p>
+  </li>
+ </ul>
+ <p variant="body1">
+  4. Protocolos adicionales:
+ </p>
+ <ul bullettype="bullets">
+  <li>
+   <p variant="body1">
+    Las librerías para varios protocolos como WebSocket ("github.com/gorilla/websocket"), FTP ("github.com/jlaffaye/ftp"), SMTP ("net/smtp"), etc., amplían las capacidades de la librería estándar.
+   </p>
+  </li>
+ </ul>
+ <p>
+ </p>
+</co-content>
+<script async="" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript">
+</script>
+<script type="text/x-mathjax-config">
+ MathJax.Hub.Config({
+    tex2jax: {
+      inlineMath: [ ['$$','$$'], ['$','$'] ],
+      displayMath: [ ["\\[","\\]"] ],
+      processEscapes: true
+    }
+  });
+</script>
