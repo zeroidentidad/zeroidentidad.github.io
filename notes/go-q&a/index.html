@@ -573,6 +573,80 @@
 
     <hr />
 
+    <section class="question">
+      <h3>16. ¿Cuál es la diferencia entre string y []byte?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Los string son inmutables; []byte es mutable. Elegir el tipo correcto afecta el rendimiento y la seguridad.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>string: secuencia UTF-8 inmutable.</li>
+          <li>[]byte: bytes sin procesar mutables.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          s := "hello"
+          b := []byte(s) // convertir a bytes mutables
+          b[0]='H'
+          s = string(b) // "Hello"
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Modificación de datos binarios (por ejemplo, procesamiento de imágenes).
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+    <section class="question">
+      <h3>17. ¿Cómo se convierte un valor bool en un string?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          La conversión de valores booleanos en string es útil para el registro o la visualización de la interfaz de usuario.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Utilice fmt.Sprintf o un condicional.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          b :=true
+          s1 := fmt.Sprintf("%t", b) // "true"
+          s2 := "false"; if b { s2 ="true" }
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Mostrar “Sí/No” en una interfaz de usuario basada en un indicador booleano.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
