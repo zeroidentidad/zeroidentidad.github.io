@@ -647,6 +647,80 @@
 
     <hr />
 
+     <section class="question">
+      <h3>18. ¿Cuál es la salida de fmt.Println(1 << 10)?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Las operaciones bit a bit son comunes en la programación de bajo nivel.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>1 << 10 desplaza 1 a la izquierda por 10 bits, lo que da como resultado 1024 (2^10).</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          fmt.Println(1 << 10) // 1024
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Definición de tamaños de memoria (por ejemplo, 1 KiB = 1024 bytes).
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>19. ¿Cómo se declara una variable global en un paquete?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Las variables globales persisten durante las llamadas de función, pero pueden introducir dependencias ocultas.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Se declarar a nivel de paquete usando var.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          package main
+
+          var counter int // variable global
+
+          func increment() {
+            counter++
+          }
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Seguimiento del estado de la aplicación, como los contadores de solicitudes en un servidor web.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
