@@ -721,6 +721,44 @@
 
     <hr />
 
+     <section class="question">
+      <h3>20. ¿Cual es el valor cero de un tipo función?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Los tipos funciones en Go pueden ser nulos, lo que resulta útil para los patrones de devolución de llamada.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>El valor cero es nil.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          var f func(int) int // f == nil
+
+          if f != nil {
+            f(5) // safeguard
+          }
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Funciones de devolución de llamada opcionales en librerías (por ejemplo, logging hooks)
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
