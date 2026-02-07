@@ -759,6 +759,81 @@
 
     <hr />
 
+     <section class="question">
+      <h3>21. ¿Cómo se escribe un bucle for sin ninguna condición?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Los bucles infinitos son útiles para procesos de larga ejecución (por ejemplo, servidores).
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Usar for {} sin condición. Salir con "break" o "return".</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          for {
+            // correr siempre
+            if condition {
+              break
+            }
+          }
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Ejecutar un servidor TCP que escucha conexiones hasta que se detiene manualmente.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>22. ¿Cuál es la diferencia entre const y var?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Las constantes refuerzan la inmutabilidad, mejorando la seguridad y el rendimiento.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>const: Valor fijo (debe poder determinarse en tiempo de compilación).</li>
+          <li>var: Mutable, inicializado en tiempo de ejecución.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          const PI = 3.14
+          var radius = 5.0
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Usando const para constantes matemáticas como π o flags de configuración.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
