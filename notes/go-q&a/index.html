@@ -834,6 +834,75 @@
 
     <hr />
 
+     <section class="question">
+      <h3>23. ¿Cómo se declara una variable de tipo complex128?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Los números complejos son esenciales para los cálculos científicos y de ingeniería.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Utilizar la función complex() o la sintaxis literal.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          c1 := complex(3, 4) // 3 + 4i
+          c2 := 5 + 7i // literal corta
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Procesamiento de señales (por ejemplo, transformadas de Fourier).
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>24. ¿Cuál es la salida de len("日本語")?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Los string en Go están codificadas en UTF-8, por lo que len() cuenta bytes, no caracteres.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>“日本語” tiene 3 caracteres Unicode pero 9 bytes.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          fmt.Println(len("日本語")) // salida: 9
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Validar la longitud de entrada en campos de formulario multilingües.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
