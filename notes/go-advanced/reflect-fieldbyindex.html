@@ -1,0 +1,146 @@
+<meta charset="utf-8"/>
+
+<!-- Open Graph -->
+<meta property="og:title" content="Notas.go - Avanzado" />
+<meta property="og:description" content="Función reflect.FieldByIndex()" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://zeroidentidad.github.io/notes" />
+<meta property="og:image" content="https://zeroidentidad.github.io/notes/img/advisory.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="1300" />
+
+<!-- Twitter Card (opcional) -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Notas.go - Avanzado" />
+<meta name="twitter:description" content="Función reflect.FieldByIndex()" />
+<meta name="twitter:image" content="https://zeroidentidad.github.io/notes/img/advisory.png" />
+
+<link rel="stylesheet" href="../style.css">
+<a href="../">🔙 Regresar</a>
+<co-content>
+ <p variant="body1" style="background-color: #000000;">
+  <u>
+   <strong>
+    Función reflect.FieldByIndex():
+   </strong>
+  </u>
+ </p>
+ <p variant="body1">
+  Go proporciona soporte integrado para la implementación de la reflexión en tiempo de ejecución y permite que un programa manipule objetos con tipos arbitrarios con la ayuda del paquete reflect. La función
+  <strong>
+   reflect.FieldByIndex()
+  </strong>
+  en Go se utiliza para obtener el campo anidado correspondiente al índice. Para acceder a esta función, es necesario importar el paquete
+  <strong>
+   reflect
+  </strong>
+  en el programa.
+ </p>
+ <table columns="1" rows="1">
+  <tr>
+   <td>
+    <p variant="body1">
+     func (v Value) FieldByIndex(index []int) Value
+    </p>
+   </td>
+  </tr>
+ </table>
+ <p>
+  <strong>
+   Sintaxis del código
+  </strong>
+ </p>
+ <table columns="1" rows="1">
+  <tr>
+   <td>
+    <p variant="body1">
+     package main
+    </p>
+    <p variant="body1">
+     import (
+    </p>
+    <p variant="body1">
+     "fmt"
+    </p>
+    <p variant="body1">
+     "reflect"
+    </p>
+    <p variant="body1">
+     )
+    </p>
+    <p variant="body1">
+     func main() {
+    </p>
+    <p variant="body1">
+     tt:= reflect.StructOf([]reflect.StructField{
+    </p>
+    <p variant="body1">
+     {
+    </p>
+    <p variant="body1">
+     Name: "Height",
+    </p>
+    <p variant="body1">
+     Type: reflect.TypeOf(0.0),
+    </p>
+    <p variant="body1">
+     Tag: `json:"height"`,
+    </p>
+    <p variant="body1">
+     },
+    </p>
+    <p variant="body1">
+     {
+    </p>
+    <p variant="body1">
+     Name: "Name",
+    </p>
+    <p variant="body1">
+     Type: reflect.TypeOf("abc"),
+    </p>
+    <p variant="body1">
+     Tag: `json:"name"`,
+    </p>
+    <p variant="body1">
+     },
+    </p>
+    <p variant="body1">
+     })
+    </p>
+    <p variant="body1">
+     fmt.Println(tt.FieldByIndex([]int{0}))
+    </p>
+    <p variant="body1">
+     }
+    </p>
+   </td>
+  </tr>
+ </table>
+ <p>
+  <strong>
+   Salida de código
+  </strong>
+ </p>
+ <table columns="1" rows="1">
+  <tr>
+   <td>
+    <p variant="body1">
+     {Height float64 json:"height" 0 [0] false}
+    </p>
+   </td>
+  </tr>
+ </table>
+ <p>
+ </p>
+</co-content>
+<script async="" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript">
+</script>
+<script type="text/x-mathjax-config">
+ MathJax.Hub.Config({
+    tex2jax: {
+      inlineMath: [ ['$$','$$'], ['$','$'] ],
+      displayMath: [ ["\\[","\\]"] ],
+      processEscapes: true
+    }
+  });
+</script>
