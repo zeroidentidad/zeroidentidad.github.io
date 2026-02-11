@@ -24,6 +24,7 @@
   <main class="doc">
 
     <header class="doc-header">
+      <a href="../">🏠 Regresar</a>
       <h1>1. Fundamentos de Go (120 preguntas)</h1>
       <h2>Sintaxis y semántica (30 preguntas)</h2>
     </header>
@@ -897,6 +898,113 @@
         <h4>Caso de uso en la vida real:</h4>
         <p>
           Validar la longitud de entrada en campos de formulario multilingües.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>25. ¿Cómo se escapa comilla doble en string sin formato?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Los strings sin formato (comillas invertidas) ignoran los caracteres de escape, por lo que el escape requiere una solución alternativa.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Raw strings no pueden escapar las comillas. Utilizar una cadena normal (") en su lugar.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          s :=`I said, "Hello"`// válido (no es necesario escapar)
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Para escribir patrones de expresiones regulares o cadenas JSON sin errores de escape.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>26. Explica la diferencia entre runa y byte.</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          runa maneja Unicode, mientras que byte es para datos sin procesar.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>byte: alias de uint8 (1 byte).</li>
+          <li>runa: alias para int32(4 bytes, representa un punto de código Unicode).</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          b := byte('A') // 65
+          r := rune('世') // 19990
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Procesamiento de emojis o texto no latino (por ejemplo, caracteres chinos).
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>27. ¿Cómo se formatea un string con argumentos nombrados?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Los argumentos nombrados mejoran la legibilidad en plantillas complejas.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Utilizar fmt.Sprintf con %[n]v para referenciar argumentos por posición.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          name := "Jesus"
+          age := 33
+          s := fmt.Sprintf("%[1]s is %[2]d years old. %[1]s likes Go.", name, age)
+          // salida: "Jesus is 30 years old. Jesus likes Go."
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Generar mensajes de error fáciles de usar con variables repetidas.
         </p>
       </div>
     </section>
