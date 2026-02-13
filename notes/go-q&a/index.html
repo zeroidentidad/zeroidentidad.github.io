@@ -1011,6 +1011,162 @@
 
     <hr />
 
+      <section class="question">
+      <h3>28. ¿Cuál es la diferencia entre %v y %+v en fmt.Printf?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          %+v agrega nombres de campos al imprimir estructuras, lo que ayuda a la depuración.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>%v: Formato predeterminado.</li>
+          <li>%+v: Incluye nombres de campos de estructura.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          type User struct{Name string; Age int}
+          u := User{"Bob", 25}
+          fmt.Printf("%v\n", u) // {Bob 25}
+          fmt.Printf("%+v\n", u) // {Name:Bob Age:25}
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Registro de objetos de solicitud/respuesta de API con contexto de campo.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+      <section class="question">
+      <h3>29. ¿Cómo se imprime la dirección de memoria de una variable?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Las direcciones de memoria ayudan a depurar el comportamiento del puntero u optimizar las estructuras de datos.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Utilizar & con el especificador de formato %p.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          x :=42
+          fmt.Printf("%p", &x) // 0xc0000120a0
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Seguimiento de alias de puntero en código concurrente.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+      <section class="question">
+      <h3>30. ¿Por qué Go usa nil en lugar de null?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          nil es idiomático en Go y se aplica a punteros, slices, maps, etc.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>nil representa un valor cero para los tipos de referencia.</li>
+          <li>null no es una palabra clave en Go.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          var s []int
+          if s == nil {
+            fmt.Println("Slice is nil")
+          }
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Comprobar si un map/slice se ha inicializado antes de su uso.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+    <header class="doc-header">
+      <h2>Flujo de control (20 preguntas)</h2>
+    </header>
+
+      <section class="question">
+      <h3>1. ¿En qué se diferencia la instrucción switch de Go de la de C?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Go simplifica el switch para reducir errores (por ejemplo, omisiones accidentales).
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>No es necesario break (los casos no se descartan por defecto).</li>
+          <li>Admite expresiones, tipos y transición (fallthrough).</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          fruit := "apple"
+          switch fruit {
+          case "banana":
+            fmt.Println("Yellow")
+          case "apple":
+            fmt.Println("Red") // Imprime "Red" y sale.
+          }
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Manejo limpio de códigos de estado HTTP sin if-else anidados.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
