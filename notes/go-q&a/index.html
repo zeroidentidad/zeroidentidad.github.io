@@ -1011,7 +1011,7 @@
 
     <hr />
 
-      <section class="question">
+    <section class="question">
       <h3>28. ¿Cuál es la diferencia entre %v y %+v en fmt.Printf?</h3>
 
       <div class="block">
@@ -1049,7 +1049,7 @@
 
     <hr />
 
-      <section class="question">
+    <section class="question">
       <h3>29. ¿Cómo se imprime la dirección de memoria de una variable?</h3>
 
       <div class="block">
@@ -1084,7 +1084,7 @@
 
     <hr />
 
-      <section class="question">
+    <section class="question">
       <h3>30. ¿Por qué Go usa nil en lugar de null?</h3>
 
       <div class="block">
@@ -1126,7 +1126,7 @@
       <h2>Flujo de control (20 preguntas)</h2>
     </header>
 
-      <section class="question">
+    <section class="question">
       <h3>1. ¿En qué se diferencia la instrucción switch de Go de la de C?</h3>
 
       <div class="block">
@@ -1161,6 +1161,85 @@
         <h4>Caso de uso en la vida real:</h4>
         <p>
           Manejo limpio de códigos de estado HTTP sin if-else anidados.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+    <section class="question">
+      <h3>2. Escribir un bucle for que itere sobre una cadena de caracteres Unicode.</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Los string están codificados en UTF-8; la iteración por runa garantiza exactitud.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>User "for range" para obtener valores de runas, no índices de bytes.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          s :="日本語"
+          for index, char := range s {
+            fmt.Printf("%d: %c\n", index, char)
+          }
+          // salida:
+          // 0: 日
+          // 3: 本
+          // 6: 語
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Validar emojis o caracteres multibyte en la entrada del usuario.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+    <section class="question">
+      <h3>3. ¿Cómo se simula un bucle while en Go?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Go utiliza for en todos los bucles, mejorando la consistencia.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Usar for con una sola condición (sin init/post).</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          count := 0
+          for count < 5 {
+            fmt.Println(count)
+            count++
+          }
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Sondear una API hasta que se cumpla una condición (por ejemplo, la finalización de una tarea).
         </p>
       </div>
     </section>
