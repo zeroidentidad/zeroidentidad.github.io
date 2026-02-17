@@ -1246,6 +1246,48 @@
 
     <hr />
 
+    <section class="question">
+      <h3>4. ¿Cuál es la salida de "defer" en un bucle? Explicar con código.</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          La postergación (defer) en bucle puede generar un comportamiento no deseado si no se maneja con cuidado.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Defer retrasa la ejecución hasta que la función circundante retorna. En los bucles, las llamadas diferidas se apilan y se ejecutan en orden LIFO.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          func main() {
+            for i := 0; i < 3; i++ {
+              defer fmt.Println(i) // difiere la pila: 2, 1, 0
+            }
+          }
+        // salida:
+        // 2
+        // 1
+        // 0
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Aplazar accidentalmente la limpieza de recursos en un bucle puede demorarla hasta después de todas las iteraciones.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>

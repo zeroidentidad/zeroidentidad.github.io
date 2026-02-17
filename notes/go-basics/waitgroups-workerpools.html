@@ -1,0 +1,110 @@
+<meta charset="utf-8"/>
+
+<!-- Open Graph -->
+<meta property="og:title" content="Notas.go - Fundamentales" />
+<meta property="og:description" content="Concepto Wait Groups y Worker Pools" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://zeroidentidad.github.io/notes" />
+<meta property="og:image" content="https://zeroidentidad.github.io/notes/img/advisory.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="1300" />
+
+<!-- Twitter Card (opcional) -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Notas.go - Fundamentales" />
+<meta name="twitter:description" content="Concepto Wait Groups y Worker Pools" />
+<meta name="twitter:image" content="https://zeroidentidad.github.io/notes/img/advisory.png" />
+
+<link rel="stylesheet" href="../style.css">
+<a href="../">🔙 Regresar</a>
+<co-content>
+ <p variant="body1" style="background-color: #000000;">
+  <strong>
+   Concepto Wait Groups y Worker Pools
+  </strong>
+ </p>
+ <p variant="body1">
+  Lectura para comprender el concepto de goroutines y su relación con grupos de espera (Wait Groups) y grupos de trabajadores (Worker Pools).
+ </p>
+ <p variant="body1">
+  <strong>
+   Wait Groups
+  </strong>
+ </p>
+ <p variant="body1">
+  Un grupo de espera es una construcción de sincronización proporcionada por el paquete de sincronización (sync) en Go.
+ </p>
+ <ul bullettype="bullets">
+  <li>
+   <p variant="body1">
+    Se utiliza para esperar a que una colección de goroutines completen su ejecución antes de permitir que el programa principal continúe.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Los grupos de espera son particularmente útiles cuando se tiene múltiples goroutines que necesitan finalizar su trabajo antes de que el programa pueda continuar, lo que garantiza que se completen todas las tareas simultáneas.
+   </p>
+  </li>
+ </ul>
+ <p variant="body1">
+  El flujo de trabajo típico con grupos de espera incluye:
+ </p>
+ <ol bullettype="numbers">
+  <li>
+   <p variant="body1">
+    Agregar una goroutine al grupo de espera antes de que comience su trabajo.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Marcar la goroutine como terminada cuando completa su trabajo.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Estar esperando a que se completen todas las goroutines antes de continuar.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    La creación y gestión de grupos de trabajo de goroutines es común en programas concurrentes. Esto permite procesar una cola de tareas simultáneamente, lo que limita el número de goroutines activas y controla el uso de recursos.
+   </p>
+  </li>
+ </ol>
+ <p variant="body1">
+  <strong>
+   Worker Pools
+  </strong>
+ </p>
+ <p variant="body1">
+  Un grupo de trabajadores es un patrón de concurrencia común utilizado en Go, donde se crea una cantidad fija de goroutines de trabajadores para procesar tareas de una cola.
+ </p>
+ <ul bullettype="bullets">
+  <li>
+   <p variant="body1">
+    El propósito de un grupo de trabajadores es limitar la cantidad de goroutines que se ejecutan simultáneamente, lo que puede ayudar a controlar el uso de recursos.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Los grupos de trabajadores se utilizan comúnmente en escenarios en los que hay una gran cantidad de tareas para realizar, pero no se desea generar una goroutine para cada tarea debido a limitaciones de recursos.
+   </p>
+  </li>
+  <li>
+   <p variant="body1">
+    Se crea una cantidad fija de goroutines de trabajo, y estas toman tareas de una cola y las procesan simultáneamente.
+   </p>
+  </li>
+ </ul>
+</co-content>
+<script async="" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript">
+</script>
+<script type="text/x-mathjax-config">
+ MathJax.Hub.Config({
+    tex2jax: {
+      inlineMath: [ ['$$','$$'], ['$','$'] ],
+      displayMath: [ ["\\[","\\]"] ],
+      processEscapes: true
+    }
+  });
+</script>
