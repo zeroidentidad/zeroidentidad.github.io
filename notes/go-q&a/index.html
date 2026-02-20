@@ -1288,6 +1288,87 @@
 
     <hr />
 
+    <section class="question">
+      <h3>5. ¿Cómo funciona goto en Go? Dar un caso de uso válido.</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          goto se utiliza rara vez, pero puede simplificar el manejo de errores en código anidado.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Salta a una declaración etiquetada dentro de la misma función.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          func process() error {
+            if err := step1(); err != nil {
+              goto cleanup
+            }
+            // ...
+            cleanup:
+              fmt.Println("Limpieza de recursos")
+              return nil
+          }
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Centralizar la lógica de limpieza en funciones con múltiples rutas de error.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+    <section class="question">
+      <h3>6. ¿Cómo se omite una iteración en un bucle usando continue?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          continue omite iteraciones específicas sin salir del bucle.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Pasar a la siguiente iteración si se cumple una condición.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          for i := 0; i < 10; i++ {
+            if i%2 == 0 {
+              continue // saltar números pares
+            }
+            fmt.Println(i)
+          }
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Filtrar entradas de datos no válidas durante el procesamiento por lotes.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
