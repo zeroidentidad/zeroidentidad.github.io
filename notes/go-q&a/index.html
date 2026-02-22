@@ -1369,6 +1369,91 @@
 
     <hr />
 
+    <section class="question">
+      <h3>7. Escribir el código para salir de un bucle anidado usando break con etiquetas.</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Las etiquetas permiten salir de los bucles externos, evitando las variables de flag
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Etiquetar el bucle exterior y utilizar la etiqueta de interrupción.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          outer:
+          for i := 0; i < 3; i++ {
+            for j := 0; j < 3; j++ {
+              if i*j == 4 {
+                break outer // sale de ambos bucles
+              }
+            }
+          }
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Buscando en un grid 2D y deteniéndose cuando se encuentra un objetivo.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+    <section class="question">
+      <h3>8. ¿Cómo funciona fallthrough en una sentencia switch?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          fallthrough permite un comportamiento de fallthrough similar al del case en C si es explícitamente necesario.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Fuerza la ejecución para continuar con el siguiente caso.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          n := 2
+          switch n {
+          case 2:
+            fmt.Println("Two")
+            fallthrough
+          case 3:
+            fmt.Println("Three")
+          }
+          // salida:
+          // Two
+          // Three
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Rara vez se utiliza, pero puede agrupar la lógica compartida para múltiples casos.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
