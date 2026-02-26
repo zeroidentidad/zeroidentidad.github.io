@@ -1493,6 +1493,80 @@
 
     <hr />
 
+    <section class="question">
+      <h3>10. ¿Cuál es la diferencia entre if x {} y if x == true {}?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Go fomenta comprobaciones booleanas concisas.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>if x {} es idiomático cuando x es un booleano.</li>
+          <li>if x == true {} es redundante.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          x := true
+          if x {/* preferido */}
+          if x == true {/* evitar */}
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Comprobación de características o condiciones sin verbosidad innecesaria.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+    <section class="question">
+      <h3>11. ¿Cómo se manejan múltiples condiciones en una declaración if?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          La combinación de condiciones reduce los bloques if anidados y mejora la legibilidad.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Utilizar operadores lógicos (&&, ||, !).</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          age := 25
+          ifage >= 18 && age <= 60 {
+            fmt.Println("Eligible to work")
+          }
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Validar entrada de formulario (por ejemplo, verificar la edad y el formato del correo electrónico).
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
