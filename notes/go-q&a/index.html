@@ -1567,6 +1567,90 @@
 
     <hr />
 
+    <section class="question">
+      <h3>12. Escribir código para demostrar la evaluación de cortocircuito en Go.</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          El cortocircuito optimiza las operaciones lógicas al omitir evaluaciones innecesarias.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>&& detiene si la primera condición es falsa.</li>
+          <li>|| detiene si la primera condición es verdadera.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          func isEven(n int) bool {
+            fmt.Println("Called")
+            return n%2 == 0
+          }
+
+          if false && isEven(4) { // isEven() nunca se llama
+            // ...
+          }
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Evitar cálculos costosos cuando falla una condición previa (por ejemplo, verificar permisos antes de acceder a los datos).
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+    <section class="question">
+      <h3>13. ¿Cómo se utiliza defer dentro de un bloque condicional?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          defer se aplica a la función circundante, no al bloque condicional.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>La llamada diferida se ejecuta cuando sale la función, no el bloque.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          func process(flag bool) {
+            if flag {
+              defer fmt.Println("Cleanup A")
+            }
+            defer fmt.Println("Cleanup B")
+          }
+
+          process(true)
+          // salida: Cleanup B → Cleanup A
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Limpieza de recursos condicional (por ejemplo, cerrar archivos solo si se abren).
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
