@@ -1651,6 +1651,84 @@
 
     <hr />
 
+     <section class="question">
+      <h3>14. ¿Qué sucede si llamas a panic() sin recover()?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Los panic no recuperados hacen que el programa se bloquee, lo cual es fundamental para el manejo rápido de errores.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>El programa finaliza con un seguimiento de la pila.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          func main(){
+            panic("Something went wrong")
+            fmt.Println("This line never runs")
+          }
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Fallos catastróficos (por ejemplo, pérdida irrecuperable de la conexión a la base de datos).
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>15. ¿Cómo se anidan las sentencias switch?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Los switch anidados manejan árboles de decisiones de múltiples niveles (por ejemplo, analizan datos anidados).
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Un switch dentro de otro switch o case.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          value := 42
+          switch {
+            case value > 0:
+            switch value {
+              case 42:
+              fmt.Println("The answer")
+            }
+          }
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Analizar archivos de configuración con reglas jerárquicas.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
