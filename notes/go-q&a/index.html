@@ -1729,6 +1729,80 @@
 
     <hr />
 
+     <section class="question">
+      <h3>16. ¿Cómo se utiliza range para iterar sobre un mapa?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Iterar mapas con range es seguro pero sin orden por diseño.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Cada iteración devuelve un par clave-valor aleatorio.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          m := map[string]int{"a":1, "b":2}
+          for key, value := range m {
+            fmt.Printf("%s: %d\n", key, value)
+          }
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Agregación de métricas almacenadas en un mapa (por ejemplo, contar endpoints de API).
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>17. Escribir código para iterar sobre un slice hacia atrás.</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          La iteración hacia atrás es útil para el procesamiento inverso (por ejemplo, deshacer operaciones).
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Bucle desde len(slice)-1 hasta 0</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          s := []int{1, 2, 3}
+          for i := len(s)-1; i >= 0; i-- {
+            fmt.Println(s[i]) // 3 → 2 → 1
+          }
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Invertir el orden de entradas del registro para su visualización.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
