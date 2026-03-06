@@ -1803,6 +1803,92 @@
 
     <hr />
 
+     <section class="question">
+      <h3>18. ¿Cómo se maneja panic en una función diferida?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Las funciones diferidas pueden interceptar y recuperarse de los panics.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Utilizar recover() dentro de una función diferida.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          func safeCall() {
+            defer func() {
+              if r :=recover(); r !=nil {
+                fmt.Println("Recovered:",r)
+              }
+            }()
+            panic("Intentional panic")
+          }
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Apagar controladamente un servidor después de un panic en lugar de bloquearlo.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>19. ¿Cómo funciona select con casos de canales múltiples?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          select permite comunicación sin bloqueos a través de múltiples canales.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Ejecuta la primera operación del un canal listo (enviar/recibir).</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          ch1 := make(chan string)
+          ch2 := make(chan string)
+
+          go func() { ch1 <- "hello" }()
+          go func() { ch2 <- "world" }()
+
+          select{
+            case msg := <-ch1:
+              fmt.Println(msg)
+            case msg := <-ch2:
+              fmt.Println(msg)
+          }
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Implementar tiempos de espera o priorizar operaciones de canal.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
