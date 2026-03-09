@@ -1889,6 +1889,102 @@
 
     <hr />
 
+     <section class="question">
+      <h3>20. ¿Cuál es el resultado de defer fmt.Print("A"); fmt.Print("B")?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          defer retrasa la ejecución hasta que la función sale.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Las llamadas diferidas se ejecutan en orden LIFO (último en entrar, primero en salir).</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          func main() {
+            defer fmt.Print("A")
+            fmt.Print("B")
+          }
+          // salida: B A
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Registrar acciones de limpieza una vez completada la lógica principal.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+    <header class="doc-header">
+      <h2>Paquetes y módulos (30 preguntas)</h2>
+    </header>
+
+     <section class="question">
+      <h3>1. ¿Cómo crear e importar un paquete local?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Los paquetes locales modularizan el código, mejorando la capacidad de mantenimiento y la reutilización.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Crear un directorio con archivos Go (por ejemplo, utils/math.go).</li>
+          <li>Declarar el nombre del paquete (por ejemplo, paquete utils).</li>
+          <li>Importar utilizando la ruta del módulo definida en go.mod.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          // utils/math.go
+          package utils
+
+          func Add(a, b int) int {
+            return a + b
+          }
+
+          // main.go
+          package main
+
+          import(
+          "fmt"
+          "your-module-path/utils" // reemplazar con nombre de módulo en go.mod
+          )
+
+          func main() {
+            sum := utils.Add(3, 5)
+            fmt.Println(sum) // 8
+          }
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Dividir una base de código monolítica en componentes reutilizables (por ejemplo, autenticación, base de datos, registrador).
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
