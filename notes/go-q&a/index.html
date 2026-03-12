@@ -1985,6 +1985,48 @@
 
     <hr />
 
+     <section class="question">
+      <h3>2. ¿Cuál es el propósito de go.mod? ¿Cómo reemplaza a GOPATH?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          go.mod permite la gestión de dependencias teniendo en cuenta los módulos, desacoplando los proyectos de la estructura rígida de GOPATH.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>go.mod: define la ruta del módulo, la versión de Go y las dependencias.</li>
+          <li>GOPATH: Espacio de trabajo heredado para código Go (obsoleto en favor de los módulos).</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          // go.mod
+          module github.com/yourusername/project
+
+          go1.21
+
+          require (
+          github.com/gorilla/mux v1.8.0
+          )
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Trabajando en múltiples proyectos con versiones de dependencia en conflicto.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
