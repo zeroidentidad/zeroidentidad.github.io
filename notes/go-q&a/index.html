@@ -2027,6 +2027,77 @@
 
     <hr />
 
+     <section class="question">
+      <h3>3. Explica la diferencia entre go install y go build.</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Comprender las herramientas de compilación garantiza flujos de trabajo de desarrollo eficientes.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>go build: Compila el código en un archivo ejecutable en el directorio actual.</li>
+          <li>go install: Compila e instala el ejecutable en $GOPATH/bin.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          go build main.go       # crea ./main
+          go install main.go     # se instala en $GOPATH/bin/main
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Instalación global de herramientas de línea de comandos (por ejemplo, go install github.com/your-tool@latest).
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>4. ¿Cómo se manejan las dependencias cíclicas en Go?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Las dependencias cíclicas provocan errores de compilación e indican un diseño deficiente.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Refactoriza el código para romper ciclos (por ejemplo, traslada la lógica compartida a un tercer paquete).</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          // Mal: pkg A importa pkg B, que a su vez importa pkg A
+          // Solución: Crear pkg Common con tipos/funciones compartidas.
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Separar los modelos de dominio (usuario, producto) de las capas de servicio.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
