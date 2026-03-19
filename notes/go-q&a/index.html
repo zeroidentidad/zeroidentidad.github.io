@@ -2098,6 +2098,78 @@
 
     <hr />
 
+     <section class="question">
+      <h3>5. ¿Qué sucede si dos paquetes tienen el mismo nombre?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Las colisiones de nombres de paquetes pueden causar ambigüedad en las importaciones.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Utilizar alias para resolver conflictos.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          import(
+            m "your-module/math"
+            othermath "github.com/other/math"
+          )
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Utilizar bibliotecas de terceros con nombres incompatibles (por ejemplo, log vs. custom log).
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>6. ¿Cómo se gestiona el versionado de un módulo Go?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          El versionado semántico garantiza la compatibilidad y la reproducibilidad.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Etiquetar los commits con vMAJOR.MINOR.PATCH (por ejemplo, git tag v1.0.0).</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          git tag v1.2.3
+          git push origin v1.2.3
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Publicación de versiones estables de una libreria para uso público.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
