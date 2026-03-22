@@ -2170,6 +2170,77 @@
 
     <hr />
 
+     <section class="question">
+      <h3>7. ¿Cuál es el propósito de go.sum?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          go.sum garantiza la integridad de las dependencias almacenando sumas de verificación criptográficas.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Registra los hashes válidos esperados para las dependencias del módulo.</li>
+          <li>Evita manipulaciones o cambios accidentales.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          // go.sum
+          github.com/gorilla/mux v1.8.0h1:...
+          github.com/gorilla/mux v1.8.0/go.mod h1:...
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Verificación de dependencias en pipelines de CI/CD para auditorías de seguridad.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>8. ¿Cómo se actualiza una dependencia a una versión específica?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Fijar versiones evita cambios inesperados que puedan causar problemas.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Usar go get module@version.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          go get github.com/gorilla/mux@v1.8.0
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Reducir la versión de una dependencia tras una regresión en una versión más reciente.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
