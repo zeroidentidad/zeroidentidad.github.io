@@ -2241,6 +2241,75 @@
 
     <hr />
 
+     <section class="question">
+      <h3>9. ¿Qué es una directiva replace en go.mod?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          La opción `replace` permite el desarrollo local o la modificación temporal de dependencias.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Redirige la ruta de un módulo a un directorio local o a otra versión.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          // go.mod
+          replace github.com/your/dep => ../local-dep
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Probar una bifurcación local de una dependencia antes de contribuir al proyecto original.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>10. ¿Cómo se gestionan las dependencias de proveedores usando go mod vendor?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          La gestión de proveedores garantiza compilaciones sin conexión y entornos reproducibles.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Copia las dependencias en un directorio `vendor`.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          go mod vendor
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Proyectos de construcción en entornos aislados sin acceso a la red externa.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
