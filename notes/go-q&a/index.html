@@ -2310,6 +2310,85 @@
 
     <hr />
 
+     <section class="question">
+      <h3>11. ¿Cómo se utilizan las etiquetas de compilación para compilar código de forma condicional?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Las etiquetas de compilación permiten ejecutar código específico de la plataforma o restringido a funciones sin saturar los archivos.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Agregar //go:build <-tag-> en la parte superior del archivo.</li>
+          <li>Utilizar -tags durante la compilación para incluir/excluir código.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          //go:build debug
+
+          package main
+
+          func debugLog() {
+            fmt.Println("Debug mode enabled")
+          }
+
+          go build -tags debug
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Incluir registros de depuración o funciones experimentales solo en versiones de desarrollo.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>12. ¿Cuál es el propósito de //go:generate?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Automatización de la generación de código (por ejemplo, mediante mocks o protobufs) para reducir el código repetitivo.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Una directiva para ejecutar generadores de código mediante go generate.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          //go:generate mockgen -source=user.go -destination=mock_user.go
+
+          go generate ./...
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Generación de código cliente/servidor gRPC a partir de archivos .proto
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
