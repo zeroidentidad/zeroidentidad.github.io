@@ -2389,6 +2389,78 @@
 
     <hr />
 
+     <section class="question">
+      <h3>13. ¿Cómo se estructura un proyecto Go con múltiples paquetes?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Una estructura clara mejora la facilidad de mantenimiento y la colaboración.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Ejemplo de diseño como referencia.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          project/
+          ├── cmd/          // Puntos de entrada (paquetes principales)
+          ├── internal/     // Código privado (no importable)
+          ├── pkg/          // Código público reutilizable
+          └── go.mod
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Separación de los puntos de entrada de la interfaz de línea de comandos (cmd/cli), la lógica de negocio (internal/services) y las utilidades compartidas (pkg/utils).
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>14. ¿Cómo se inicializa un nuevo módulo con go mod init?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Los módulos definen las dependencias y el control de versiones para lograr compilaciones reproducibles.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Crea un archivo go.mod con la ruta del módulo.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          go mod init github.com/yourusername/project
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Iniciar un nuevo proyecto o convertir un proyecto GOPATH heredado en módulos.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
