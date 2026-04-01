@@ -2461,6 +2461,82 @@
 
     <hr />
 
+     <section class="question">
+      <h3>15. ¿Qué es modo GOPATH?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          GOPATH era el espacio de trabajo previo a los módulos para el código Go, ahora prácticamente obsoleto.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Todo el código residía en $GOPATH/src</li>
+          <li>Sin control de versiones ni aislamiento de dependencias</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          export GOPATH=$HOME/go
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Mantenimiento de proyectos heredados que no se han migrado a módulos Go.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>16. ¿Cómo se importa un paquete con un alias (por ejemplo, import m "math")?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Los alias resuelven conflictos de nombres o acortan nombres de paquetes largos.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Utilizar la sintaxis [alias] "[ruta-del-paquete]".</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          import(
+            m "math"
+            "github.com/other/math"
+          )
+
+          func main() {
+            fmt.Println(m.Sqrt(4)) // usando alias "m"
+          }
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Evitar conflictos entre un paquete de utilidades local y una biblioteca de utilidades de terceros.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
