@@ -2537,6 +2537,77 @@
 
     <hr />
 
+     <section class="question">
+      <h3>17. ¿Cuál es la convención de paquetes internos en Go?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Impide que proyectos externos importen código confidencial o interno.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>El código en internal/ solo puede ser importado por paquetes dentro del mismo módulo.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          project/
+          ├── internal/
+          │   └── auth/  // No puede ser importado por módulos externos
+          └── go.mod
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Ocultar la lógica de conexión a la base de datos o algoritmos propietarios.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>18. ¿Cómo se ejecutan las pruebas para todos los paquetes de un módulo?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Garantiza que todos los componentes cumplan con estándares de calidad antes de su implementación.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Usar go test ./... para probar recursivamente todos los paquetes.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          go test -v ./...
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Ejecución de pruebas unitarias, de integración y de rendimiento en pipelines de CI/CD.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
