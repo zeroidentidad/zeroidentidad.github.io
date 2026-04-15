@@ -2608,6 +2608,74 @@
 
     <hr />
 
+     <section class="question">
+      <h3>19. ¿Cómo se realiza la compilación cruzada de código Go para Windows desde Linux?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          La compilación cruzada simplifica la creación de binarios para múltiples plataformas.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Usar las variables de entorno GOOS y GOARCH</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          GOOS=windows GOARCH=amd64 go build -o app.exe
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Creación de una herramienta de línea de comandos de Windows en un servidor de integración continua Linux.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>20. ¿Cuál es el propósito de go get -u?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          La actualización de las dependencias garantiza el acceso a las últimas funciones y parches de seguridad.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>-u actualiza las dependencias a sus últimas versiones menores/de parche.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          go get -u github.com/gorilla/mux
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Mantener actualizado un framework web con las nuevas funciones de enrutamiento.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
