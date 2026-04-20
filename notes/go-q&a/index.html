@@ -2676,6 +2676,75 @@
 
     <hr />
 
+     <section class="question">
+      <h3>21. ¿Cómo se fija una dependencia a un commit específico?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Fijar un cambio a un commit garantiza la reproducibilidad, especialmente si la etiqueta de versión no está disponible o es inestable.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Usar go get con el hash del commit.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          go get github.com/gorilla/mux@ef69d98... # Colocar hash de commit completo
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Probando una corrección de errores de una pull request que aún no se ha publicado como una versión etiquetada.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>22. ¿Cómo se resuelve un conflicto de dependencias?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Los conflictos surgen cuando dos paquetes requieren versiones incompatibles de la misma dependencia.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Usar go mod tidy para resolver automáticamente los conflictos.</li>
+          <li>Actualizar manualmente las dependencias a versiones compatibles.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          go mod tidy
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Solución de problemas de incompatibilidad de versiones en proyectos grandes con muchas librería de terceros.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
