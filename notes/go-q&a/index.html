@@ -2745,6 +2745,76 @@
 
     <hr />
 
+     <section class="question">
+      <h3>23. ¿Cómo se usa go mod tidy?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Limpia las dependencias no utilizadas y actualiza go.mod/go.sum para reflejar las importaciones reales.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Agrega las dependencias faltantes.</li>
+          <li>Elimina las dependencias no utilizadas.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          go mod tidy
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Eliminar dependencias tras refactorizar el código para suprimir importaciones obsoletas.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>24. ¿Cómo se excluye una versión específica de una dependencia?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Excluir las versiones defectuosas o inseguras evita su uso accidental.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Agregar una directiva de exclusión en go.mod.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          // go.mod
+          exclude github.com/old/dep v1.2.3
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Bloqueo de una versión de dependencia con una vulnerabilidad de seguridad conocida.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
