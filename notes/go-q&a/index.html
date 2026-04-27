@@ -2815,6 +2815,76 @@
 
     <hr />
 
+      <section class="question">
+      <h3>25. ¿Qué es un archivo go.work?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Permite el modo de espacio de trabajo para desarrollar localmente múltiples módulos interdependientes.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Define un espacio de trabajo de módulos.</li>
+          <li>Sobrescribe dependencias con versiones locales.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          go work init
+          go work use ./module-a ./module-b
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Desarrollar simultáneamente un microservicio y su módulo de biblioteca compartida.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>26. ¿Cómo se utilizan etiquetas durante compilación?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Las etiquetas incluyen de forma condicional código para entornos específicos (por ejemplo, desarrollo, producción).
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Compilar con -tags seguido de una lista separada por comas.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          go build -tags "debug,json"
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Habilitación de funciones experimentales en una versión beta.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
