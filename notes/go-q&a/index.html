@@ -2885,6 +2885,76 @@
 
     <hr />
 
+     <section class="question">
+      <h3>27. ¿Cómo se compila un binario de Go con símbolos de depuración?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Los símbolos de depuración ayudan en la elaboración de perfiles o en el análisis de fallos.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Utilizar -ldflags para deshabilitar la eliminación de símbolos.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          go build -ldflags "-w=false"
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Depuración de fugas de memoria en un binario de producción con pprof.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>28. ¿Cuál es el propósito de go env?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Inspecciona y modifica las variables de entorno de Go (por ejemplo, GOPATH, GOOS).
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Mostrar la configuración actual: go env</li>
+          <li>Sobreescribir las variables: go env -w CLAVE=VALOR</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          go env GOPATH     # ver GOPATH
+          go env -w GO111MODULE=on # si modo go modules activo
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Configurar un proyecto para que utilice un proxy específico para la descarga de dependencias.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
