@@ -2955,6 +2955,91 @@
 
     <hr />
 
+     <section class="question">
+      <h3>29. ¿Cómo se desactiva temporalmente la compatibilidad con módulos de Go?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Los proyectos heredados podrían depender de GOPATH y requerir que se desactive la compatibilidad con módulos.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Establecer GO111MODULE=off en el entorno de Go.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          GO111MODULE=off go build
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Probando crear un proyecto Go con modo previo módulos sin refactorizar su estructura.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>30. ¿Cómo se listan todas las dependencias de un módulo?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          La auditoría de dependencias ayuda a realizar un seguimiento de las licencias o los problemas de seguridad.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Usar `go list` para mostrar el gráfico de dependencias del módulo.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          go list -m all
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Generación de una lista de materiales de software (SBOM) para el cumplimiento normativo.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+    <header class="doc-header">
+      <h2>Conceptos básicos de memoria (20 preguntas)</h2>
+    </header>
+
+     <section class="question">
+      <h3>Placeholder...</h3>
+
+      <div class="block">
+        <h4>Placeholder...</h4>
+        <p>
+          Placeholder...
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
