@@ -3028,12 +3028,71 @@
     </header>
 
      <section class="question">
-      <h3>Placeholder...</h3>
+      <h3>1. ¿Cómo asigna Go memoria para los slices?</h3>
 
       <div class="block">
-        <h4>Placeholder...</h4>
+        <h4>Por qué:</h4>
         <p>
-          Placeholder...
+          Optimice el uso de la memoria comprendiendo el funcionamiento interno de los segmentos de memoria.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Una slice es una estructura con un puntero a un array, una longitud y una capacidad. Cuando se añaden elementos que superan la capacidad, Go reasigna un array más grande (normalmente duplicando su tamaño).</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          s := make([]int, 0, 5) // capacidad inicial 5
+          s = append(s, 1, 2) // no hay reasignación
+          s = append(s, 3, 4, 5, 6) // la capacidad se duplica a 10
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Gestionar de forma eficiente los datos dinámicos en las API o en los flujos de datos.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>2. ¿Cuál es la diferencia entre new() y make()?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Evitar errores en tiempo de ejecución inicializando correctamente los tipos.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>new(T): Asigna memoria cero para el tipo T y devuelve un *T.</li>
+          <li>make(T): Inicializa slices, maps o channels (no punteros).</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          p := new(int) // *int que apunta a 0
+          m := make(map[string]int) // mapa inicializado
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          'make' para canales en trabajadores concurrentes; 'new' para estructuras personalizadas.
         </p>
       </div>
     </section>
