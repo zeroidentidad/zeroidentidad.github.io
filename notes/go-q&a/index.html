@@ -3099,6 +3099,110 @@
 
     <hr />
 
+     <section class="question">
+      <h3>3. ¿Cómo se comprueba si una variable está asignada en el heap o en el stack?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Para optimizar el rendimiento minimizando las asignaciones de memoria dinámica.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Usar go build -gcflags="-m" para ver los resultados del análisis de escape.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          go build -gcflags="-m" main.go
+          # Salida: ... escapes to heap ...
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Identificación de asignaciones de memoria dinámica no intencionadas en código sensible a la latencia.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>4. ¿Qué es una fuga de memoria en Go? ¿Cómo se detecta?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Para evitar que la aplicación se bloquee o se ralentice.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Memoria no liberada debido a referencias persistentes (por ejemplo, cachés globales, goroutines). Detectar usando pprof.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          go build -gcflags="-m" main.go
+          # Salida: ... escapes to heap ...
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Servicios de larga duración como los servidores web.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>5. ¿Cómo funciona el recolector de basura de Go?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Automatiza la gestión de la memoria de forma segura y eficiente.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Algoritmo de marcado y barrido simultáneo. Se ejecuta en segundo plano, minimizando las pausas.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          GOGC=100 ./app # el recolector de basura se activa cuando el heap crece al 100%
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Sistemas en tiempo real que requieren respuestas de baja latencia.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
