@@ -3203,6 +3203,82 @@
 
     <hr />
 
+     <section class="question">
+      <h3>6. ¿Qué es el análisis de escape? ¿Cómo se percibe?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Para reducir la presión sobre el heap manteniendo las variables en el stack.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Determina si la vida útil de una variable excede su función. Usar -gcflags="-m".</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          func foo() *int{
+            x :=42 // Escapa al heap (puntero devuelto)
+            return &x
+          }
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Optimización del rendimiento en sistemas de negociación de alta frecuencia.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>7. ¿Cómo se utiliza sync.Pool para reutilizar objetos?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Para reducir la sobrecarga del recolector de basura reciclando objetos temporales.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Un conjunto de objetos reutilizables, que se eliminan durante los ciclos de recolección de basura.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          var pool = sync.Pool{
+            New: func() interface{} { return new(bytes.Buffer) },
+          }
+          buf := pool.Get().(*bytes.Buffer)
+          defer pool.Put(buf)
+          buf.Reset()
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Reutilización de búferes en handlers de solicitudes HTTP.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
