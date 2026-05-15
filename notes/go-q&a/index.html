@@ -3279,6 +3279,76 @@
 
     <hr />
 
+     <section class="question">
+      <h3>8. ¿Cuál es el propósito de runtime.GC()?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Forzar la recolección de basura para pruebas o secciones críticas.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Activa un ciclo de recolección de basura manual. Evitar en entornos de producción.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          runtime.GC() // no se recomienda para uso regular
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Comparación del uso de memoria antes y después de una operación.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>9. ¿Cómo se libera memoria manualmente en Go?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Para sugerir la liberación de memoria en entornos con recursos limitados.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Establecer las referencias a nil y activar el recolector de basura.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          largeData := make([]byte, 1e6)
+          largeData = nil // eligible para GC
+          runtime.GC()
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Liberación de grandes conjuntos de datos tras su procesamiento en trabajos por lotes.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
