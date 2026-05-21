@@ -3349,6 +3349,78 @@
 
     <hr />
 
+     <section class="question">
+      <h3>10. ¿Cómo se evita la fragmentación de memoria en Go?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Mejorar la utilización de la memoria y la velocidad de asignación.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Utilizar sync.Pool, preasignar slices y reutilizar objetos.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          s := make([]int, 0, 100)
+          s = s[:0] // reiniciar slice manteniendo la capacidad
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Bases de datos de alto rendimiento que gestionan búferes de consulta.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>11. ¿Cuál es la diferencia entre un receptor de valor y un receptor de puntero?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Controla la mutabilidad y optimiza los costes de copia.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Receptor de valor: Opera sobre una copia (seguro pero costoso para estructuras grandes).</li>
+          <li>Receptor de puntero: Opera sobre la estructura original.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          type User struct { Name string }
+          func (u User) RenameV(s string) { u.Name = s } // sin efecto fuera
+          func (u *User) RenameP(s string) { u.Name = s }// cambio hasta nombre original
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Modificación del estado en operaciones CRUD (receptores de punteros).
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
