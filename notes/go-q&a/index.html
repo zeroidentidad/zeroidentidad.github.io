@@ -3421,6 +3421,78 @@
 
     <hr />
 
+     <section class="question">
+      <h3>12. ¿Cómo afecta a la memoria el paso de una estructura por valor en comparación con el paso por puntero?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Establecer equilibrio entre seguridad y rendimiento.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Valor: Copia la estructura completa (útil para estructuras pequeñas).</li>
+          <li>Puntero: Copia 8 bytes (mejor para estructuras grandes).</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          func ProcessByValue(u User) {} // copia de 24 bytes (ejemplo)
+          func ProcessByPointer(u *User) {} // copia de 8 bytes
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Pasar estructuras de configuración por puntero.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>13. ¿Cómo se utiliza unsafe.Pointer para realizar conversiones entre tipos?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Para realizar operaciones de memoria de bajo nivel (utilizar con moderación).
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Omitir la seguridad de tipos para reinterpretar la memoria.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          i := 42
+          ptr := unsafe.Pointer(&i)
+          f := *(*float64)(ptr) // reinterpretar como float64 (comportamiento indefinido!)
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Optimización de bibliotecas de serialización.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
