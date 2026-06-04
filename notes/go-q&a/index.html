@@ -3493,6 +3493,82 @@
 
     <hr />
 
+     <section class="question">
+      <h3>14. ¿Cuál es el propósito de uintptr?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Realizar operaciones aritméticas con punteros para garantizar la interoperabilidad.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Tipo de entero que contiene los bits de un puntero (no el puntero en sí).</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          addr := uintptr(unsafe.Pointer(&s))
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Interacción con bibliotecas C que requieren desplazamientos de memoria.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>15. ¿Cómo se alinean los campos de una estructura para optimizar el uso de la memoria?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Minimizar el relleno y reducir el uso de memoria.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Ordenar los campos de mayor a menor.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          type Unoptimized struct {
+            a bool // 1 byte + 7 padding
+            b int64 // 8 bytes
+          } // 16 bytes
+
+          type Optimized struct{
+            b int64 // 8 bytes
+            a bool // 1 byte + 7 padding
+          } // 16 bytes (mejor para arrays)
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Optimización de las cachés en memoria.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
