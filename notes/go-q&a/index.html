@@ -3569,6 +3569,75 @@
 
     <hr />
 
+     <section class="question">
+      <h3>16. ¿Cuál es la salida de unsafe.Sizeof(struct{}{})?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Utilizar tipos de tamaño cero para ahorrar memoria.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>struct{} tiene tamaño 0.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          fmt.Println(unsafe.Sizeof(struct{}{})) // 0
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Canales de señalización (chan struct{}).
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>17. ¿Cómo se crea un slice con una capacidad preasignada?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Evitar las asignaciones repetidas (allocations) durante las operaciones de anexión (appends).
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Especificar la capacidad en make()</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          s := make([]int, 0, 100) // capacidad 100
+          s = append(s, 1, 2, 3) // no hay reasignación
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Almacenamiento en búfer de paquetes de red.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
