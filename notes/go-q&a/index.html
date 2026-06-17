@@ -3638,6 +3638,41 @@
 
     <hr />
 
+     <section class="question">
+      <h3>18. ¿Cómo maneja Go la memoria para las variables de interface{}?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Comprender el costo de usar interfaces vacías.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Los valores se agrupan en una estructura de dos palabras (tipo + datos).</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          var i interface{} = 42 // asigna en el heap?
+          var s interface{} = "hello" // almacena el encabezado de string
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Parámetros de función genéricos (con sobrecarga de asignación).
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
