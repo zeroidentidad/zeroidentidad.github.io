@@ -3673,6 +3673,82 @@
 
     <hr />
 
+     <section class="question">
+      <h3>19. ¿Cómo se utiliza runtime.ReadMemStats?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Monitorear el uso de la memoria mediante programación.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Rellena una estructura con estadísticas de asignación.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          var m runtime.MemStats
+          runtime.ReadMemStats(&m)
+          fmt.Println("HeapAlloc:", m.HeapAlloc)
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Comprobaciones de estado personalizadas en microservicios.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>20. ¿Cómo se reducen las asignaciones de memoria dinámica en código crítico para el rendimiento?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Minimizar la presión sobre el recolector de basura y mejorar la velocidad.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Utilizar sync.Pool, preasignar slices, evitar interface{}.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          // preasignar slice
+          data := make([]byte, 0, 1024)
+
+          // reutilizar búferes
+          var pool = sync.Pool{
+            New: func() interface{} { return new(bytes.Buffer) },
+          }
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Sistemas de negociación de alta frecuencia.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
