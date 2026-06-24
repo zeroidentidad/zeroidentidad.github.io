@@ -3749,6 +3749,44 @@
 
     <hr />
 
+    <header class="doc-header">
+      <h2>Compilador y conjunto de herramientas (20 preguntas)</h2>
+    </header>
+
+     <section class="question">
+      <h3>1. ¿Cómo se realiza la compilación cruzada de un binario de Go para ARM64?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Compilar binarios para diferentes arquitecturas (por ejemplo, Raspberry Pi) desde tu máquina local.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Configurar GOOS (sistema operativo de destino) y GOARCH (arquitectura de destino).</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          GOOS=linux GOARCH=arm64 go build -o app-arm64
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Implementación de aplicaciones Go en servidores basados en ARM o dispositivos IoT.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
