@@ -3787,6 +3787,40 @@
 
     <hr />
 
+     <section class="question">
+      <h3>2. ¿Cuál es el propósito de -ldflags?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Indicadores del enlazador que se pasan a la compilación de Go para establecer variables o eliminar símbolos de depuración.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Configurar GOOS (sistema operativo de destino) y GOARCH (arquitectura de destino).</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          go build -ldflags="-X main.Version=1.0.0 -s -w"
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Incorporación de metadatos de compilación para depuración o seguimiento de versiones.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
