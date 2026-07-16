@@ -3821,6 +3821,81 @@
 
     <hr />
 
+     <section class="question">
+      <h3>3. ¿Cómo se insertan archivos estáticos en un binario de Go?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Crear archivos binarios autónomos con recursos (HTML, CSS, etc.).
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Utilizar la directiva //go:embed (Go 1.16+).</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          import_ "embed"
+
+          //go:embed static/index.html
+          var html string
+
+          func main() {
+            fmt.Println(html)
+          }
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Agrupar los recursos del servidor web en un único archivo binario.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
+     <section class="question">
+      <h3>4. ¿Cómo se compila un plugin de Go (archivo .so)?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Crear aplicaciones modulares con complementos de carga dinámica.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Usar -buildmode=plugin para crear librerías compartidas.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          go build -buildmode=plugin -o plugin.so plugin.go
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Ampliar la funcionalidad de la aplicación sin necesidad de recompilarla.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
