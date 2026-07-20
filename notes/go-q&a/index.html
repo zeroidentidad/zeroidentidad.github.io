@@ -3896,6 +3896,46 @@
 
     <hr />
 
+     <section class="question">
+      <h3>5. ¿Cuál es el propósito de go:generate?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Automatizar la generación de código (por ejemplo, mocks, protobufs).
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Una directiva para ejecutar comandos a través de go generate.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          //go:generate stringer -type=Status
+          type Status int
+
+          const (
+           Active Status = iota
+           Inactive
+          )
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Generating enums or gRPC code from .protofiles.
+        </p>
+      </div>
+    </section>
+
+    <hr />
+
   </main>
 
 </body>
