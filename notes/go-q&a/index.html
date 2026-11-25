@@ -3968,6 +3968,39 @@
       </div>
     </section>
 
+     <section class="question">
+      <h3>7. ¿Cómo se compila en Go con el detector de condiciones de carrera (race detector) habilitado?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Para detectar condiciones de carrera en código concurrente.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Utilizar el flag -race durante la compilación o las pruebas.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          go build -race
+          go test -race
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Depuración de condiciones de carrera en servidores multihilo.
+        </p>
+      </div>
+    </section>
+
     <hr />
 
   </main>
