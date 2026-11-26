@@ -4001,6 +4001,75 @@
       </div>
     </section>
 
+     <section class="question">
+      <h3>8. ¿Cuál es el propósito de go vet?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Detectar problemas comunes en el código (por ejemplo, código inalcanzable, formatos incorrectos).
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Una herramienta de análisis estático para código fuente en Go.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          go vet ./...
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Garantizar la calidad del código en los pipelines de CI/CD.
+        </p>
+      </div>
+    </section>
+
+     <section class="question">
+      <h3>9. ¿Cómo se realiza el perfilado de un programa en Go con pprof?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Para identificar los cuellos de botella en la CPU o la memoria.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Utilizar net/http/pprof para exponer endpoints de perfilado.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          import_ "net/http/pprof"
+
+          funcmain(){
+            go http.ListenAndServe(":6060",nil)
+            // ...
+          }
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Optimización de la latencia en web APIs.
+        </p>
+      </div>
+    </section>
+
     <hr />
 
   </main>
