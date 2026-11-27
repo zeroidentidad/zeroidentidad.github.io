@@ -4070,6 +4070,70 @@
       </div>
     </section>
 
+     <section class="question">
+      <h3>10. ¿Cómo se utiliza «go fix» para actualizar sintaxis obsoleta?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Migrar automáticamente código heredado a versiones más recientes de Go.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Aplica correcciones para APIs obsoletas.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          go fix ./...
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Actualización de bases de código de Go 1.15 a 1.20.
+        </p>
+      </div>
+    </section>
+
+     <section class="question">
+      <h3>11. ¿Cómo se compila un binario de Go sin símbolos de depuración?</h3>
+
+      <div class="block">
+        <h4>Por qué:</h4>
+        <p>
+          Para reducir el tamaño del binario para producción.
+        </p>
+      </div>
+
+      <div class="block">
+        <h4>Qué:</h4>
+        <ul>
+          <li>Utiliza -ldflags="-w -s" para eliminar la información de depuración.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h4>Cómo:</h4>
+        <pre><code>
+          go build -ldflags="-w -s"-o app
+        </code></pre>
+      </div>
+
+      <div class="block">
+        <h4>Caso de uso en la vida real:</h4>
+        <p>
+          Despliegue de microservicios ligeros.
+        </p>
+      </div>
+    </section>
+
     <hr />
 
   </main>
